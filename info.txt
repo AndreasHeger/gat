@@ -1,0 +1,131 @@
+================================
+Genomic Association Tester (GAT)
+================================
+
+The genomic association tester (GAT) tests for association
+between intervals in a genome analysis context.
+
+GAT answers the question, if a set of intervals on a genome
+is statistically significantly associated with one or more
+other sets of genomic intervals. Assocation typically means
+overlap, but also other measures like the distance between
+elements can be tested. 
+
+The tests are performed by simulation and within a genomic context.
+The simulation part takes care of segment length distribution.
+The genomic context can optionally take into account chromosomal 
+location (autosomes versus X-linked features) or isochores.
+
+This module has been inspired by the TheAnnotator tool by
+Gerton Lunter and the scripts of Caleb Webber.
+
+The differences are:
+
+   * permit more measures of association. The original Annotator used nucleotide 
+     overlap, but other measures might be useful like number of elements overlapping
+     by at least # nucleotides, proximity to closest element, etc.
+
+   * permit incremental runs. Annotations can be added without recomputing the samples.
+   
+
+Work space
+----------
+
+Inputs:
+
+   1. A set of :term:`intervals` ``S`` with segments to test.
+   2. A set of :term:`intervals` ``A`` with annotations to test against.
+   3. A set of :term:`intervals` ``W`` describing a work space.
+   
+Measures of association:
+
+   1. Number of bases overlapping
+   2. Number of intervals intersecting
+   3. Distance between segment and annotation
+      1. Closest distance of segment to annotation
+      2. Closest distance of annotation to segment
+
+Sampling strategys
+==================
+
+Sampling creates a new set of :term:`interval` ``P``. There
+are several different strategies possible.
+
+Annotator strategy
+------------------
+
+Samples are created in a two step procedure. First, the length
+of a sample segment is chosen randomly from the empirical segment 
+length distribution. Then, a random coordinate is chosen. If the
+sampled segment does not overlap with the workspace it is rejected. 
+
+Before adding the segment to the sampled set, it is truncated to 
+the workspace.
+
+If it overlaps with a previously sampled segment, the segments
+are merged. Thus, bases shared between two segments are not counted 
+twice.
+
+Sampling continues, until exactly the same number of bases overlap between
+the ``P`` and the ``W`` as do between ``S`` and ``W``.
+      	 
+Note that the length distribution of the ``P`` is different from ``S``.
+
+This method is quick if the workspace is large. If it is small, 
+a large number of samples will be rejected.
+
+This sampling method is compatible with both distance and overlap
+based measures of associaton. 
+
+Workspaces and isochores
+========================
+
+Workspaces limit the genomic space available for segments and annotations.
+Isochores split a workspace into smaller parts that permit to control for
+confounding variables like G+C content.
+
+The simplest workspace is the full genome. For some analyses it might be better 
+to limit to analysis to autosomes. 
+
+Examples for the use of isochores could be to analyze chromosomes or chromosomal arms
+separately. 
+
+If isochores are used, the length distribution and nucleotide overlaps are counted per isochore
+ensuring that the same number of nucleotides overlap each isochore in ``P`` and ``S`` and the
+length distributions per isochore are comparable. 
+
+Empirical length distribution
+-----------------------------
+
+The empirical length distribution is created from all :term:`intervals`
+in ``S``. The full segment length is chosen even if there is partial overlap.
+Optionally, the segment can be truncated. From Gerton::
+
+   What is the best choice depends on the data. Not truncating can lead 
+   to a biased length distribution if it is expected that segments that 
+   only partially overlap the workspace have very different lengths. However, 
+   truncating can lead to spurious short segments.
+
+Implementation
+==============
+
+Sampler - returns a sample of randomly placed segments
+
+Quantifiers
+
+
+.. glossary::
+  
+   Interval
+      a (genomic) segment with a chromosomal location (contig,start and end).
+
+
+
+
+
+
+
+
+
+
+
