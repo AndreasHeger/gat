@@ -26,7 +26,6 @@ The differences are:
      by at least # nucleotides, proximity to closest element, etc.
 
    * permit incremental runs. Annotations can be added without recomputing the samples.
-   
 
 Work space
 ----------

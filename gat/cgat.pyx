@@ -67,8 +67,8 @@ import numpy
 cimport numpy
 DTYPE_INT = numpy.int 
 ctypedef numpy.int_t DTYPE_INT_t
-#DTYPE_FLOAT = numpy.float 
-#ctypedef numpy.float_t DTYPE_FLOAT_t
+DTYPE_FLOAT = numpy.float 
+ctypedef numpy.float_t DTYPE_FLOAT_t
 
 cdef struct Segment:
     long start
@@ -153,8 +153,10 @@ cdef class SegmentList:
 
         if normalize: self.normalize()
 
-    def sort( self ):
+    cpdef sort( self ):
         '''sort segments.'''
+        if self.nsegments == 0: return
+
         qsort( <void*>self.segments, 
                self.nsegments,
                sizeof( Segment ),
@@ -202,6 +204,8 @@ cdef class SegmentList:
         '''trim segment list by removing *size* nucleotides from
         the segment that includes *pos*.
         '''
+        if self.nsegments == 0: return
+
         assert self.is_normalized, "trimming in non-normalized list"
 
         cdef long idx
@@ -235,7 +239,7 @@ cdef class SegmentList:
         #print "at end=%i, removing %i" % (self.sum(), size)
 
     cpdef normalize( self ):
-        '''merge all overlapping segments.
+        '''merge all overlapping segments and remove empty segments.
         
         Adjacent segments are not merged.
 
@@ -243,6 +247,9 @@ cdef class SegmentList:
         '''
 
         cdef long idx, max_end, insertion_idx
+        if self.nsegments == 0: 
+            self.is_normalized = 1
+            return
 
         self.sort()
  
@@ -251,6 +258,7 @@ cdef class SegmentList:
         max_end = self.segments[idx].end
         
         for idx from 0 <= idx < self.nsegments:
+            if self.segments[idx].start == self.segments[idx].end: continue
             if self.segments[idx].start >= max_end:
                 self.segments[insertion_idx].end = max_end
                 insertion_idx += 1
@@ -312,6 +320,7 @@ cdef class SegmentList:
         '''
         cdef long idx
         assert self.is_normalized, "searching in non-normalized list"
+        if self.nsegments == 0: return 0
 
         # avoid out of range searches
         if other.start > self.segments[self.nsegments-1].end:
@@ -353,7 +362,7 @@ cdef class SegmentList:
             idx += 1
         return count
 
-    cdef long _overlapWithRange( self, long start, long end ):
+    cpdef long overlapWithRange( self, long start, long end ):
         '''return the size of intersection between 
            segment list and Segment other'''
         
@@ -361,7 +370,7 @@ cdef class SegmentList:
         s = Segment( start, end )
         return self.overlap( s )
 
-    def overlapWithSegments( self, SegmentList other ):
+    cpdef long overlapWithSegments( self, SegmentList other ):
         '''return the number of nucleotides overlapping between this and *other*.'''
         
         assert self.is_normalized, "intersection from non-normalized list"
@@ -407,8 +416,44 @@ cdef class SegmentList:
                     
         return overlap
 
-    def overlapWithRange( self, start, end ):
-        return self._overlapWithRange( start, end )
+    cpdef long intersectionWithSegments( self, SegmentList other ):
+        '''return the number of segments overlapping with *other*.'''
+        
+        assert self.is_normalized, "intersection from non-normalized list"
+        assert other.is_normalized, "intersection with non-normalized list"
+
+        # avoid self-self comparison
+        if other.segments == self.segments: return self.sum()
+
+        cdef long this_idx, other_idx, working_idx, last_this_idx, last_other_idx
+        this_idx = other_idx = 0
+        last_this_idx = last_other_idx = -1
+        cdef Segment this_segment, other_segment
+        cdef long noverlap
+        noverlap = 0
+
+        while this_idx < self.nsegments and other_idx < other.nsegments:
+
+            # print "this=", this_idx, self.nsegments, "other=", other_idx, other.nsegments
+            if last_this_idx != this_idx: 
+                this_segment = self.segments[this_idx]
+                last_this_idx = this_idx
+            if last_other_idx != other_idx:
+                other_segment = other.segments[other_idx]
+                last_other_idx = other_idx
+
+            # skip segments in this not overlapping other
+            if this_segment.end <= other_segment.start: 
+                this_idx += 1
+            # skip segments in other not overlapping this
+            elif other_segment.end <= this_segment.start: 
+                other_idx += 1
+            else:
+                # deal with overlap
+                noverlap += 1
+                this_idx += 1
+                
+        return noverlap
 
     def getLengthDistribution( self, bucket_size, nbuckets ):
         '''build histogram of segments lengths.'''
@@ -591,7 +636,7 @@ cdef class SegmentListSamplerSlow:
         else:
             pos = self.segment_list.segments[segment_index].end + offset
 
-        overlap = self.segment_list._overlapWithRange( pos, pos+length )
+        overlap = self.segment_list.overlapWithRange( pos, pos+length )
 
         assert overlap > 0, "sample %i does not overlap with workspace: offset=%i, r=%i, index=%i/%i" %\
             (pos, r - self.cdf[segment_index], r, segment_index, self.segment_list.nsegments)
@@ -642,7 +687,7 @@ cdef class SegmentListSampler:
         else:
             pos = self.segment_list.segments[segment_index].end + offset
 
-        overlap = self.segment_list._overlapWithRange( pos, pos+length )
+        overlap = self.segment_list.overlapWithRange( pos, pos+length )
 
         assert overlap > 0, "sample %i does not overlap with workspace: offset=%i, r=%i, index=%i/%i" %\
             (pos, r - self.cdf[segment_index], r, segment_index, self.segment_list.nsegments)
@@ -703,7 +748,7 @@ cdef class HistogramSampler:
         for i from 0 <= i < self.nbuckets:
             self.total_size += histogram[i]
             self.cdf[i] = self.total_size
-        
+
         self.bucket_size = bucket_size
 
     cpdef long sample( self ):
@@ -711,16 +756,19 @@ cdef class HistogramSampler:
         
         cdef long base, index, r
         
-        r = numpy.random.randint( 0, self.total_size )
+        # 1 to avoid 0 length
+        if self.total_size > 1:
+            r = numpy.random.randint( 1, self.total_size )
+        else:
+            r = 1
+
         index = searchsorted( self.cdf, 
                               self.nbuckets,
                               sizeof(long),
                               &r,
                               &cmpLong,
                               )
-
-        # + 1 to avoid 0 length
-        base = index * self.bucket_size + 1
+        base = index * self.bucket_size
 
         if self.bucket_size > 1 : 
             return base + numpy.randint(0, self.bucket_size)
@@ -730,6 +778,7 @@ cdef class HistogramSampler:
     def __dealloc__(self ):
         if self.cdf != NULL:
             free( self.cdf )
+
 cdef class Sampler:
     pass
 
@@ -740,6 +789,29 @@ cdef class SamplerAnnotator(Sampler):
     cdef long nunsuccessful_rounds
 
     def __init__( self, bucket_size = 1, nbuckets = 100000 ):
+        '''sampler of the TheAnnotator.
+
+        Samples are created in a two step procedure. First, the length
+        of a sample segment is chosen randomly from the empirical segment 
+        length distribution. Then, a random coordinate is chosen. If the
+        sampled segment does not overlap with the workspace it is rejected. 
+
+        Before adding the segment to the sampled set, it is truncated to 
+        the workspace.
+
+        If it overlaps with a previously sampled segment, the segments
+        are merged. Thus, bases shared between two segments are not counted 
+        twice.
+
+        Sampling continues, until exactly the same number of bases overlap between
+        the ``P`` and the ``W`` as do between ``S`` and ``W``.
+
+        Note that the length distribution of the ``P`` is different from ``S``.
+
+        This method is quick if the workspace is large compared to the segments that
+        need to be placed. If it is small, a large number of samples will be rejected.
+        '''
+
         self.bucket_size = bucket_size
         self.nbuckets = nbuckets
         self.nunsuccessful_rounds
@@ -747,7 +819,7 @@ cdef class SamplerAnnotator(Sampler):
     cpdef SegmentList sample( self,
                               SegmentList segments, 
                               SegmentList workspace ):
-        '''main sampling procedure.'''
+        '''return a sampled list of segments.'''
 
         cdef long remaining
         cdef long true_remaining
@@ -852,13 +924,13 @@ cdef class SamplerAnnotator(Sampler):
             # reasonable amount of time, don't bother
             if remaining < overlap and nunsuccessful_rounds < max_unsuccessful_rounds:
                 # print "truncating sampled segment", remaining, overlap
-                if workspace._overlapWithRange( pos, pos+1 ) > 0:
+                if workspace.overlapWithRange( pos, pos+1 ) > 0:
                     # Left end overlaps with workspace
                     sampled_segment.end = sampled_segment.start + remaining;
                 else:
                     # Right end does?
                     sampled_segment.start = sampled_segment.end - remaining;
-                overlap = workspace._overlapWithRange( sampled_segment.start, sampled_segment.end );
+                overlap = workspace.overlapWithRange( sampled_segment.start, sampled_segment.end );
 
             if true_remaining > 0:
                 # print "adding segment ", sampled_segment, true_remaining
@@ -868,33 +940,218 @@ cdef class SamplerAnnotator(Sampler):
         self.nunsuccessful_rounds = nunsuccessful_rounds
         return intersected_segments
 
-
+############################################################
+############################################################
+############################################################
+## Counters
+############################################################
 cdef class Counter:
     '''base class for objects that compute counts
     between two segment lists.
     '''
 
-cdef class CounterNucleotides(Counter):
-    def __init__(self): 
-        pass
+cdef class CounterNucleotideOverlap(Counter):
+
+    def __call__(self, SegmentList segments, SegmentList annotations, SegmentList workspace = None ):
+        '''return number of nucleotides overlapping between segments and annotations.'''
+        return annotations.overlapWithSegments( segments )
+
+cdef class CounterNucleotideDensity(Counter):
+
+    def __call__(self, SegmentList segments, SegmentList annotations, SegmentList workspace ):
+        '''return number of nucleotides overlapping between segments and annotations.
+        divided by the size of the workspace
+        '''
+        cdef long l
+        l = len(workspace)
+        if l == 0: return 0
+        return float(annotations.overlapWithSegments( segments )) / l
+        
+cdef class CounterSegmentOverlap(Counter):
 
     def __call__(self, segments, annotations, workspace = None ):
-        '''return number of nucleotides overlapping between segments and annotations.'''
-        return segments.overlapWithSegments( annotations )
+        '''return number of segments overlapping with annotations.'''
+        return annotations.intersectionWithSegments( segments )
 
-cdef class CounterDensities(Counter):
-    '''count overlap densities.
 
-    In order to compare with Annotator results. The number of bases
-    overlapping are return as densities
+############################################################
+############################################################
+############################################################
+## Annotator results
+############################################################
+cpdef getTwoSidedPValue( ar, val ):
+    '''return pvalue for *val* within sorted array *ar*
     '''
+    idx = numpy.searchsorted( ar, val )
+    l = len(ar)
+    min_pval = 1.0 / l
+    if idx == l:
+        pval = min_pval
+    elif idx > l / 2:
+        # over-representation
+        while idx > 0 and ar[idx] == val: idx -= 1
+        pval = 1.0 - float(idx) / l
+    else:
+        # under-representation
+        while idx < l and ar[idx] == val: idx += 1
+        pval = float(idx) / l 
 
-    def __init__(self): 
-        pass
+    return max( min_pval, pval)
 
-    def __call__(self, segments, annotations, workspace ):
-        '''return number of nucleotides overlapping between segments and annotations.'''
-        return segments.overlapWithSegments( annotations )
+@cython.boundscheck(False)
+def getTwoSidedPValueFast( numpy.ndarray[DTYPE_FLOAT_t, ndim=1] ar, 
+                           double val, 
+                           double mean ):
+    '''return a two-sided pvalue. 
+
+    Fast if val is small or large.
+    '''
+    cdef long l, x
+    cdef double min_pval, pval
+
+    l = len(ar)
+    min_pval = 1.0 / l
+
+    if val > mean:
+        x = 0
+        while x < l and ar[x] < val: x += 1
+        pval = float(x) / l
+    else:
+        x = l - 1
+        while x >= 0 and ar[x] > val: x -= 1
+        pval = 1.0 - float(x) / l
+
+    return max( min_pval, pval )
+
+############################################################
+############################################################
+############################################################
+## Annotator results
+############################################################
+class AnnotatorResult(object):
+    '''container for annotator results.'''
+
+    format_observed = "%i"
+    format_expected = "%6.4f"
+    format_fold = "%6.4f"
+    format_pvalue = "%6.4e"
+
+    headers = ["track", "annotation", 
+               "observed", "expected",
+               "CI95low", "CI95high", 
+               "stddev",
+               "fold", 
+               "pvalue", 
+               "qvalue" ]
+
+    def __init__( self, 
+                  track, 
+                  annotation,
+                  observed, 
+                  samples ):
+
+        self.track = track
+        self.annotation = annotation
+        self.observed = observed
+        self.samples = numpy.array( samples, dtype= numpy.float )
+        self.sorted_samples = numpy.array( samples, dtype= numpy.float )
+        self.sorted_samples.sort()
+        self.expected = numpy.mean(samples)
+        if self.expected != 0:
+            self.fold = self.observed / self.expected
+        else:
+            self.fold = 1.0
+
+        self.stddev = numpy.std(samples)
+        self.nsamples = len(samples)
+        self.qvalue = 1.0
+
+        offset = int(0.05 * self.nsamples)
+        self.lower95 = self.sorted_samples[ offset ]
+        self.upper95 = self.sorted_samples[ -offset ]
+
+        self.pvalue = getTwoSidedPValue( self.sorted_samples, self.observed )
+
+    def isSampleSignificantAtPvalue( self, long sample_id, double pvalue ):
+        '''return True, if sample sample_id would be called
+        significant at threshold *pvalue*
         
+        This method is fast for small pvalues, but slow for large
+        pvalues because the method does not a full search.
+        '''
+        cdef double val
+        val = self.samples[sample_id]
+        return getTwoSidedPValueFast( self.sorted_samples, val, self.expected ) < pvalue
+
+    def __str__(self):
+
+        if len(self.samples) < 10**6:
+            format_pvalue = "%7.6f"
+        else:
+            format_pvalue = "%7.6e"
+
+        return "\t".join( (self.track,
+                           self.annotation,
+                           self.format_observed % self.observed,
+                           self.format_expected % self.expected,
+                           self.format_expected % self.lower95,
+                           self.format_expected % self.upper95,
+                           self.format_expected % self.stddev,
+                           self.format_fold % self.fold,
+                           format_pvalue % self.pvalue,
+                           format_pvalue % self.qvalue,
+                           ) )
+
+
+############################################################
+############################################################
+############################################################
+## FDR computation
+############################################################
+
+def computeFDR( annotator_results ):
+    '''compute an experimental fdr across all segments and annotations.
+
+    The experimental fdr is given by
+
+    E(FP) = average number of simulated sets in each simulation run with P-Value < p
+        aka: experimental number of false positives
+
+    R = number of nodes in observed data, that have a P-Value of less than p.
+        aka: pos=positives in observed data
+                    
+    fdr = E(FP)/R
+
+    The results are added to annotator_results.
+    '''
+    fdr_cache = {}
+
+    all_pvalues = numpy.array( [ r.pvalue for r in annotator_results ], dtype = numpy.float )
+    all_pvalues.sort()
+
+    cdef long nsample, nfp, R
+
+    for r in annotator_results:
+
+        pvalue = r.pvalue
+        if pvalue in fdr_cache: 
+            r.qvalue = fdr_cache[ pvalue ]
+            continue
+
+        nfps = []
         
+        for nsample from 0 <= nsample < len(r.samples):
+            nfp = 0        
+            for r2 in annotator_results: 
+                if r2.isSampleSignificantAtPvalue( nsample, pvalue ): nfp += 1
+            nfps.append( nfp )
+
+        efp = numpy.mean( nfps )
         
+        # number of positives at P-Value
+        R = numpy.searchsorted( all_pvalues, r.pvalue ) 
+        while R < len(all_pvalues) and all_pvalues[R] == pvalue:
+            R += 1
+        
+        r.qvalue = max( 1.0 / len(r.samples), efp / R)
+        fdr_cache[pvalue] = r.qvalue
