@@ -1,11 +1,10 @@
 #!/usr/bin/python
 """\
 
-FastGTF
-*******
+GAT
+***
 
-Module for fast parsing of `gtf <http://mblab.wustl.edu/GTF2.html>`_ formatted files.
-
+Genomic annotation tool
   
 """\
 
@@ -54,6 +53,7 @@ metadata = {
       "gat/__init__", ],
     'ext_modules': [cgat],
     'cmdclass' : {'build_ext': build_ext},
+    'scripts' : ['scripts/gatrun.py' ],
    }
 
 if __name__=='__main__':

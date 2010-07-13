@@ -1,3 +1,4 @@
+#!/bin/env python
 ################################################################################
 #
 #   MRC FGU Computational Genomics Group
@@ -40,8 +41,11 @@ Usage
 
 Example::
 
-   python gat-run.py --help
-
+   python gatrun.py 
+      --segment-file=segments.bed.gz 
+      --workspace-file=workspace.bed.gz 
+      --annotation-file=annotations_architecture.bed.gz  
+ 
 Type::
 
    python gat-run.py --help
@@ -116,6 +120,15 @@ def main( argv = None ):
 
     ## add common options (-h/--help, ...) and parse command line 
     (options, args) = E.Start( parser, argv = argv, add_output_options = True )
+
+    ##################################################
+    # arguments sanity check
+    if not options.segment_files:
+        raise ValueError("please specify at least one segment file" )
+    if not options.annotation_files:
+        raise ValueError("please specify at least one annotation file" )
+    if not options.workspace_files:
+        raise ValueError("please specify at least one workspace file" )
 
     ##################################################
     ##################################################
