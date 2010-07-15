@@ -101,6 +101,9 @@ def main( argv = None ):
     parser.add_option("-n", "--num-samples", dest="num_samples", type="int", 
                       help="number of samples to compute [default=%default]."  )
 
+    parser.add_option("-e", "--cache", dest="cache", type="string", 
+                      help="filename for caching samples [default=%default]."  )
+
     parser.add_option("-o", "--order", dest="output_order", type="choice",
                       choices = ( "track", "annotation", "fold", "pvalue", "qvalue" ),
                       help="output order of results [default=%default]."  )
@@ -115,6 +118,7 @@ def main( argv = None ):
         counter = "nucleotide-overlap",
         output_stats = "all",
         output_order = "fold",
+        cache = None,
         )
 
     ## add common options (-h/--help, ...) and parse command line 
@@ -246,7 +250,8 @@ def main( argv = None ):
                                  workspace,
                                  sampler, 
                                  counter,
-                                 num_samples = options.num_samples )
+                                 num_samples = options.num_samples,
+                                 cache = options.cache )
     
     ##################################################
     ##################################################

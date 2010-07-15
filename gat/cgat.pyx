@@ -1247,7 +1247,8 @@ def computeFDR( annotator_results ):
         for nsample from 0 <= nsample < len(r.samples):
             nfp = 0        
             for r2 in annotator_results: 
-                if r2.isSampleSignificantAtPvalue( nsample, pvalue ): nfp += 1
+                nfp += 1
+                # if r2.isSampleSignificantAtPvalue( nsample, pvalue ): nfp += 1
             nfps.append( nfp )
 
         efp = numpy.mean( nfps )

@@ -1,11 +1,15 @@
 from cgat import *
 
 import os, sys, re, optparse, collections, types
+import tables
 import numpy
 
 import Bed
 import IOTools
 import Experiment as E
+
+import warnings
+warnings.filterwarnings('ignore', category=tables.NaturalNameWarning)
 
 def readFromBedOld( filenames, name = "track" ):
     '''read Segment Lists from one or more bed files.
@@ -33,7 +37,10 @@ def readFromBedOld( filenames, name = "track" ):
     return segment_lists
 
 class IntervalCollection(object):
-    '''a collection of intervals.'''
+    '''a collection of intervals.
+
+    Intervals (objects of type :class:`SegmentList`) are collected by track and isochore.
+    '''
 
     def __init__(self, name ):
         self.intervals = collections.defaultdict( lambda: collections.defaultdict(SegmentList))
@@ -151,6 +158,9 @@ class IntervalCollection(object):
     def __getitem__(self, key ):
         return self.intervals[key]
 
+    def __contains__(self, key ):
+        return key in self.intervals
+
     def iteritems(self):
         return self.intervals.iteritems()
     
@@ -168,6 +178,98 @@ class IntervalCollection(object):
                          "%i" % overlap,
                          "%i" % length,
                          "%f" % (float(overlap) / length)) ) + "\n" )
+
+
+class Samples( object ):
+    '''a collection of samples.
+
+    Samples :class:`IntervalCollections` identified by track and sample_id.
+    '''
+    
+    def __init__(self, cache = None ):
+        '''create a new SampleCollection.
+
+        If cache is given, samples will be stored persistently on disk.
+        '''
+        if cache:
+            self.cache = tables.openFile( cache, mode = "a", title = "Sample cache")
+            self.filters = tables.Filters(complevel=5, complib='zlib')
+        else:
+            self.cache = None
+
+        self.samples = collections.defaultdict( IntervalCollection )
+
+    def add( self, track, sample_id, isochore, sample ):
+        '''add a new *sample* for *track* and *isochore*, giving it *sample_id*.'''
+        if track not in self.samples:
+            self.samples[track] = IntervalCollection( track )
+
+        self.samples[track].add( sample_id, isochore, sample )
+        
+        if self.cache:
+            l = len(sample)
+            if l == 0: return
+            
+            try:
+                loc = self.cache.getNode( "/%s/%i" % (track, sample_id) )
+            except tables.exceptions.NoSuchNodeError:
+                loc = self.cache.createGroup( "/%s/%i" % (track, sample_id),  
+                                              "%s-%i" % (track, sample_id),  
+                                              "%s-%i" % (track, sample_id),  
+                                              createparents = True )
+                
+            carr = self.cache.createCArray( loc, 
+                                            isochore, 
+                                            tables.UInt32Atom(),
+                                            shape=( l, 2),
+                                            filters = self.filters )
+
+            for x, c in enumerate( sample ): 
+                carr[x] = [c[0], c[1]]
+
+            carr.flush()
+
+    def hasSample( self, track, sample_id, isochore ):
+        '''return true if cache has sample.'''
+        if self.cache:
+            return "/%s/%i/%s" % (track, sample_id,isochore) in self.cache
+        else:
+            if track not in self.samples: return False
+            if sample_id not in self.samples[track]: return False
+            return isochore in self.samples[track][sample_id]
+
+    def save( self ):
+        '''save full interval collection in cache.'''
+
+        if not self.cache: return
+
+        for track, samples in self.samples.iteritems():
+            group = self.cache.createGroup( self.cache.root, track, track)
+            for sample_id, sample in samples.iteritems():
+                subgroup = self.cache.createGroup( group, str(sample_id), str(sample_id) )
+                for isochore, seglist in sample.iteritems():
+                    l = len(seglist)
+                    if l == 0: continue
+                    carr = self.cache.createCArray( subgroup, 
+                                                isochore, 
+                                                tables.UInt32Atom(),
+                                                shape=( l, 2),
+                                                filters = self.filters )
+
+                    for x, c in enumerate( seglist ):
+                        carr[x] = [c[0], c[1]]
+                    carr.flush()
+
+
+        
+                    
+    def __del__(self):
+        if self.cache:
+            self.cache.close()
+
+    def __getitem__(self, track ):
+        '''return all samples for track (as an :class:`IntervalCollection`)'''
+        return self.samples[track]
 
 def computeCounts( counter, aggregator, 
                    segments, annotations, workspace,
@@ -210,8 +312,23 @@ def run( segments,
          workspace, 
          sampler, 
          counter,
-         num_samples ):
-    
+         **kwargs ):
+    '''run an enrichment analysis.
+
+    kwargs recognized are:
+
+    cache 
+       filename of cache
+
+    num_samples
+       number of samples to compute
+
+    '''
+
+    ## get arguments
+    num_samples = kwargs.get( "num_samples", 10000 )
+    cache = kwargs.get( "cache", None )
+
     ##################################################
     ##################################################
     ##################################################
@@ -219,10 +336,9 @@ def run( segments,
     # note: samples might need to be discarded if memory
     # is scarce.
     ##################################################
-    samples = {}
+    samples = Samples( cache = cache )
 
     for track in segments.tracks:
-        sample = IntervalCollection( name = track )
         segs = segments[track]
         E.info( "sampling: %s" % (track))
         for x in xrange( num_samples ):
@@ -230,13 +346,12 @@ def run( segments,
             for isochore in segs.keys():
                 # skip empty isochores
                 if workspace[isochore].isEmpty: continue
-
+                if samples.hasSample( track, x, isochore ): continue
                 r = sampler.sample( segs[isochore], workspace[isochore] )
-                sample.add( "sample_%06i" % x, isochore, r )
+                samples.add( track, x, isochore, r )
 
-        samples[track] = sample 
-
-    E.info( "sampling finished" % (track))
+    E.info( "sampling finished" )
+    # samples.save()
 
     ##################################################
     ##################################################
