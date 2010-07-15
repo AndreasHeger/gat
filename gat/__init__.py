@@ -7,11 +7,12 @@ import Bed
 import IOTools
 import Experiment as E
 
-def readFromBed( filenames, name="track" ):
+def readFromBedOld( filenames, name = "track" ):
     '''read Segment Lists from one or more bed files.
 
-    Segment lists are grouped by *name* and *contig*.
-    *name* can "track" or "name".
+    Segment lists are grouped by *contig* and *track*.
+    
+    If no track is given, the *name* attribute is taken.
     '''
 
     segment_lists = collections.defaultdict( lambda: collections.defaultdict(SegmentList))
@@ -38,11 +39,11 @@ class IntervalCollection(object):
         self.intervals = collections.defaultdict( lambda: collections.defaultdict(SegmentList))
         self.name = name
 
-    def load( self, filenames, name = "track" ):
+    def load( self, filenames ):
         '''load segments from filenames and pre-process them.'''
 
         E.info( "%s: reading intervals from %i files" % (self.name, len(filenames)))
-        self.intervals = readFromBed( filenames, name = name )
+        self.intervals = readFromBed( filenames )
         E.info( "%s: read intervals for %i tracks" % (self.name, len(self.intervals) ))
 
     def normalize( self ):
@@ -130,6 +131,15 @@ class IntervalCollection(object):
                     vv[isochore] = newlist
                 del vv[contig]
 
+    def dump( self, outfile ):
+        '''dump in bed format.'''
+
+        for track, vv in self.intervals.iteritems():
+            outfile.write("track name=%s\n" % track )
+            for contig, segmentlist in vv.items():
+                for start, end in segmentlist:
+                    outfile.write( "%s\t%i\t%i\n" % (contig, start, end))
+
     @property
     def tracks(self): return self.intervals.keys()
 
@@ -214,8 +224,9 @@ def run( segments,
     for track in segments.tracks:
         sample = IntervalCollection( name = track )
         segs = segments[track]
+        E.info( "sampling: %s" % (track))
         for x in xrange( num_samples ):
-            E.info( "sampling: %s: %i/%i" % (track, x+1, num_samples))
+            E.debug( "progress: %s: %i/%i" % (track, x+1, num_samples))
             for isochore in segs.keys():
                 # skip empty isochores
                 if workspace[isochore].isEmpty: continue
@@ -224,6 +235,8 @@ def run( segments,
                 sample.add( "sample_%06i" % x, isochore, r )
 
         samples[track] = sample 
+
+    E.info( "sampling finished" % (track))
 
     ##################################################
     ##################################################

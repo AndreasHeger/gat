@@ -60,7 +60,7 @@ Code
 
 '''
 
-import os, sys, re, optparse, collections, types
+import os, sys, re, optparse, collections, types, glob, time
 import numpy
 
 import Experiment as E
@@ -84,13 +84,13 @@ def main( argv = None ):
                       help="filename with annotations [default=%default]."  )
 
     parser.add_option("-s", "--segment-file", dest="segment_files", type="string", action="append",
-                      help="filename with segments [default=%default]."  )
+                      help="filename with segments. Also accepts a glob in parantheses [default=%default]."  )
 
     parser.add_option("-w", "--workspace-file", dest="workspace_files", type="string", action="append",
-                      help="filename with workspace segments [default=%default]."  )
+                      help="filename with workspace segments. Also accepts a glob in parantheses [default=%default]."  )
 
     parser.add_option("-i", "--isochore-file", dest="isochore_files", type="string", action="append",
-                      help="filename with isochore segments [default=%default]."  )
+                      help="filename with isochore segments. Also accepts a glob in parantheses [default=%default]."  )
 
     parser.add_option("-c", "--counter", dest="counter", type="choice",
                       choices=("nucleotide-overlap", 
@@ -105,11 +105,10 @@ def main( argv = None ):
                       choices = ( "track", "annotation", "fold", "pvalue", "qvalue" ),
                       help="output order of results [default=%default]."  )
 
-
     parser.set_defaults(
         annotation_files = [],
         segment_files = [],
-        workspace_files = [],
+        workspace_files = [],  
         num_samples = 1000,
         nbuckets = 100000,
         bucket_size = 1,
@@ -120,6 +119,15 @@ def main( argv = None ):
 
     ## add common options (-h/--help, ...) and parse command line 
     (options, args) = E.Start( parser, argv = argv, add_output_options = True )
+
+    tstart = time.time()
+
+    def expandGlobs( infiles ):
+        return IOTools.flatten( [ glob.glob( x ) for x in infiles ] )
+        
+    options.segment_files = expandGlobs( options.segment_files )
+    options.annotation_files = expandGlobs( options.annotation_files )
+    options.workspace_files = expandGlobs( options.workspace_files )
 
     ##################################################
     # arguments sanity check
@@ -139,7 +147,7 @@ def main( argv = None ):
             coll.outputStats( E.openOutputFile( section ) )
         
     # read one or more segment files
-    segments = gat.IntervalCollection( name = "segments " )
+    segments = gat.IntervalCollection( name = "segments" )
     segments.load( options.segment_files )
     dumpStats( segments, "stats_segments_raw" )
     segments.normalize()
@@ -170,7 +178,7 @@ def main( argv = None ):
 
         # read one or more isochore files
         isochores = gat.IntervalCollection( name = "isochores" )
-        isochores.load( options.isochore_files, name = "name" )
+        isochores.load( options.isochore_files )
         dumpStats( isochores, "stats_isochores_raw" )
 
         # merge isochores and check if consistent (fully normalized)
@@ -201,6 +209,11 @@ def main( argv = None ):
     #annotations.prune( workspace )
     #annotations.outputStats( options.stdout )
 
+    # segments.dump( open("segments_dump.bed", "w" ) )
+    # workspaces.dump( open("workspaces_dump.bed", "w" ) )
+
+    E.info( "intervals loaded in %i seconds" % (time.time() - tstart) )
+    
     # output segment densities per workspace
     for track in segments.tracks:
         workspaces.outputOverlapStats( options.stdout, segments[track] )

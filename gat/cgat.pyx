@@ -1,8 +1,8 @@
 # cython: embedsignature=True
 # cython: profile=True
 
-import types, collections
-
+import types, collections, re
+import IOTools
 
 cimport cython
 
@@ -11,6 +11,7 @@ cdef extern from "string.h":
     void *memcpy(void *dest, void *src, size_t n)
     char *strtok_r(char *str, char *delim, char **saveptr)
     char *strncpy(char *dest, char *src, size_t n)
+    void *memchr(void *s, int c, size_t n)
 
 cdef extern from "stdlib.h":
     void free(void *)
@@ -59,7 +60,6 @@ cdef extern from "gat_utils.h":
                        void * target,
                        int(*compar)(void *, void *))
 
-
 #####################################################
 ## numpy import
 # note both import and cimport are necessary
@@ -89,6 +89,10 @@ cdef inline long lmax( long a, long b):
 @cython.profile(False)
 cdef inline long segment_overlap(  Segment a, Segment b ):
     return lmax(0, lmin( a.end, b.end) - lmax(a.start, b.start))
+
+@cython.profile(False)
+cdef inline long range_overlap( long astart, long aend, long bstart, long bend ):
+    return lmax(0, lmin( aend, bend) - lmax(astart, bstart))
 
 @cython.profile(False)
 cdef inline long segment_overlap_raw(  Segment a, Segment b ):
@@ -352,8 +356,12 @@ cdef class SegmentList:
         
         cdef long idx
         idx = self.getInsertionPoint( other )
-        if idx == self.nsegments: return 0
-        
+
+        # deal with border cases 
+        # permit partial overlap
+        if idx == self.nsegments: idx -= 1
+        elif idx == -1: idx=0
+
         cdef long count
         count = 0
 
@@ -549,6 +557,18 @@ cdef class SegmentList:
             total += s.end - s.start
         return total
 
+    cpdef long max( self ): 
+        '''return maximum coordinate.'''
+        assert self.is_normalized, "maximum from non-normalized list"
+        if self.nsegments == 0: return 0
+        return self.segments[self.nsegments - 1].end
+
+    cpdef long min( self ): 
+        '''return minimum coordinate.'''
+        assert self.is_normalized, "minimum from non-normalized list"
+        if self.nsegments == 0: return 0
+        return self.segments[0].start
+
     cpdef clear( self ):
         '''removes all segments from list.
         
@@ -643,7 +663,7 @@ cdef class SegmentListSamplerSlow:
 
         return pos, overlap
 
-cdef class SegmentListSampler:
+cdef class SegmentListSamplerWithEdgeEffects:
    
     cdef SegmentList segment_list
     cdef long * cdf
@@ -660,39 +680,124 @@ cdef class SegmentListSampler:
         self.total_size = 0
         for i from 0 <= i < len(segment_list):
             self.total_size += segment_length( segment_list.segments[i] )
-            self.cdf[i] = self.total_size
+            self.cdf[i] = self.total_size 
 
     cpdef sample( self, long length ):
-        '''return a new position within segment list.'''
+        '''return a new position within segment list.
+
+        This method both samples a position within the workspace
+        and a position within length.
+        '''
         
         # note: could be made quicker by
         # - creating a sample random integers once, see numpy.random_integers?
         # - avoiding the binary search?
-        cdef long r, offset, pos, overlap
+        cdef long rpos, rseg, offset, pos, overlap, start, end
         cdef size_t segment_index
 
         # r = rand() / (RAND_MAX / total_size + 1)
-
-        r = numpy.random.randint( 0, self.total_size )
+        rpos = numpy.random.randint( 0, self.total_size )
         segment_index = searchsorted( self.cdf, 
                                       self.nsegments,
                                       sizeof(long),
-                                      &r,
+                                      &rpos,
                                       &cmpLong,
                                       )
 
-        offset = r - self.cdf[segment_index]
+        offset = rpos - self.cdf[segment_index]
         if offset == 0:
-            pos = self.segment_list.segments[segment_index].start
+            pos = self.segment_list.segments[segment_index+1].start
         else:
             pos = self.segment_list.segments[segment_index].end + offset
 
-        overlap = self.segment_list.overlapWithRange( pos, pos+length )
+        rseg = numpy.random.randint( 0, length )
+        
+        start, end = pos - rseg, pos - rseg + length
 
-        assert overlap > 0, "sample %i does not overlap with workspace: offset=%i, r=%i, index=%i/%i" %\
-            (pos, r - self.cdf[segment_index], r, segment_index, self.segment_list.nsegments)
+        # print "sample %i-%i, offset=%i, pos=%i, rpos=%i, rseg=%i, index=%i/%i, segment=%s" %\
+        #     (start, end, offset, pos, rpos, rseg,
+        #      segment_index, self.segment_list.nsegments,
+        #      self.segment_list.segments[segment_index] )
 
-        return pos, overlap
+        assert overlap > 0, "sample %i-%i does not overlap with workspace: offset=%i, rpos=%i, rseg=%i, index=%i/%i, segment=%s" %\
+            (start, end, offset, rpos, rseg,
+             segment_index, self.segment_list.nsegments,
+             self.segment_list.segments[segment_index])
+
+        return start, end, overlap
+
+cdef class SegmentListSampler:
+    '''return a new position within segment list.
+
+    The probability of overlap is proportional 
+    to the workspace size.
+
+    In order to avoid edge effects the position
+    of the sample within a workspace segment is
+    sampled again.
+    '''
+   
+    cdef SegmentList segment_list
+    cdef long * cdf
+    cdef long total_size
+    cdef long nsegments
+
+    def __init__(self, SegmentList segment_list ):
+        cdef long i, totsize
+        assert len(segment_list) > 0, "sampling from empty segment list" 
+        
+        self.segment_list = segment_list
+        self.nsegments = len(segment_list)
+        self.cdf = <long*>malloc( sizeof(long) * self.nsegments )
+        self.total_size = 0
+        for i from 0 <= i < len(segment_list):
+            self.total_size += segment_length( segment_list.segments[i] )
+            # -1, as searchsorted inserts on left
+            self.cdf[i] = self.total_size -1
+
+    cpdef sample( self, long length ):
+        '''return a sample.'''
+
+        # note: could be made quicker by
+        # - creating a sample random integers once, see numpy.random_integers?
+        # - avoiding the binary search?
+        cdef long rpos, rseg, offset, pos, overlap, start, end, lseg
+        cdef size_t segment_index
+        cdef Segment s
+
+        # r = rand() / (RAND_MAX / total_size + 1)
+        rpos = numpy.random.randint( 0, self.total_size )
+        
+        segment_index = searchsorted( self.cdf, 
+                                      self.nsegments,
+                                      sizeof(long),
+                                      &rpos,
+                                      &cmpLong,
+                                      )
+
+        offset = rpos - self.cdf[segment_index]
+
+        s = self.segment_list.segments[segment_index]
+        start = s.start - length + 1
+        lseg = segment_length( s )
+
+        rseg = numpy.random.randint( 0, lseg + length - 1)
+        start += rseg 
+        end = start + length
+
+        # print "sample %i-%i, offset=%i, pos=%i, rpos=%i, rseg=%i, index=%i/%i, segment=%s" %\
+        #     (start, end, offset, pos, rpos, rseg,
+        #      segment_index, self.segment_list.nsegments,
+        #      self.segment_list.segments[segment_index] )
+        overlap = range_overlap( s.start, s.end, start, end )
+
+        assert overlap > 0, "sample %i-%i does not overlap with workspace: offset=%i, rpos=%i, rseg=%i, index=%i/%i, segment=%s" %\
+            (start, end, offset, rpos, rseg,
+             segment_index, 
+             self.segment_list.nsegments,
+             self.segment_list.segments[segment_index])
+
+        return start, end, overlap
 
 cdef class HistogramSamplerSlow:
 
@@ -911,12 +1016,12 @@ cdef class SamplerAnnotator(Sampler):
             if true_remaining < 0:
                 # print "removing overshoot"
                 temp_sampler = SegmentListSampler( unintersected_segments )
-                pos, overlap = temp_sampler.sample( length )
-                unintersected_segments.trim( pos, -true_remaining )
+                start, end, overlap = temp_sampler.sample( length )
+                unintersected_segments.trim( start, -true_remaining )
 
             # sample a position until we get a nonzero overlap
-            pos, overlap = sls.sample( length )
-            sampled_segment = Segment( pos, pos+length )
+            start, end, overlap = sls.sample( length )
+            sampled_segment = Segment( start, end )
 
             # If intersect > remaining we could well add too much (but we're not sure, since
             # there may be overlap with previously sampled segments).  Make sure we don't
@@ -972,7 +1077,6 @@ cdef class CounterSegmentOverlap(Counter):
     def __call__(self, segments, annotations, workspace = None ):
         '''return number of segments overlapping with annotations.'''
         return annotations.intersectionWithSegments( segments )
-
 
 ############################################################
 ############################################################
@@ -1155,3 +1259,275 @@ def computeFDR( annotator_results ):
         
         r.qvalue = max( 1.0 / len(r.samples), efp / R)
         fdr_cache[pvalue] = r.qvalue
+
+############################################################
+############################################################
+############################################################
+## Quick parsing of tabular files (bed, gff)
+############################################################
+cdef class TupleProxy:
+    '''Proxy class for access to parsed row as a tuple.
+
+    This class represents a table row for fast read-access.
+    '''
+
+    cdef:
+        char * data
+        char ** fields
+        int nfields
+        int index
+
+    def __cinit__(self ): 
+
+        self.data = NULL
+        self.fields = NULL
+        self.index = 0
+
+    cdef take( self, char * buffer, size_t nbytes ):
+        '''start presenting buffer.
+
+        Take ownership of the pointer.
+        '''
+        self.data = buffer
+        self.update( buffer, nbytes )
+
+    cdef present( self, char * buffer, size_t nbytes ):
+        '''start presenting buffer.
+
+        Do not take ownership of the pointer.
+        '''
+        self.update( buffer, nbytes )
+
+    cdef copy( self, char * buffer, size_t nbytes ):
+        '''start presenting buffer.
+
+        Take a copy of buffer.
+        '''
+        cdef int s
+        s = sizeof(char) * nbytes 
+        self.data = <char*>malloc( s ) 
+        memcpy( <char*>self.data, buffer, s )
+        self.update( self.data, nbytes )
+
+    cdef update( self, char * buffer, size_t nbytes ):
+        '''update internal data.'''
+        cdef char * pos
+        cdef char * old_pos
+        cdef int field
+        cdef int max_fields
+        field = 0
+
+        if buffer[nbytes-1] != 0:
+            raise ValueError( "incomplete line at %s: %s" % (buffer, buffer[nbytes-1]) )
+        
+        if self.fields != NULL:
+            free(self.fields)
+        
+        max_fields = nbytes / 2
+        self.fields = <char **>calloc( max_fields, sizeof(char *) ) 
+        
+        pos = buffer
+        self.fields[0] = pos
+        field += 1
+        old_pos = pos
+        
+        while 1:
+
+            pos = <char*>memchr( pos, '\t', nbytes )
+            if pos == NULL: break
+            pos[0] = '\0'
+            pos += 1
+            self.fields[field] = pos
+            field += 1
+            if field >= max_fields:
+                raise ValueError("row too large - more than %i fields" % max_fields )
+            nbytes -= pos - old_pos
+            if nbytes < 0: break
+            old_pos = pos
+
+        self.nfields = field
+
+    def __getitem__( self, key ):
+
+        cdef int i
+        i = key
+        if i < 0: i += self.nfields
+        if i >= self.nfields or i < 0:
+            raise IndexError( "list index out of range" )
+        return self.fields[i]
+
+    def __len__(self):
+        return self.nfields
+
+    def __dealloc__(self):
+        if self.data != NULL:
+            free(self.data)
+
+    def __iter__(self):
+        self.index = 0
+        return self
+
+    def __next__(self): 
+        """python version of next().
+        """
+        if self.index >= self.nfields:
+            raise StopIteration
+        self.index += 1
+        return self.fields[self.index-1]
+
+cdef class BedProxy( TupleProxy ):
+
+   cdef track
+   def __init__(self, track ):
+       self.track = track 
+
+   property contig:
+       def __get__(self):
+           assert 0 < self.nfields
+           return self.fields[0]
+
+   property start:
+       def __get__(self):
+           assert 1 < self.nfields
+           return atol(self.fields[1])
+
+   property end:
+       def __get__(self):
+           assert 2 < self.nfields
+           return atol(self.fields[2])
+
+   property name:
+       def __get__(self):
+           assert 3 < self.nfields
+           return self.fields[3]
+
+   property track:
+       def __get__(self):
+           return self.track
+       
+class Track(object):
+    '''bed track information.'''
+    def __init__(self, line ):
+        r= re.compile('([^ =]+) *= *("[^"]*"|[^ ]*)')
+
+        self._d = {}
+        for k, v in r.findall(line[:-1]):
+            if v[:1]=='"':
+                self._d[k] = v[1:-1]
+            else:
+                self._d[k] = v
+            
+        self._line = line[:-1]
+    def __str__(self):
+        return self._line
+
+    def __getitem__(self, key): return self._d[key]
+    def __setitem__(self, key,val): self._d[key] = val
+
+class tsv_iterator:
+    '''iterate over ``infile``.
+    
+    Permits the use of file-like objects for example from the gzip module.
+    '''
+    def __init__(self, infile ):
+
+        self.infile = infile
+
+    def __iter__(self):
+        return self
+
+    def preparse( self, line ):
+        return True
+
+    def create( self):
+        return TupleProxy()
+
+    def next(self):
+        
+        cdef char * b, * cpy
+        
+        cdef TupleProxy r 
+        cdef size_t nbytes
+
+        track = None
+
+        while 1:
+
+            line = self.infile.readline()
+            if not line: break
+            
+            b = line
+            # nbytes includes new line but not \0
+            nbytes = len( line )
+
+            # skip comments
+            if (b[0] == '#'): continue
+
+            # skip empty lines
+            if b[0] == '\0' or b[0] == '\n': continue
+
+            if not self.preparse(line): continue
+
+            # make sure that entry is complete
+            if b[nbytes-1] != '\n':
+                raise ValueError( "incomplete line at %s" % line )
+            
+            # chop off newline
+            b[nbytes-1] = '\0'
+
+            # create a copy
+            cpy = <char*>malloc( nbytes )        
+            memcpy( cpy, b, nbytes )
+
+            r = self.create()
+            r.take( cpy, nbytes )
+            return r
+
+        raise StopIteration
+
+class bed_iterator(tsv_iterator):
+    '''iterate over ``infile``.
+    
+    Permits the use of file-like objects for example from the gzip module.
+    '''
+    def __init__(self, infile ):
+        tsv_iterator.__init__(self, infile )
+        self.track = None
+
+    def preparse(self, line ):
+        if line.startswith("track"):
+            self.track = Track( line )
+            return False
+        return True
+
+    def create( self ):
+        return BedProxy( self.track )
+
+def _genie():
+    return collections.defaultdict(SegmentList)
+
+def readFromBed( filenames ):
+    '''read Segment Lists from one or more bed files.
+
+    Segment lists are grouped by *contig* and *track*.
+    
+    If no track is given, the *name* attribute is taken.
+    '''
+    cdef SegmentList l
+    cdef BedProxy bed
+
+    segment_lists = collections.defaultdict( _genie )
+    
+    for filename in filenames:
+        infile = IOTools.openFile( filename, "r")
+        for bed in bed_iterator( infile ):
+            if bed.track:
+                name = bed.track["name"]
+            else:
+                name = bed.name
+
+            l = segment_lists[name][bed.contig]
+            l.add( atol(bed.fields[1]), atol(bed.fields[2]) )
+
+    return segment_lists
+

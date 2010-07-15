@@ -7,6 +7,62 @@ import numpy, math
 
 import matplotlib.pyplot as plt
 
+def smooth(x,window_len=11,window='hanning'):
+    """smooth the data using a window with requested size.
+    
+    This method is based on the convolution of a scaled window with the signal.
+    The signal is prepared by introducing reflected copies of the signal 
+    (with the window size) in both ends so that transient parts are minimized
+    in the begining and end part of the output signal.
+    
+    input:
+        x: the input signal 
+        window_len: the dimension of the smoothing window; should be an odd integer
+        window: the type of window from 'flat', 'hanning', 'hamming', 'bartlett', 'blackman'
+            flat window will produce a moving average smoothing.
+
+    output:
+        the smoothed signal
+        
+    example:
+
+    t=linspace(-2,2,0.1)
+    x=sin(t)+randn(len(t))*0.1
+    y=smooth(x)
+    
+    see also: 
+    
+    numpy.hanning, numpy.hamming, numpy.bartlett, numpy.blackman, numpy.convolve
+    scipy.signal.lfilter
+ 
+    TODO: the window parameter could be the window itself if an array instead of a string   
+    """
+
+    if x.ndim != 1:
+        raise ValueError, "smooth only accepts 1 dimension arrays."
+
+    if x.size < window_len:
+        raise ValueError, "Input vector needs to be bigger than window size."
+
+
+    if window_len<3:
+        return x
+
+
+    if not window in ['flat', 'hanning', 'hamming', 'bartlett', 'blackman']:
+        raise ValueError, "Window is on of 'flat', 'hanning', 'hamming', 'bartlett', 'blackman'"
+
+
+    s=numpy.r_[2*x[0]-x[window_len:1:-1],x,2*x[-1]-x[-1:-window_len:-1]]
+    #print(len(s))
+    if window == 'flat': #moving average
+        w=ones(window_len,'d')
+    else:
+        w=eval('numpy.'+window+'(window_len)')
+
+    y=numpy.convolve(w/w.sum(),s,mode='same')
+    return y[window_len-1:-window_len+1]
+
 class TestSegmentList( unittest.TestCase ):
     
     def testCreateAndClear( self ):
@@ -104,6 +160,12 @@ class TestSegmentListOverlap( unittest.TestCase ):
     def testOverlapNone( self ):
         self.assertEqual( self.a.overlapWithRange( 1000, 2000), 0 )
         self.assertEqual( self.a.overlapWithRange( 2000, 3000), 0 )
+
+    def testOverlapOutOfRange( self ):
+        self.assertEqual( self.a.overlapWithRange( -100,5 ), 5)
+        self.assertEqual( self.a.overlapWithRange( -100,-50 ), 0)
+        self.assertEqual( self.a.overlapWithRange( 905,1100 ), 5)
+        self.assertEqual( self.a.overlapWithRange( 1000,1100 ), 0)
 
     def testOverlapAll( self ):
         for x in range( 0, 1000, 100):
@@ -228,6 +290,119 @@ class TestSamplerLengthSlow( TestSamplerLength ):
 
     sampler = gat.HistogramSamplerSlow
 
+class TestSamplerPosition( unittest.TestCase ):
+
+    ntests = 100000
+
+    def getWorkspaceCounts( self, workspace, sampler, 
+                            sample_length ):
+
+        l = workspace.max()
+        counts = numpy.zeros( l, numpy.int )
+
+        for x in range( self.ntests):
+            start, end, overlap = sampler.sample( sample_length )
+            start = max(0, start)
+            end = min( end, l )
+            self.assert_( overlap > 0 )
+            counts[start:end] += 1
+
+        counts_within_workspace = []
+        for start, end in workspace:
+            counts_within_workspace.extend( counts[start:end] )
+
+        if l > 10:
+            dx = 10
+        else:
+            dx = 1
+
+        counts_within_workspace = numpy.array( counts_within_workspace, dtype = numpy.int )
+        newy = smooth( counts_within_workspace, window_len = dx)
+
+        plt.figure()
+        plt.plot( xrange(len(counts_within_workspace)), counts_within_workspace, '.', label = "coverage" )
+
+        plt.plot( xrange(len(counts_within_workspace)), newy, '-', 
+                  label="smooth - window = %i" % dx )
+
+        plt.title( "%s : nworkspaces=%i, sample_length=%i" % ( str(self), len(workspace), sample_length ) )
+        plt.xlabel( "position" )
+        plt.ylabel( "counts" )
+        plt.legend()
+        plt.savefig( "test_%s.png" % re.sub( "[ ()]", "", str(self) ))
+
+        # can be simplified
+        expected = self.ntests * sample_length / float( workspace.sum()) * \
+            float(workspace.sum()) / (workspace.sum() + sample_length  * len(workspace) )
+
+        d = abs(counts_within_workspace.mean() - expected) / float(expected)
+        self.assert_( d < 0.1, "expected counts (%f) != sampled counts (%f" % (expected,
+                                                                               counts_within_workspace.mean()))
+        
+        d = numpy.std( counts_within_workspace )
+
+        return counts_within_workspace
+
+    def testPositionSamplingSingleWorkspace( self ):
+        '''test if we sample the exactly right amount of nucleoutides
+        and bases are overlapped uniformly.
+        '''
+
+        workspace = gat.SegmentList( iter = [ (0,10000) ],
+                                     normalize = True )
+
+        sampler = gat.SegmentListSampler( workspace )
+        
+        counts_within_workspace = self.getWorkspaceCounts( workspace, sampler, 10 )
+
+    def testPositionSamplingSplitWorkspace( self ):
+        '''test if we sample the exactly right amount of nucleoutides
+        and bases are overlapped uniformly.
+        '''
+
+        workspace = gat.SegmentList( iter = [ (0,1000), (9000,10000) ],
+                                     normalize = True )
+
+        sampler = gat.SegmentListSampler( workspace )
+        
+        counts_within_workspace = self.getWorkspaceCounts( workspace, sampler, 10 )
+
+    def testPositionSamplingSplitWorkspace2( self ):
+        '''test if we sample the exactly right amount of nucleoutides
+        and bases are overlapped uniformly.
+        '''
+
+        workspace = gat.SegmentList( iter = [ (0,3), (6,9) ],
+                                     normalize = True )
+
+        sampler = gat.SegmentListSampler( workspace )
+
+        counts_within_workspace = self.getWorkspaceCounts( workspace, 
+                                                           sampler, 
+                                                           2 )
+
+    def testMultipleWorkspaces( self ):
+        '''test if we sample the exactly right amount of nucleoutides
+        and bases are overlapped uniformly.
+        '''
+
+        workspace = gat.SegmentList( iter = ( (x, x + 100 ) for x in range( 0, 10000, 1000) ),
+                                    normalize = True )
+
+        sampler = gat.SegmentListSampler( workspace )
+
+        counts_within_workspace = self.getWorkspaceCounts( workspace, sampler, 10 )        
+
+    def testSNPPositionSampling( self ):
+        '''test if we sample the exactly right amount of nucleoutides.'''
+
+        workspace = gat.SegmentList( iter = ( (x, x + 100 ) for x in range( 0, 10000, 1000) ),
+                                    normalize = True )
+
+        sampler = gat.SegmentListSampler( workspace )
+
+        counts_within_workspace = self.getWorkspaceCounts( workspace, sampler, 1 )        
+        
 class TestSamplerAnnotator( unittest.TestCase ):
 
     ntests = 1000
@@ -288,7 +463,27 @@ class TestSamplerAnnotator( unittest.TestCase ):
         plt.plot( xrange(len(counts)), counts, '.' )
         plt.xlabel( "position" )
         plt.ylabel( "counts" )
-        plt.savefig( "test_%s.png" % str(self) )
+        plt.savefig( "test_%s.png" % re.sub( " ()", "", str(self) ))
+
+    def testPositionSampling( self ):
+        '''test if we sample the exactly right amount of nucleoutides
+        and bases are overlapped uniformly.
+        '''
+
+        workspace = gat.SegmentList( iter = ( (x, x + 100 ) for x in range( 0, 10000, 1000) ),
+                                    normalize = True )
+        segments = gat.SegmentList( iter = ( (x, x + 10 ) for x in range( 0, 10000, 1000) ),
+                                    normalize = True )
+        
+        sampler = gat.SamplerAnnotator()
+
+        counts_within_workspace = self.getWorkspaceCounts( segments, workspace, sampler )        
+
+        # expected density: ntests * segment_size / workspace_size = numtest / 100
+        self.assertAlmostEqual( numpy.mean(counts_within_workspace), 
+                                self.ntests * segments.sum() / workspace.sum(),
+                                places = 2 )
+        print numpy.std( counts_within_workspace )
 
     def testLengthSampling( self ):
         
@@ -311,80 +506,14 @@ class TestSamplerAnnotator( unittest.TestCase ):
                                 10.0,
                                 places = 0 )
 
-    def testPositionSampling( self ):
-        '''test if we sample the exactly right amount of nucleoutides.'''
-        workspace = gat.SegmentList( iter = ( (x, x + 100 ) for x in range( 0, 10000, 1000) ),
-                                    normalize = True )
-        segments = gat.SegmentList( iter = ( (x, x + 10 ) for x in range( 0, 10000, 1000) ),
-                                    normalize = True )
-        
-        sampler = gat.SamplerAnnotator()
-        
-        counts = numpy.zeros( 10000, numpy.int )
 
-        for x in range( self.ntests):
-            sample = sampler.sample( segments, workspace )
-            self.assertEqual( sample.sum(), segments.sum() )
-            for start, end in sample: counts[start:end] += 1
-
-        counts_within_workspace = []
-        for start, end in workspace:
-            counts_within_workspace.extend( counts[start:end] )
-
-        # expected density: ntests * segment_size / workspace_size = numtest / 100
-        self.assertAlmostEqual( numpy.mean(counts_within_workspace), 
-                                self.ntests * segments.sum() / workspace.sum(),
-                                places = 2 )
-        print numpy.std( counts_within_workspace )
-
-        plt.figure()
-        plt.plot( xrange(len(counts_within_workspace)), counts_within_workspace, '.' )
-        plt.xlabel( "position" )
-        plt.ylabel( "counts" )
-        plt.savefig( "test_%s.png" % str(self) )
-
-    def testSNPPositionSampling( self ):
-        '''test if we sample the exactly right amount of nucleoutides.'''
-
-        workspace = gat.SegmentList( iter = ( (x, x + 100 ) for x in range( 0, 10000, 1000) ),
-                                    normalize = True )
-
-        segments = gat.SegmentList( iter = ( (x, x + 1 ) for x in range( 0, 10000, 1000) ),
-                                    normalize = True )
-        
-        sampler = gat.SamplerAnnotator()
-        
-        counts = numpy.zeros( 10000, numpy.int )
-
-        for x in range( self.ntests):
-            sample = sampler.sample( segments, workspace )
-            self.assertEqual( sample.sum(), segments.sum() )
-            for start, end in sample: counts[start:end] += 1
-
-        counts_within_workspace = []
-        for start, end in workspace:
-            counts_within_workspace.extend( counts[start:end] )
-
-        # expected density: ntests * segment_size / workspace_size = numtest / 100
-        self.assertAlmostEqual( numpy.mean(counts_within_workspace), 
-                                self.ntests * segments.sum() / workspace.sum(),
-                                places = 2 )
-
-        print numpy.std( counts_within_workspace )
-
-        plt.figure()
-        plt.plot( xrange(len(counts_within_workspace)), counts_within_workspace, '.' )
-        plt.xlabel( "position" )
-        plt.ylabel( "counts" )
-        plt.savefig( "test_%s.png" % str(self) )
-
-class TestSNPSampling( unittest.TestCase ):
+class TestStatsSNPSampling( unittest.TestCase ):
     '''test Stats by running a SNP (1-size interval) analysis.
 
     For SNPs, the hypergeometric distribution applies.
     '''
 
-    sample_size = 100
+    sample_size = 1000
 
     def check( self, workspace, annotations, segments ):
 
@@ -438,16 +567,18 @@ class TestSNPSampling( unittest.TestCase ):
 
                 # expected overlap for sampling without replacement
                 expected_without = hyper.mean()
-                error = hyper.std() * 2 # / segment_size
+                error = hyper.std() * 4 # / segment_size
 
                 expected_std = hyper.std()
 
                 expected_pvalue = gat.getTwoSidedPValue( hyper, result.observed )
 
-                print "\t".join( map(str, (result, 
-                                           expected_without,
-                                           expected_std,
-                                           expected_pvalue ) ) )
+                # print "\t".join( map(str, (result, 
+                #                            expected_without,
+                #                            expected_std,
+                #                            expected_pvalue,
+                #                            workspace_size,
+                #                            annotation_size) ) )
                                  
                 # for small sample size there might be no positive samples
                 if error == 0 and segment_size < 3: continue
@@ -496,7 +627,7 @@ class TestSNPSampling( unittest.TestCase ):
         plt.xlabel( "simulated - pvalue" )
         plt.ylabel( "distribution - pvalue" )
         plt.plot( anno_pvalue, anno_pvalue, "b" )
-        plt.savefig( "test_%s.png" % str(self) )
+        plt.savefig( "test_%s.png" % re.sub( "[ ()]", "", str(self) ))
 
     def testSingleSNP( self ):
 
@@ -580,6 +711,38 @@ class TestSNPSampling( unittest.TestCase ):
         for y in range(0, nsnps, 1 ):
             annotations.add( "%03i" % y, "chr1",
                              gat.SegmentList( iter = [(y,nsnps+y),],
+                                              normalize = True ) ) 
+            
+        self.check( workspace, annotations, segments )
+
+    def testIntervalsPartialOverlap( self ):
+        '''test with intervals with 
+        increasing amount of overlap.
+
+        '''
+        workspaces, segments, annotations = \
+            gat.IntervalCollection( "workspace" ), \
+            gat.IntervalCollection( "segment" ), \
+            gat.IntervalCollection( "annotation" )
+
+        workspace_size = 1000
+
+        size = 100
+
+        # workspace of size 1000000
+        workspaces.add( "default", "chr1", gat.SegmentList( iter = [(0,workspace_size),],
+                                                            normalize = True ) )
+        workspace = workspaces["default"]
+
+        # segment of size 10
+        segments.add( "default", "chr1", gat.SegmentList( iter = [(0,size), ],
+                                                          normalize = True ))
+
+        # annotations: a collection of segments.
+        # overlap increases
+        for y in range(0, size):
+            annotations.add( "%03i" % y, "chr1",
+                             gat.SegmentList( iter = [(y,size+y),],
                                               normalize = True ) ) 
             
         self.check( workspace, annotations, segments )
