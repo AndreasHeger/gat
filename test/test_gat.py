@@ -95,6 +95,16 @@ class TestSegmentList( unittest.TestCase ):
         self.assertEqual( s.isNormalized, 1)
 
     def testNormalizeEmptySegment( self ):
+        s = gat.SegmentList( iter = [(0, 0),] )
+        s.normalize()        
+        self.assertEqual( s.isNormalized, 1)
+        self.assertEqual( len(s), 0)
+
+        s = gat.SegmentList( iter = [(0, 0),(0,0)] )
+        s.normalize()        
+        self.assertEqual( s.isNormalized, 1)
+        self.assertEqual( len(s), 0)
+
         s = gat.SegmentList( iter = [(0, 0), (0, 1), (0, 2), (0, 3), (0, 4), (0, 5), (0, 6), (0, 7), (0, 8), (0, 9)] )
         s.normalize()        
         self.assertEqual( s.isNormalized, 1)
@@ -108,9 +118,8 @@ class TestSegmentList( unittest.TestCase ):
         s = gat.SegmentList()
         for start, end in ss: s.add( start, end )
         s.normalize()
-
         self.assertEqual( len(s), 1 )
-        self.assertEqual( s.sum(), 1000 )
+        self.assertEqual( s.sum(), 1900 )
 
     def testNormalize3( self ):
         '''non-overlapping but adjacent segments.'''
@@ -199,7 +208,7 @@ class TestSegmentListIntersection( unittest.TestCase):
         b = gat.SegmentList( iter = ( (x, x + 10 ) for x in range( 10, 1000, 100) ), normalize = True )
         r = b.intersect( self.a )
         self.assertEqual( r.asList(), [] )
-        self.assertEqual( r.isEmpty(), True )
+        self.assertEqual( r.isEmpty, True )
 
     def testPartialIntersection( self ):
         b = gat.SegmentList( iter = ( (x, x + 10 ) for x in range( 5, 1000, 100) ), normalize = True )
@@ -251,13 +260,10 @@ class TestSamplerLength( unittest.TestCase ):
 
         samples = [hs.sample() for x in range(0, 1 * self.nsegments )]
 
-        self.assertAlmostEqual( numpy.mean(samples),
-                                100.0,
-                                places = 0 )
+        delta = 1.0 
 
-        self.assertAlmostEqual( numpy.std(samples),
-                                10.0,
-                                places = 0 )
+        self.assert_( abs( numpy.mean(samples) - 100.0) < delta )
+        self.assert_( abs( numpy.std(samples) - 10.0) < delta )
 
     def testSamplingSNPs( self ):
 
@@ -372,7 +378,9 @@ class TestSamplerPosition( unittest.TestCase ):
         and bases are overlapped uniformly.
         '''
 
-        workspace = gat.SegmentList( iter = [ (0,3), (6,9) ],
+        # note if the the space is too small, there are problems
+        # in counting the expected overlap.
+        workspace = gat.SegmentList( iter = [ (0,100), (200,300) ],
                                      normalize = True )
 
         sampler = gat.SegmentListSampler( workspace )
@@ -531,7 +539,7 @@ class TestStatsSNPSampling( unittest.TestCase ):
                                      workspace,
                                      sampler,
                                      counter,
-                                     self.sample_size )
+                                     num_samples = self.sample_size )
         
 
         outfile = sys.stdout
@@ -557,10 +565,10 @@ class TestStatsSNPSampling( unittest.TestCase ):
                                                     self.sample_size )
                 hyper.sort()
 
-                m = annotation_size # (white balls)
-                N = workspace_size # (total balls)
-                n = segment_size # (balls taken)
-                variance = float(n * m * ( N - n ) * ( N -m )) / (N * N * (N - 1 )  )
+                # m = annotation_size # (white balls)
+                # N = workspace_size # (total balls)
+                # n = segment_size # (balls taken)
+                # variance = float(n * m * ( N - n ) * ( N -m )) / (N * N * (N - 1 )  )
 
                 # expected overlap for sampling with replacement
                 expected_with = annotation_size / float(workspace_size)
@@ -571,7 +579,7 @@ class TestStatsSNPSampling( unittest.TestCase ):
 
                 expected_std = hyper.std()
 
-                expected_pvalue = gat.getTwoSidedPValue( hyper, result.observed )
+                expected_pvalue = gat.getNPTwoSidedPValue( hyper, result.observed )
 
                 # print "\t".join( map(str, (result, 
                 #                            expected_without,
@@ -715,7 +723,7 @@ class TestStatsSNPSampling( unittest.TestCase ):
             
         self.check( workspace, annotations, segments )
 
-    def testIntervalsPartialOverlap( self ):
+    def testIntervalsPartialOverlap( self ): 
         '''test with intervals with 
         increasing amount of overlap.
 
@@ -746,6 +754,105 @@ class TestStatsSNPSampling( unittest.TestCase ):
                                               normalize = True ) ) 
             
         self.check( workspace, annotations, segments )
+
+class TestCaching( unittest.TestCase ):
+
+    sample_size = 10
+    workspace_size = 1000
+
+    def testCaching( self ):
+
+        workspaces, segments, annotations = \
+            gat.IntervalCollection( "workspace" ), \
+            gat.IntervalCollection( "segment" ), \
+            gat.IntervalCollection( "annotation" )
+
+        workspaces.add( "default", "chr1", gat.SegmentList( iter = [(0,self.workspace_size),],
+                                                            normalize = True ) )
+        workspace = workspaces["default"]
+
+        segments.add( "default", "chr1", gat.SegmentList( iter = [(0,1),],
+                                                          normalize = True ) )
+
+        # annotations: a collection of segments with increasing density
+        # all are overlapping the segments
+        for y in range(1, 100, 2 ):
+            annotations.add( "%03i" % y, "chr1",
+                             gat.SegmentList( iter = [(0,y),],
+                                              normalize = True ) ) 
+            
+        workspace_size = workspace["chr1"].sum()
+
+        sampler = gat.SamplerAnnotator( bucket_size = 1, nbuckets = self.workspace_size )
+        
+        if os.path.exists( "test.cache"): os.remove( "test.cache" )
+        
+        outsamples = gat.SamplesCached( "test.cache" )
+        saved_samples = {}
+
+        for track in segments.tracks:
+            segs = segments[track]
+            for x in xrange( self.sample_size ):
+                for isochore in segs.keys():
+                    r = sampler.sample( segs[isochore], workspace[isochore] )
+                    saved_samples[(track,x,isochore)] = r
+                    outsamples.add( track, x, isochore, r )
+        
+        del outsamples
+        
+        insamples = gat.SamplesCached( "test.cache" )
+        
+        for track in segments.tracks:
+            segs = segments[track]
+            for x in xrange( self.sample_size ):
+                for isochore in segs.keys():
+                    insamples.load( track, x, isochore )
+                    
+        # compare
+        for track in segments.tracks:
+            segs = segments[track]
+            for x in xrange( self.sample_size ):
+                for isochore in segs.keys():
+                    self.assertEqual( saved_samples[(track,x,isochore)].asList(),
+                                      insamples[track][x][isochore].asList() )
+
+
+class TestStats( unittest.TestCase ):
+
+    ntracks = 10 # 17
+    nannotations = 10 # 90
+    nsamples = 1000
+
+    def testStats( self ):
+        
+        annotation_size = 100
+        workspace_size = 1000
+        segment_size = 2
+
+        observed = numpy.random.hypergeometric(annotation_size, 
+                                               workspace_size - annotation_size,
+                                               segment_size, 
+                                               self.ntracks * self.nannotations )
+
+        results = []
+        x = 0
+        for track in range(self.ntracks ):
+            for annotation in range(self.nannotations ):
+                samples = numpy.random.hypergeometric(annotation_size, 
+                                                      workspace_size - annotation_size,
+                                                      segment_size, 
+                                                      self.nsamples )
+
+                results.append( gat.AnnotatorResult( str(track), 
+                                                     str(annotation),
+                                                     observed[x],
+                                                     samples ) )
+
+                x += 1
+
+        for r in results: print str(r)
+        # gat.computeFDR( results )
+            
 
 if __name__ == '__main__':
     unittest.main()

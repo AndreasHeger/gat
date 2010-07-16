@@ -32,8 +32,7 @@ Topic :: Scientific/Engineering :: Bioinformatics
 cgat = Extension(
     "cgat",                   # name of extension
     [ "gat/cgat.pyx", "gat/gat_utils.c" ],
-      library_dirs=[],
-      libraries=[],
+      libraries=[ "z" ],
       include_dirs=["/cpp-software/lib/python2.6/site-packages/numpy/core/include",],
       language="c",
     )
