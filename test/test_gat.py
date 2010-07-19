@@ -819,8 +819,8 @@ class TestCaching( unittest.TestCase ):
 
 class TestStats( unittest.TestCase ):
 
-    ntracks = 10 # 17
-    nannotations = 10 # 90
+    ntracks = 20 # 17
+    nannotations = 100 # 90
     nsamples = 10000
 
     def testPValueComputation( self ):
@@ -829,19 +829,31 @@ class TestStats( unittest.TestCase ):
         workspace_size = 1000
         segment_size = 10
 
-        for y in xrange(self.ntracks * self.nannotations):
-            samples = numpy.random.hypergeometric(annotation_size, 
-                                                  workspace_size - annotation_size,
-                                                  segment_size, 
-                                                  self.nsamples)
+        l = 100
 
-            samples.sort()
-            
+        for y in xrange(1, l):
+
+            samples = [0] * y + [1] * (l - y)
+
             for x, s in enumerate(samples):
+
                 g = gat.AnnotatorResult( "track", "samples",
                                          s,
                                          samples )
+
                 self.assertEqual( g.isSampleSignificantAtPvalue( x, g.pvalue ), True )
+
+                t = 0
+                for z, s2 in enumerate(samples):
+                    t += g.isSampleSignificantAtPvalue( z, g.pvalue )
+                fpr = float(t) / l
+
+                # == should work, but there is a problem 
+                # for pvalue = 0.5
+                self.assert_( fpr >= g.pvalue, 
+                              "fdr (%f) != pvalue (%f): y=%i, x=%i, s=%i, t=%i" % \
+                                  ( fpr, g.pvalue, y, x, s, t) )
+
 
     def testStats( self ):
         
@@ -863,8 +875,10 @@ class TestStats( unittest.TestCase ):
                                                       segment_size, 
                                                       self.nsamples )
 
-                results.append( gat.AnnotatorResult( str(track), 
-                                                     str(annotation),
+                samples.sort()
+                # print "obs", observed[x], "sample=", samples
+
+                results.append( gat.AnnotatorResult( str(track),                                                      str(annotation),
                                                      observed[x],
                                                      samples ) )
 

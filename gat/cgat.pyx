@@ -89,6 +89,14 @@ cdef extern from "gat_utils.h":
                        size_t size,
                        void * target,
                        int(*compar)(void *, void *))
+
+    long searchargsorted(void * base,
+                         int * sorted,
+                         size_t nmemb,
+                         size_t size,
+                         void * target,
+                         int(*compar)(void *, void *))
+
     int toCompressedFile( unsigned char *, size_t, FILE *)
     int fromCompressedFile( unsigned char *, size_t, FILE *)
 
@@ -1201,6 +1209,7 @@ ctypedef struct EnrichmentStatistics:
     int * sorted_samples
     double pvalue
     double qvalue
+    int observed_idx
 
 cdef int isSampleSignificantAtPvalue( EnrichmentStatistics * stats, 
                                       long sample_id, 
@@ -1215,18 +1224,22 @@ cdef int isSampleSignificantAtPvalue( EnrichmentStatistics * stats,
     until one is found that is larger/smaller than the
     value of samples[sample_id].
     '''
-    cdef double val, pval
+    cdef double val, pval, min_pval
+    cdef long l
+    l = stats.nsamples
+    min_pval = 1.0 / l
     val = stats.samples[sample_id]
 
     cdef int x
     x = stats.sorted_samples[sample_id]
     
-    if val < stats.expected:
+    if x < stats.observed_idx:
         pval = float(x) / l
     else:
         pval = 1.0 - float(x) / l
 
     # = is important, such that a sample itself is called significant
+    # print "val=", val, "x=", x, "sample_id", sample_id, "pval=", pval, "refpval=", pvalue, "true=", pval <= pvalue, "obsidx=", stats.observed_idx
     return dmax( min_pval, pval ) <= pvalue
 
 cdef double getTwoSidedPValue( EnrichmentStatistics * stats, 
@@ -1235,26 +1248,27 @@ cdef double getTwoSidedPValue( EnrichmentStatistics * stats,
     '''
     cdef long idx
     cdef double min_pval, pval
-
-    idx = searchsorted( stats.sorted_samples,
-                        stats.nsamples,
-                        sizeof(double),
-                        &val,
-                        &cmpDouble,
+    
+    idx = searchargsorted( stats.samples,
+                           stats.sorted_samples,
+                           stats.nsamples,
+                           sizeof(double),
+                           &val,
+                           &cmpDouble,
                         )
-
     l = stats.nsamples
     min_pval = 1.0 / l
 
     if idx == l:
         pval = min_pval
-    elif idx > l / 2:
+    elif idx >= stats.observed_idx:
         # over-representation
-        while idx > 0 and stats.sorted_samples[idx] == val: idx -= 1
+        while idx > 0 and stats.samples[stats.sorted_samples[idx]] == val: idx -= 1
+        idx += 1
         pval = 1.0 - float(idx) / l
     else:
         # under-representation
-        while idx < l and stats.sorted_samples[idx] == val: idx += 1
+        while idx < l and stats.samples[stats.sorted_samples[idx]] == val: idx += 1
         pval = float(idx) / l
 
     return dmax( min_pval, pval)
@@ -1262,21 +1276,69 @@ cdef double getTwoSidedPValue( EnrichmentStatistics * stats,
 cdef EnrichmentStatistics * makeEnrichmentStatistics( observed, samples ):
 
     cdef EnrichmentStatistics * stats 
+    cdef long offset, i, l
+    cdef int x, refidx, observed_idx
+    cdef double lastval, thisval
+
+    l = len(samples)
 
     stats = <EnrichmentStatistics*>malloc( sizeof(EnrichmentStatistics) )
-    
-    cdef long offset, i
-    
+    stats.samples = <double*>calloc( l, sizeof(double))
+    stats.sorted_samples = <int*>calloc( l, sizeof(int))
+
+
     stats.observed = observed
-    stats.nsamples = len(samples)
-    stats.samples = <double*>calloc( stats.nsamples, sizeof(double))
-    for i from 0 <= i < stats.nsamples: stats.samples[i] = samples[i]
+    stats.nsamples = l 
+    for i from 0 <= i < l: stats.samples[i] = samples[i]
 
     # create index of sorted values
     r = numpy.argsort( samples )
-    stats.sorted_samples = <double*>calloc( stats.nsamples, sizeof(double))
-    for i from 0 <= i < stats.nsamples: stats.samples[i] = samples[i]
-    
+
+    for i from 0 <= i < l: 
+        stats.sorted_samples[i] = r[i]
+
+    # normalize - equal values will get the same index
+    # for values < observed: last index
+    # for values > observed: first index
+
+    # locate midpoint differentiating over and under-represneted
+    # observed_idx = index of element with first sample > observed
+    observed_idx = 0
+    while observed_idx < l and stats.samples[stats.sorted_samples[observed_idx]] <= observed:
+        observed_idx += 1
+
+    stats.observed_idx = observed_idx
+    # print "obs_idx=", observed_idx, "observed=", observed
+    x = observed_idx - 1
+    lastval = stats.samples[stats.sorted_samples[x]]
+    refidx = x
+
+    while x >= 0:
+        # print "l", x
+        thisval = stats.samples[stats.sorted_samples[x]]
+
+        if thisval != lastval:
+            lastval = thisval
+            refidx = x
+            
+        stats.sorted_samples[x] = refidx
+        x -= 1 
+
+
+    x = observed_idx
+    lastval = stats.samples[stats.sorted_samples[x]]
+    refidx = x
+
+    while x < l:
+        # print "r", x
+        thisval = stats.samples[stats.sorted_samples[x]]
+        if thisval != lastval:
+            lastval = thisval
+            refidx = x
+            
+        stats.sorted_samples[x] = refidx
+        x += 1
+
     stats.expected = numpy.mean(samples)
     if stats.expected != 0:
         stats.fold = stats.observed / stats.expected
@@ -1285,12 +1347,16 @@ cdef EnrichmentStatistics * makeEnrichmentStatistics( observed, samples ):
 
     stats.stddev = numpy.std(samples)
 
-    offset = int(0.05 * stats.nsamples)
-    stats.lower95 = stats.samples[stats.sorted_samples[ offset ]]
-    stats.upper95 = stats.samples[stats.sorted_samples[ -offset ]]
+    offset = int(0.05 * l)
+    stats.lower95 = stats.samples[stats.sorted_samples[ lmin( l-1, offset) ]]
+    stats.upper95 = stats.samples[stats.sorted_samples[ lmax( l-offset, 0) ]]
 
     stats.pvalue = getTwoSidedPValue( stats, stats.observed )
     stats.qvalue = 1.0
+
+    # print "after"
+    # for i from 0 <= i < l: 
+    #     print i, stats.samples[i], stats.sorted_samples[i]
 
     return stats
 
@@ -1612,7 +1678,8 @@ cpdef computeFDR( annotator_results ):
             R += 1
 
         r1.qvalue = dmin( 1.0, dmax( 1.0 / r1.nsamples, efp / R))
-        # print "pvalue=", r1.pvalue, "qvalue=", r1.qvalue, "efp=", efp, "nfp=", total_nfp, "nsamples=", r1.nsamples, R, "vals=", all_pvalues[max(0,R-3):R+3]
+        # print "pvalue=", r1.pvalue, "qvalue=", r1.qvalue, "efp=", efp, "nfp=", total_nfp, "nsamples=", \
+            # r1.nsamples, "R=", R, "vals=", all_pvalues[max(0,R-3):R+3]
 
         fdr_cache[pvalue] = r1.qvalue
 

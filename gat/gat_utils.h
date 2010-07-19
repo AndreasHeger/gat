@@ -13,6 +13,13 @@ long searchsorted(void * base,
 		  const void * target,
 		  int(*compar)(const void *, const void *));
 
+long searchargsorted(void * base,
+		     int * sorted,
+		     size_t nmemb,
+		     size_t size,
+		     const void * target,
+		     int(*compar)(const void *, const void *));
+
 int toCompressedFile( const unsigned char *, size_t, FILE *);
 
 int fromCompressedFile( unsigned char *, size_t, FILE *);

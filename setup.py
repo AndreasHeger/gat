@@ -14,7 +14,7 @@ from distutils.core import setup, Extension
 from Cython.Distutils import build_ext
 
 name = "gat"
-version = "0.1"
+version = "0.1.1"
 
 classifiers = """
 Development Status :: 5 - Production/Stable
