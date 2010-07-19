@@ -1198,7 +1198,7 @@ ctypedef struct EnrichmentStatistics:
     double fold
     long nsamples
     double * samples
-    double * sorted_samples
+    int * sorted_samples
     double pvalue
     double qvalue
 
@@ -1215,22 +1215,15 @@ cdef int isSampleSignificantAtPvalue( EnrichmentStatistics * stats,
     until one is found that is larger/smaller than the
     value of samples[sample_id].
     '''
-    cdef double val
+    cdef double val, pval
     val = stats.samples[sample_id]
 
-    cdef long x, l
-    cdef double min_pval, pval
-    l = stats.nsamples
-
-    min_pval = 1.0 / l
-
+    cdef int x
+    x = stats.sorted_samples[sample_id]
+    
     if val < stats.expected:
-        x = 0
-        while x < l and stats.sorted_samples[x] <= val: x += 1
         pval = float(x) / l
     else:
-        x = l - 1
-        while x >= 0 and stats.sorted_samples[x] >= val: x -= 1
         pval = 1.0 - float(x) / l
 
     # = is important, such that a sample itself is called significant
@@ -1277,16 +1270,13 @@ cdef EnrichmentStatistics * makeEnrichmentStatistics( observed, samples ):
     stats.observed = observed
     stats.nsamples = len(samples)
     stats.samples = <double*>calloc( stats.nsamples, sizeof(double))
-    stats.sorted_samples = <double*>calloc( stats.nsamples, sizeof(double))
-    for i from 0 <= i < len(samples): stats.samples[i] = samples[i]
-    stats.sorted_samples = <double*>memcpy( <void*>stats.sorted_samples, 
-                                  <void*>stats.samples, 
-                                  sizeof(double) * stats.nsamples )
-    qsort( <void*>stats.sorted_samples,
-           stats.nsamples,
-           sizeof( double ),
-           &cmpDouble )
+    for i from 0 <= i < stats.nsamples: stats.samples[i] = samples[i]
 
+    # create index of sorted values
+    r = numpy.argsort( samples )
+    stats.sorted_samples = <double*>calloc( stats.nsamples, sizeof(double))
+    for i from 0 <= i < stats.nsamples: stats.samples[i] = samples[i]
+    
     stats.expected = numpy.mean(samples)
     if stats.expected != 0:
         stats.fold = stats.observed / stats.expected
@@ -1296,13 +1286,133 @@ cdef EnrichmentStatistics * makeEnrichmentStatistics( observed, samples ):
     stats.stddev = numpy.std(samples)
 
     offset = int(0.05 * stats.nsamples)
-    stats.lower95 = stats.sorted_samples[ offset ]
-    stats.upper95 = stats.sorted_samples[ -offset ]
+    stats.lower95 = stats.samples[stats.sorted_samples[ offset ]]
+    stats.upper95 = stats.samples[stats.sorted_samples[ -offset ]]
 
     stats.pvalue = getTwoSidedPValue( stats, stats.observed )
     stats.qvalue = 1.0
 
     return stats
+
+############################################################
+############################################################
+############################################################
+## Annotator results
+############################################################
+# ctypedef struct EnrichmentStatistics:
+#     double expected
+#     double observed
+#     double stddev
+#     double lower95
+#     double upper95
+#     double fold
+#     long nsamples
+#     double * samples
+#     double * sorted_samples
+#     double pvalue
+#     double qvalue
+
+# cdef int isSampleSignificantAtPvalue( EnrichmentStatistics * stats, 
+#                                       long sample_id, 
+#                                       double pvalue ):
+#     '''return True, if sample sample_id would be called
+#     significant at threshold *pvalue*
+
+#     This method is fast for small pvalues, but slow for large
+#     pvalues because the method does not a full search.
+
+#     This method works by scanning the first/last samples
+#     until one is found that is larger/smaller than the
+#     value of samples[sample_id].
+#     '''
+#     cdef double val
+#     val = stats.samples[sample_id]
+
+#     cdef long x, l
+#     cdef double min_pval, pval
+#     l = stats.nsamples
+
+#     min_pval = 1.0 / l
+
+#     if val < stats.expected:
+#         x = 0
+#         while x < l and stats.sorted_samples[x] <= val: x += 1
+#         pval = float(x) / l
+#     else:
+#         x = l - 1
+#         while x >= 0 and stats.sorted_samples[x] >= val: x -= 1
+#         pval = 1.0 - float(x) / l
+
+#     # = is important, such that a sample itself is called significant
+#     return dmax( min_pval, pval ) <= pvalue
+
+# cdef double getTwoSidedPValue( EnrichmentStatistics * stats, 
+#                                 double val ):
+#     '''return pvalue for *val* within sorted array *ar*
+#     '''
+#     cdef long idx
+#     cdef double min_pval, pval
+
+#     idx = searchsorted( stats.sorted_samples,
+#                         stats.nsamples,
+#                         sizeof(double),
+#                         &val,
+#                         &cmpDouble,
+#                         )
+
+#     l = stats.nsamples
+#     min_pval = 1.0 / l
+
+#     if idx == l:
+#         pval = min_pval
+#     elif idx > l / 2:
+#         # over-representation
+#         while idx > 0 and stats.sorted_samples[idx] == val: idx -= 1
+#         pval = 1.0 - float(idx) / l
+#     else:
+#         # under-representation
+#         while idx < l and stats.sorted_samples[idx] == val: idx += 1
+#         pval = float(idx) / l
+
+#     return dmax( min_pval, pval)
+
+# cdef EnrichmentStatistics * makeEnrichmentStatistics( observed, samples ):
+
+#     cdef EnrichmentStatistics * stats 
+
+#     stats = <EnrichmentStatistics*>malloc( sizeof(EnrichmentStatistics) )
+    
+#     cdef long offset, i
+    
+#     stats.observed = observed
+#     stats.nsamples = len(samples)
+#     stats.samples = <double*>calloc( stats.nsamples, sizeof(double))
+#     stats.sorted_samples = <double*>calloc( stats.nsamples, sizeof(double))
+#     for i from 0 <= i < len(samples): stats.samples[i] = samples[i]
+#     stats.sorted_samples = <double*>memcpy( <void*>stats.sorted_samples, 
+#                                   <void*>stats.samples, 
+#                                   sizeof(double) * stats.nsamples )
+#     qsort( <void*>stats.sorted_samples,
+#            stats.nsamples,
+#            sizeof( double ),
+#            &cmpDouble )
+
+#     stats.expected = numpy.mean(samples)
+#     if stats.expected != 0:
+#         stats.fold = stats.observed / stats.expected
+#     else:
+#         stats.fold = 1.0
+
+#     stats.stddev = numpy.std(samples)
+
+#     offset = int(0.05 * stats.nsamples)
+#     stats.lower95 = stats.sorted_samples[ offset ]
+#     stats.upper95 = stats.sorted_samples[ -offset ]
+
+#     stats.pvalue = getTwoSidedPValue( stats, stats.observed )
+#     stats.qvalue = 1.0
+
+#     return stats
 
 ############################################################
 ############################################################
