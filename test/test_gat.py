@@ -819,7 +819,7 @@ class TestCaching( unittest.TestCase ):
 
 class TestStats( unittest.TestCase ):
 
-    ntracks = 20 # 17
+    ntracks = 100 # 17
     nannotations = 100 # 90
     nsamples = 10000
 
@@ -829,18 +829,18 @@ class TestStats( unittest.TestCase ):
         workspace_size = 1000
         segment_size = 10
 
-        l = 100
+        l = 10
 
         for y in xrange(1, l):
 
-            samples = [0] * y + [1] * (l - y)
+            samples = [1] * y + [0] * (l - y)
 
             for x, s in enumerate(samples):
 
                 g = gat.AnnotatorResult( "track", "samples",
                                          s,
                                          samples )
-
+                # print samples, x, s
                 self.assertEqual( g.isSampleSignificantAtPvalue( x, g.pvalue ), True )
 
                 t = 0
@@ -850,8 +850,8 @@ class TestStats( unittest.TestCase ):
 
                 # == should work, but there is a problem 
                 # for pvalue = 0.5
-                self.assert_( fpr >= g.pvalue, 
-                              "fdr (%f) != pvalue (%f): y=%i, x=%i, s=%i, t=%i" % \
+                self.assert_( fpr >= g.pvalue - 0.0001, 
+                              "fpr (%f) != pvalue (%f): y=%i, x=%i, s=%i, t=%i" % \
                                   ( fpr, g.pvalue, y, x, s, t) )
 
 
@@ -886,7 +886,7 @@ class TestStats( unittest.TestCase ):
 
         gat.computeFDR( results )
         for r in results: 
-            self.assert_( r.qvalue > 0.5 )
+            self.assert_( r.qvalue > 0.5, "%f" % r.qvalue  )
 
 if __name__ == '__main__':
     unittest.main()
