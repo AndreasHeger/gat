@@ -821,13 +821,33 @@ class TestStats( unittest.TestCase ):
 
     ntracks = 10 # 17
     nannotations = 10 # 90
-    nsamples = 1000
+    nsamples = 10000
+
+    def testPValueComputation( self ):
+        
+        annotation_size = 100
+        workspace_size = 1000
+        segment_size = 10
+
+        for y in xrange(self.ntracks * self.nannotations):
+            samples = numpy.random.hypergeometric(annotation_size, 
+                                                  workspace_size - annotation_size,
+                                                  segment_size, 
+                                                  self.nsamples)
+
+            samples.sort()
+            
+            for x, s in enumerate(samples):
+                g = gat.AnnotatorResult( "track", "samples",
+                                         s,
+                                         samples )
+                self.assertEqual( g.isSampleSignificantAtPvalue( x, g.pvalue ), True )
 
     def testStats( self ):
         
         annotation_size = 100
         workspace_size = 1000
-        segment_size = 2
+        segment_size = 10
 
         observed = numpy.random.hypergeometric(annotation_size, 
                                                workspace_size - annotation_size,
@@ -850,9 +870,9 @@ class TestStats( unittest.TestCase ):
 
                 x += 1
 
-        for r in results: print str(r)
-        # gat.computeFDR( results )
-            
+        gat.computeFDR( results )
+        for r in results: 
+            self.assert_( r.qvalue > 0.5 )
 
 if __name__ == '__main__':
     unittest.main()

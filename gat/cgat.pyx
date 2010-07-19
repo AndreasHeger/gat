@@ -111,10 +111,18 @@ cdef struct Segment:
 cdef inline long lmin( long a, long b):
     if a < b: return a
     return b
+@cython.profile(False)
+cdef inline double dmin( double a, double b):
+    if a < b: return a
+    return b
 
 # min/max are not optimized, so declare them as C functions
 @cython.profile(False)
 cdef inline long lmax( long a, long b):
+    if a > b: return a
+    return b
+@cython.profile(False)
+cdef inline double dmax( double a, double b):
     if a > b: return a
     return b
 
@@ -1149,7 +1157,7 @@ cpdef getNPTwoSidedPValue( ar, val ):
         while idx < l and ar[idx] == val: idx += 1
         pval = float(idx) / l
 
-    return max( min_pval, pval)
+    return dmax( min_pval, pval)
 
 @cython.boundscheck(False)
 def getNPTwoSidedPValueFast( numpy.ndarray[DTYPE_FLOAT_t, ndim=1] ar,
@@ -1174,7 +1182,7 @@ def getNPTwoSidedPValueFast( numpy.ndarray[DTYPE_FLOAT_t, ndim=1] ar,
         while x >= 0 and ar[x] > val: x -= 1
         pval = 1.0 - float(x) / l
 
-    return max( min_pval, pval )
+    return dmax( min_pval, pval )
 
 ############################################################
 ############################################################
@@ -1195,13 +1203,17 @@ ctypedef struct EnrichmentStatistics:
     double qvalue
 
 cdef int isSampleSignificantAtPvalue( EnrichmentStatistics * stats, 
-                                       long sample_id, 
-                                       double pvalue ):
+                                      long sample_id, 
+                                      double pvalue ):
     '''return True, if sample sample_id would be called
     significant at threshold *pvalue*
 
     This method is fast for small pvalues, but slow for large
     pvalues because the method does not a full search.
+
+    This method works by scanning the first/last samples
+    until one is found that is larger/smaller than the
+    value of samples[sample_id].
     '''
     cdef double val
     val = stats.samples[sample_id]
@@ -1212,16 +1224,17 @@ cdef int isSampleSignificantAtPvalue( EnrichmentStatistics * stats,
 
     min_pval = 1.0 / l
 
-    if val > stats.expected:
+    if val < stats.expected:
         x = 0
-        while x < l and stats.sorted_samples[x] < val: x += 1
+        while x < l and stats.sorted_samples[x] <= val: x += 1
         pval = float(x) / l
     else:
         x = l - 1
-        while x >= 0 and stats.sorted_samples[x] > val: x -= 1
+        while x >= 0 and stats.sorted_samples[x] >= val: x -= 1
         pval = 1.0 - float(x) / l
 
-    return max( min_pval, pval ) < pvalue
+    # = is important, such that a sample itself is called significant
+    return dmax( min_pval, pval ) <= pvalue
 
 cdef double getTwoSidedPValue( EnrichmentStatistics * stats, 
                                 double val ):
@@ -1239,6 +1252,7 @@ cdef double getTwoSidedPValue( EnrichmentStatistics * stats,
 
     l = stats.nsamples
     min_pval = 1.0 / l
+
     if idx == l:
         pval = min_pval
     elif idx > l / 2:
@@ -1250,7 +1264,7 @@ cdef double getTwoSidedPValue( EnrichmentStatistics * stats,
         while idx < l and stats.sorted_samples[idx] == val: idx += 1
         pval = float(idx) / l
 
-    return max( min_pval, pval)
+    return dmax( min_pval, pval)
 
 cdef EnrichmentStatistics * makeEnrichmentStatistics( observed, samples ):
 
@@ -1365,6 +1379,9 @@ cdef class AnnotatorResult(object):
     property qvalue:
         def __get__(self): return self.stats.qvalue
 
+    def isSampleSignificantAtPvalue( self, sample_id, double pvalue ):
+        return isSampleSignificantAtPvalue( self.stats, sample_id, pvalue )
+
 ############################################################
 ############################################################
 ############################################################
@@ -1445,10 +1462,11 @@ cpdef computeFDR( annotator_results ):
     cdef double pvalue, efp
 
     nresults = len(annotator_results)
+
     # collect results
     allstats = <EnrichmentStatistics **>calloc( nresults, sizeof(EnrichmentStatistics *))
 
-    for x from 0 <= x < len(annotator_results):
+    for x from 0 <= x < nresults:
         r = annotator_results[x]
         allstats[x] = r.stats
 
@@ -1465,6 +1483,10 @@ cpdef computeFDR( annotator_results ):
             r1.qvalue = fdr_cache[ pvalue ]
             continue
 
+        total_nfp = 0
+ 
+        # compute for each sample the number of simulated
+        # data points that are called significant
         for nsample from 0 <= nsample < r1.nsamples:
             nfp = 0
             for y from 0 <= y < nresults:
@@ -1472,15 +1494,99 @@ cpdef computeFDR( annotator_results ):
                     nfp += 1
             total_nfp += nfp
 
-        efp = total_nfp / r1.nsamples
+        efp = <double>total_nfp / r1.nsamples
 
         # number of positives at P-Value
         R = numpy.searchsorted( all_pvalues, r1.pvalue )
-        while R < len(all_pvalues) and all_pvalues[R] == pvalue:
+        while R < len(all_pvalues) and all_pvalues[R] <= pvalue:
             R += 1
 
-        r1.qvalue = max( 1.0 / r1.nsamples, efp / R)
+        r1.qvalue = dmin( 1.0, dmax( 1.0 / r1.nsamples, efp / R))
+        # print "pvalue=", r1.pvalue, "qvalue=", r1.qvalue, "efp=", efp, "nfp=", total_nfp, "nsamples=", r1.nsamples, R, "vals=", all_pvalues[max(0,R-3):R+3]
+
         fdr_cache[pvalue] = r1.qvalue
+
+############################################################
+############################################################
+############################################################
+## FDR computation
+############################################################
+cpdef computeFDRFast( annotator_results ):
+    '''compute an experimental fdr across all segments and annotations.
+
+    The experimental fdr is given by
+
+    E(FP) = average number of simulated sets in each simulation run with P-Value < p
+        aka: experimental number of false positives
+
+    R = number of nodes in observed data, that have a P-Value of less than p.
+        aka: pos=positives in observed data
+
+    fdr = E(FP)/R
+
+    The results are added to annotator_results.
+    '''
+    fdr_cache = {}
+
+    cdef long nresults
+    cdef AnnotatorResult r
+    cdef EnrichmentStatistics * r1
+    cdef EnrichmentStatistics ** allstats
+    cdef long nsample, nfp, R, x,y, total_nfp
+    cdef long * nfps
+
+    cdef double pvalue, efp, max_pvalue
+
+    nresults = len(annotator_results)
+
+    # collect results
+    allstats = <EnrichmentStatistics **>calloc( nresults, sizeof(EnrichmentStatistics *))
+
+    for x from 0 <= x < nresults:
+        r = annotator_results[x]
+        allstats[x] = r.stats
+
+    all_pvalues = numpy.array( [ r.stats.pvalue for r in annotator_results ], dtype = numpy.float )
+    all_pvalues.sort()
+    max_pvalue = all_pvalues[-1]
+
+    # collect pvalues for samples with up to maximum pvalue
+    
+    
+
+    for x from 0 <= x < nresults:
+
+        r1 = allstats[x]
+
+        pvalue = r1.pvalue
+        
+        if pvalue in fdr_cache:
+            r1.qvalue = fdr_cache[ pvalue ]
+            continue
+
+        total_nfp = 0
+ 
+        # compute for each sample the number of simulated
+        # categories that are called significant
+        for nsample from 0 <= nsample < r1.nsamples:
+            nfp = 0
+            for y from 0 <= y < nresults:
+                if isSampleSignificantAtPvalue( allstats[y], nsample, pvalue ): 
+                    nfp += 1
+            total_nfp += nfp
+
+        efp = <double>total_nfp / r1.nsamples
+
+        # number of positives at P-Value
+        R = numpy.searchsorted( all_pvalues, r1.pvalue )
+        while R < len(all_pvalues) and all_pvalues[R] <= pvalue:
+            R += 1
+
+        r1.qvalue = dmin( 1.0, dmax( 1.0 / r1.nsamples, efp / R))
+        # print "pvalue=", r1.pvalue, "qvalue=", r1.qvalue, "efp=", efp, "nfp=", total_nfp, "nsamples=", r1.nsamples, R, "vals=", all_pvalues[max(0,R-3):R+3]
+
+        fdr_cache[pvalue] = r1.qvalue
+
 
 ############################################################
 ############################################################
