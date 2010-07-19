@@ -1282,12 +1282,69 @@ cdef double getTwoSidedPValue( EnrichmentStatistics * stats,
 
     return dmax( min_pval, pval)
 
+cdef void compressSampleIndex( EnrichmentStatistics * stats,
+                               long nsamples )
+    '''compress indices in stats.'''
+
+    cdef int x, refidx, observed_idx
+    cdef double lastval, thisval
+    cdef long l
+    l = nsamples
+
+    # normalize - equal values will get the same index
+    # before
+    # samples        0 0 0 1 1 1
+    # sample2sorted  0 1 2 3 4 5
+    # sorted2sample  0 1 2 3 4 5
+    # after
+    # samples        0 0 0 1 1 1
+    # sample2sorted  2 2 2 3 3 3
+    # sorted2sample  0 1 2 3 4 5
+    #
+    # for values < observed: last index
+    # for values > observed: first index
+
+    # locate midpoint differentiating over and under-represneted
+    # observed_idx = index of element with first sample > observed
+    observed_idx = 0
+    while observed_idx < l and stats.samples[stats.sorted2sample[observed_idx]] <= stats.observed:
+        observed_idx += 1
+
+    stats.observed_idx = observed_idx
+    # print "obs_idx=", observed_idx, "observed=", observed
+    x = observed_idx - 1
+    lastval = stats.samples[stats.sorted2sample[x]]
+    refidx = x
+
+    while x >= 0:
+        # print "l", x
+        thisval = stats.samples[stats.sorted2sample[x]]
+
+        if thisval != lastval:
+            lastval = thisval
+            refidx = x
+            
+        stats.sample2sorted[stats.sorted2sample[x]] = refidx
+        x -= 1 
+
+    x = observed_idx
+    lastval = stats.samples[stats.sorted2sample[x]]
+    refidx = x
+
+    while x < l:
+        # print "r", x
+        thisval = stats.samples[stats.sorted2sample[x]]
+        if thisval != lastval:
+            lastval = thisval
+            refidx = x
+            
+        stats.sample2sorted[stats.sorted2sample[x]] = refidx
+        x += 1
+
 cdef EnrichmentStatistics * makeEnrichmentStatistics( observed, samples ):
 
     cdef EnrichmentStatistics * stats 
     cdef long offset, i, l
-    cdef int x, refidx, observed_idx
-    cdef double lastval, thisval
 
     l = len(samples)
 
@@ -1307,48 +1364,8 @@ cdef EnrichmentStatistics * makeEnrichmentStatistics( observed, samples ):
     for i from 0 <= i < l: 
         stats.sample2sorted[r[i]] = i
         stats.sorted2sample[i] = r[i]
-
-    # normalize - equal values will get the same index
-    # for values < observed: last index
-    # for values > observed: first index
-
-    # locate midpoint differentiating over and under-represneted
-    # observed_idx = index of element with first sample > observed
-    # observed_idx = 0
-    # while observed_idx < l and stats.samples[stats.sorted_samples[observed_idx]] <= stats.observed:
-    #     observed_idx += 1
-
-    # stats.observed_idx = observed_idx
-    # # print "obs_idx=", observed_idx, "observed=", observed
-    # x = observed_idx - 1
-    # lastval = stats.samples[stats.sorted_samples[x]]
-    # refidx = x
-
-    # while x >= 0:
-    #     # print "l", x
-    #     thisval = stats.samples[stats.sorted_samples[x]]
-
-    #     if thisval != lastval:
-    #         lastval = thisval
-    #         refidx = x
-            
-    #     stats.sorted_samples[x] = refidx
-    #     x -= 1 
-
-
-    # x = observed_idx
-    # lastval = stats.samples[stats.sorted_samples[x]]
-    # refidx = x
-
-    # while x < l:
-    #     # print "r", x
-    #     thisval = stats.samples[stats.sorted_samples[x]]
-    #     if thisval != lastval:
-    #         lastval = thisval
-    #         refidx = x
-            
-    #     stats.sorted_samples[x] = refidx
-    #     x += 1
+        
+    compressSampleIndex( stats, l )
 
     stats.expected = numpy.mean(samples)
     if stats.expected != 0:
