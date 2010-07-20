@@ -54,12 +54,15 @@ def run( segments,
     num_samples
        number of samples to compute
 
+    output_counts
+       output counts to filename 
     '''
 
     ## get arguments
     num_samples = kwargs.get( "num_samples", 10000 )
     cache = kwargs.get( "cache", None )
-
+    output_counts = kwargs.get( "output_counts", None )
+    
     ##################################################
     ##################################################
     ##################################################
@@ -112,12 +115,12 @@ def run( segments,
 
     E.info( "sampling finished" )
 
-    E.info( "computing PValue statistics" )
     ##################################################
     ##################################################
     ##################################################
     ## build annotator results
     ##################################################
+    E.info( "computing PValue statistics" )
     annotator_results = collections.defaultdict( dict )
     for track, r in observed_counts.iteritems():
         for annotation, observed in r.iteritems():
@@ -130,10 +133,65 @@ def run( segments,
     ##################################################
     ##################################################
     ##################################################
+    ## dump large table with counts
+    ##################################################
+    if output_counts:
+        E.info( "writing counts to %s" % output_counts )
+        output = list( iterator_results( annotator_results ) )
+        outfile = open( output_counts, "w")
+        outfile.write("sampleid" )
+        for o in output:
+            outfile.write("\t%s-%s" % (o.track, o.annotation) )
+        outfile.write("\n")
+
+        outfile.write("observed\t%s\n" % "\t".join(map(str, [o.observed for o in output ] ) ) )
+
+        for x in xrange(num_samples):
+            outfile.write( "%i\t%s\n" % \
+                               (x, 
+                                "\t".join(map(str, [o.getSample(x) for o in output ] ) ) ) )
+
+    ##################################################
+    ##################################################
+    ##################################################
     ## compute global fdr
     ##################################################
     E.info( "computing FDR statistics" )
     computeFDR( list(iterator_results(annotator_results)) )
+
+    return annotator_results
+
+def fromCounts( filename ):
+    '''build annotator results from a tab-separated table
+    with counts.'''
+
+    annotator_results = collections.defaultdict( dict )
+
+    with open( filename, "r") as infile:
+
+        E.info( "loading data")
+
+        headers = infile.readline()[:-1].split("\t")[1:]
+        observed = numpy.array( infile.readline()[:-1].split("\t")[1:], dtype = numpy.float)
+        samples = numpy.loadtxt( infile, dtype=numpy.float, delimiter="\t" )
+
+        E.info( "computing PValue statistics" )
+
+        for x,header in enumerate(headers):
+            track, annotation = header.split("-")
+            annotator_results[track][annotation] = AnnotatorResult( \
+                track = track,
+                annotation = annotation,
+                observed = observed[x],
+                samples = samples[:,x+1] )
+
+    ##################################################
+    ##################################################
+    ##################################################
+    ## compute global fdr
+    ##################################################
+    E.info( "computing FDR statistics" )
+    # computeFDR( list(iterator_results(annotator_results)) )
 
     return annotator_results
 

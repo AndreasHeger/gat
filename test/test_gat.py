@@ -819,9 +819,9 @@ class TestCaching( unittest.TestCase ):
 
 class TestStats( unittest.TestCase ):
 
-    ntracks = 100 # 17
-    nannotations = 100 # 90
-    nsamples = 10000
+    ntracks = 10 # 17
+    nannotations = 10 # 90
+    nsamples = 1000
 
     def testPValueComputation( self ):
         
@@ -840,8 +840,8 @@ class TestStats( unittest.TestCase ):
                 g = gat.AnnotatorResult( "track", "samples",
                                          s,
                                          samples )
-                # print samples, x, s
                 self.assertEqual( g.isSampleSignificantAtPvalue( x, g.pvalue ), True )
+                                  
 
                 t = 0
                 for z, s2 in enumerate(samples):
@@ -853,6 +853,19 @@ class TestStats( unittest.TestCase ):
                 self.assert_( fpr >= g.pvalue - 0.0001, 
                               "fpr (%f) != pvalue (%f): y=%i, x=%i, s=%i, t=%i" % \
                                   ( fpr, g.pvalue, y, x, s, t) )
+
+
+    def testPValueComputation2( self ):
+        
+        samples = [0] * 66 + [1] * 2 + [2] * 20 + [3] * 1 + [4] * 6 + [6] * 2 + [8] * 2 + [16] * 1
+        
+        obs = 16
+
+        g = gat.AnnotatorResult( "track", "samples",
+                                 obs,
+                                 samples )
+
+        self.assertEqual( g.pvalue, 0.01 )
 
 
     def testStats( self ):
@@ -887,6 +900,8 @@ class TestStats( unittest.TestCase ):
         gat.computeFDR( results )
         for r in results: 
             self.assert_( r.qvalue > 0.5, "%f" % r.qvalue  )
+
+
 
 if __name__ == '__main__':
     unittest.main()

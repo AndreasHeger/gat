@@ -68,61 +68,11 @@ import Experiment as E
 import IOTools
 import gat
 
-def main( argv = None ):
-    """script main.
+def fromSegments( options, args ):
+    '''run analysis from segment files. 
 
-    parses command line options in sys.argv, unless *argv* is given.
-    """
-
-    if not argv: argv = sys.argv
-
-    # setup command line parser
-    parser = optparse.OptionParser( version = "%prog version: $Id: script_template.py 2871 2010-03-03 10:20:44Z andreas $", 
-                                    usage = globals()["__doc__"] )
-
-    parser.add_option("-a", "--annotation-file", dest="annotation_files", type="string", action="append",
-                      help="filename with annotations [default=%default]."  )
-
-    parser.add_option("-s", "--segment-file", dest="segment_files", type="string", action="append",
-                      help="filename with segments. Also accepts a glob in parantheses [default=%default]."  )
-
-    parser.add_option("-w", "--workspace-file", dest="workspace_files", type="string", action="append",
-                      help="filename with workspace segments. Also accepts a glob in parantheses [default=%default]."  )
-
-    parser.add_option("-i", "--isochore-file", dest="isochore_files", type="string", action="append",
-                      help="filename with isochore segments. Also accepts a glob in parantheses [default=%default]."  )
-
-    parser.add_option("-c", "--counter", dest="counter", type="choice",
-                      choices=("nucleotide-overlap", 
-                               "nucleotide-density",
-                               "segment-overlap", ),
-                      help="quantity to test [default=%default]."  )
-
-    parser.add_option("-n", "--num-samples", dest="num_samples", type="int", 
-                      help="number of samples to compute [default=%default]."  )
-
-    parser.add_option("-e", "--cache", dest="cache", type="string", 
-                      help="filename for caching samples [default=%default]."  )
-
-    parser.add_option("-o", "--order", dest="output_order", type="choice",
-                      choices = ( "track", "annotation", "fold", "pvalue", "qvalue" ),
-                      help="output order of results [default=%default]."  )
-
-    parser.set_defaults(
-        annotation_files = [],
-        segment_files = [],
-        workspace_files = [],  
-        num_samples = 1000,
-        nbuckets = 100000,
-        bucket_size = 1,
-        counter = "nucleotide-overlap",
-        output_stats = "all",
-        output_order = "fold",
-        cache = None,
-        )
-
-    ## add common options (-h/--help, ...) and parse command line 
-    (options, args) = E.Start( parser, argv = argv, add_output_options = True )
+    This is the most common use case.
+    '''
 
     tstart = time.time()
 
@@ -132,6 +82,7 @@ def main( argv = None ):
     options.segment_files = expandGlobs( options.segment_files )
     options.annotation_files = expandGlobs( options.annotation_files )
     options.workspace_files = expandGlobs( options.workspace_files )
+
 
     ##################################################
     # arguments sanity check
@@ -152,7 +103,9 @@ def main( argv = None ):
         
     # read one or more segment files
     segments = gat.IntervalCollection( name = "segments" )
+    E.info( "%s: reading intervals from %i files" % ("segments", len(options.segment_files)))
     segments.load( options.segment_files )
+    E.info( "%s: read %i tracks from %i files" % ("segments", len(segments), len(options.segment_files)))
     dumpStats( segments, "stats_segments_raw" )
     segments.normalize()
     dumpStats( segments, "stats_segments_raw" )
@@ -251,9 +204,78 @@ def main( argv = None ):
                                  sampler, 
                                  counter,
                                  num_samples = options.num_samples,
-                                 cache = options.cache )
-    
+                                 cache = options.cache,
+                                 output_counts = E.getOutputFile( "counts" ) )
+
+    return annotator_results
+
+def main( argv = None ):
+    """script main.
+
+    parses command line options in sys.argv, unless *argv* is given.
+    """
+
+    if not argv: argv = sys.argv
+
+    # setup command line parser
+    parser = optparse.OptionParser( version = "%prog version: $Id: script_template.py 2871 2010-03-03 10:20:44Z andreas $", 
+                                    usage = globals()["__doc__"] )
+
+    parser.add_option("-a", "--annotation-file", dest="annotation_files", type="string", action="append",
+                      help="filename with annotations [default=%default]."  )
+
+    parser.add_option("-s", "--segment-file", dest="segment_files", type="string", action="append",
+                      help="filename with segments. Also accepts a glob in parantheses [default=%default]."  )
+
+    parser.add_option("-w", "--workspace-file", dest="workspace_files", type="string", action="append",
+                      help="filename with workspace segments. Also accepts a glob in parantheses [default=%default]."  )
+
+    parser.add_option("-i", "--isochore-file", dest="isochore_files", type="string", action="append",
+                      help="filename with isochore segments. Also accepts a glob in parantheses [default=%default]."  )
+
+    parser.add_option("-c", "--counter", dest="counter", type="choice",
+                      choices=("nucleotide-overlap", 
+                               "nucleotide-density",
+                               "segment-overlap", ),
+                      help="quantity to test [default=%default]."  )
+
+    parser.add_option("-n", "--num-samples", dest="num_samples", type="int", 
+                      help="number of samples to compute [default=%default]."  )
+
+    parser.add_option("-e", "--cache", dest="cache", type="string", 
+                      help="filename for caching samples [default=%default]."  )
+
+    parser.add_option("-o", "--order", dest="output_order", type="choice",
+                      choices = ( "track", "annotation", "fold", "pvalue", "qvalue" ),
+                      help="output order of results [default=%default]."  )
+
+    parser.add_option( "--counts-file", dest="input_filename_counts", type="string", 
+                      help="start processing from counts - no segments required [default=%default]."  )
+
+    parser.set_defaults(
+        annotation_files = [],
+        segment_files = [],
+        workspace_files = [],  
+        num_samples = 1000,
+        nbuckets = 100000,
+        bucket_size = 1,
+        counter = "nucleotide-overlap",
+        output_stats = "all",
+        output_counts = True,
+        output_order = "fold",
+        cache = None,
+        input_filename_counts = None,
+        )
+
+    ## add common options (-h/--help, ...) and parse command line 
+    (options, args) = E.Start( parser, argv = argv, add_output_options = True )
+
     ##################################################
+    if options.input_filename_counts:
+        annotator_results = gat.fromCounts( options.input_filename_counts )
+    else:
+        annotator_results = fromSegments( options, args )
+
     ##################################################
     ##################################################
     ## output
