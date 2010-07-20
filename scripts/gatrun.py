@@ -68,6 +68,8 @@ import Experiment as E
 import IOTools
 import gat
 
+import matplotlib.pyplot as plt
+
 def fromSegments( options, args ):
     '''run analysis from segment files. 
 
@@ -275,6 +277,17 @@ def main( argv = None ):
         annotator_results = gat.fromCounts( options.input_filename_counts )
     else:
         annotator_results = fromSegments( options, args )
+
+    ##################################################
+    # plotting
+    for r in gat.iterator_results(annotator_results):
+        plt.figure()
+        key = "%s-%s" % (r.track, r.annotation)
+        hist, bins = numpy.histogram( r.samples, 
+                                      new = True,
+                                      bins = 100 )
+        plt.plot( bins[:-1], hist, label = key )
+        plt.savefig( "%s.png" % key )
 
     ##################################################
     ##################################################

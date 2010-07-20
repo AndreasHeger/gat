@@ -1473,6 +1473,13 @@ cdef class AnnotatorResult(object):
     property qvalue:
         def __get__(self): return self.stats.qvalue
 
+    property samples:
+        def __get__(self): 
+            cdef long x
+            r = numpy.zeros( self.nsamples, dtype = numpy.float )
+            for x from 0 <= x < self.nsamples:
+                r[x] = self.samples[x]
+            return r
     def isSampleSignificantAtPvalue( self, sample_id, double pvalue ):
         return isSampleSignificantAtPvalue( self.stats, sample_id, pvalue )
 
