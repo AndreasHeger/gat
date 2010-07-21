@@ -14,7 +14,7 @@ from distutils.core import setup, Extension
 from Cython.Distutils import build_ext
 
 name = "gat"
-version = "0.1.1"
+version = "0.1.2"
 
 classifiers = """
 Development Status :: 5 - Production/Stable
@@ -49,7 +49,7 @@ metadata = {
     'platforms': "ALL",
     'url': "",
     'py_modules': [
-      "gat/__init__", ],
+      "gat/__init__", "gat/Stats" ],
     'ext_modules': [cgat],
     'cmdclass' : {'build_ext': build_ext},
     'scripts' : ['scripts/gatrun.py' ],

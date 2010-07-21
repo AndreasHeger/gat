@@ -236,6 +236,33 @@ class TestSegmentListIntersection( unittest.TestCase):
         self.assertEqual( b.intersectionWithSegments( self.a ), 20 )
 
 
+class TestIntervalCollection( unittest.TestCase):
+
+    def setUp( self ):
+        self.a = gat.IntervalCollection( "a" )
+        self.a.add( "track1", "contig1",
+                    gat.SegmentList( iter = ( (x, x + 10 ) for x in range( 0, 1000, 100) ), normalize = True ) )
+        self.a.add( "track2", "contig1",
+                    gat.SegmentList( iter = ( (x, x + 10 ) for x in range( 1000, 2000, 100) ), normalize = True ) )
+        
+    def testSaveLoad( self ):
+        
+        fn = "tmp_testSaveLoad.bed"
+        outfile = open(fn, "w")
+        self.a.save( outfile )
+        outfile.close()
+
+        b = gat.IntervalCollection("b")
+        b.load( fn )
+
+        self.assertEqual( len(self.a), len(b) )
+        self.assertEqual( self.a.tracks, b.tracks )
+        self.assertEqual( self.a.sum(), b.sum() )
+        for t in b.tracks:
+            self.assertEqual( sorted(self.a[t].keys()), sorted(b[t].keys()) )
+            for x in self.a[t].keys():
+                self.assertEqual( self.a[t][x], b[t][x] )
+
 class TestSamplerLength( unittest.TestCase ):
 
     ntests = 1000

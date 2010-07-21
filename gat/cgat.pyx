@@ -1,9 +1,10 @@
 # cython: embedsignature=True
-# cython: profile=True
+# cython: profile=False
 
 import types, collections, re, os
 import IOTools
 import Experiment as E
+import gat.Stats
 
 cimport cython
 
@@ -109,6 +110,13 @@ DTYPE_INT = numpy.int
 ctypedef numpy.int_t DTYPE_INT_t
 DTYPE_FLOAT = numpy.float
 ctypedef numpy.float_t DTYPE_FLOAT_t
+
+#####################################################
+## scipy import
+## required for pvalues based on parametric distributions
+import scipy
+import scipy.stats
+
 
 cdef struct Segment:
     long start
@@ -531,13 +539,22 @@ cdef class SegmentList:
         '''build histogram of segments lengths.'''
 
         cdef long idx
-        cdef long l
+        cdef long l, i
         cdef Segment s
         cdef numpy.ndarray[DTYPE_INT_t, ndim=1] histogram
         histogram = numpy.zeros( nbuckets, dtype=numpy.int )
         for idx from 0 <= idx < self.nsegments:
             l = segment_length(self.segments[idx])
-            histogram[(int)((l+bucket_size-1)/bucket_size)] += 1
+            i = (int)((l+bucket_size-1)/bucket_size)
+            if i >= nbuckets:
+                raise ValueError( "segment %i-%i too large: %i >= %i, increase nbuckets or bucket_size such that nbuckets * bucket_size > %i" %\
+                                      ( self.segments[idx].start,
+                                        self.segments[idx].end,
+                                        i, 
+                                        nbuckets,
+                                        l
+                                        ) )
+            histogram[i] += 1
         return histogram
 
     cpdef SegmentList intersect( self, SegmentList other ):
@@ -666,6 +683,17 @@ cdef class SegmentList:
         if key >= self.nsegments:
             raise IndexError( "index out of range" )
         return self.segments[key].start, self.segments[key].end
+
+    def __cmp__(self, SegmentList other ):
+        cdef long idx
+        x = self.__len__().__cmp__(len(other))
+        if x != 0: return x
+        for idx from 0 <= idx < self.nsegments:
+            x = self.segments[idx].start.__cmp__(other.segments[idx].start)
+            if x != 0: return x
+            x = self.segments[idx].end.__cmp__(other.segments[idx].end)
+            if x != 0: return x
+        return 0
 
 # SegmentTuple = collections.namedtuple( "SegmentTuple", "start, end" )
 
@@ -891,7 +919,7 @@ cdef class HistogramSamplerSlow:
         r = numpy.random.random_sample( 1 )[0]
         ip = numpy.searchsorted( self.cdf, r )
         base = ip*bucket_size
-        if bucket_size>1 : return base + numpy.randint(0, bucket_size)
+        if bucket_size>1 : return base + numpy.random.randint(0, bucket_size)
 
         return base
 
@@ -940,7 +968,7 @@ cdef class HistogramSampler:
         base = index * self.bucket_size
 
         if self.bucket_size > 1 :
-            return base + numpy.randint(0, self.bucket_size)
+            return base + numpy.random.randint(0, self.bucket_size)
 
         return base
 
@@ -1054,6 +1082,7 @@ cdef class SamplerAnnotator(Sampler):
                 # print "recomputing segments"
                 # print " sampled segments", sampled_segments.asList()
                 unintersected_segments.extend( sampled_segments )
+                unintersected_segments.normalize()
                 # print "extended"
                 sampled_segments.clear()
                 # compute overlap with workspace
@@ -1209,47 +1238,7 @@ ctypedef struct EnrichmentStatistics:
     int * sorted2sample
     int * sample2sorted
     double pvalue
-    double qvalue
-    int observed_idx
-
-@cython.profile(True)
-cdef inline int isSampleSignificantAtPvalue( EnrichmentStatistics * stats, 
-                                             long sample_id, 
-                                             double pvalue ):
-    '''return True, if sample sample_id would be called
-    significant at threshold *pvalue*
-
-    This method is fast for small pvalues, but slow for large
-    pvalues because the method does not a full search.
-
-    This method works by scanning the first/last samples
-    until one is found that is larger/smaller than the
-    value of samples[sample_id].
-    '''
-    cdef double pval, min_pval, val
-    cdef long l
-
-    l = stats.nsamples
-    min_pval = 1.0 / l
-
-    cdef int idx
-    idx = stats.sample2sorted[sample_id]
-    val = stats.samples[sample_id]
-    if val > stats.expected:
-        # over-representation
-        while idx > 0 and stats.samples[stats.sorted2sample[idx]] == val: 
-            idx -= 1
-        idx = l - (idx + 1)
-    elif val < stats.expected:
-        # under-representation
-        while idx < l and stats.samples[stats.sorted2sample[idx]] == val: 
-            idx += 1
-
-    pval = float(idx) / l
-
-    # = is important, such that a sample itself is called significant
-    # print "val=", val, "idx=", idx, "sample_id=", sample_id, "pval=", pval, "refpval=", pvalue, "true=", pval <= pvalue
-    return dmax( min_pval, pval ) <= pvalue
+    double qvalue 
 
 cdef double getTwoSidedPValue( EnrichmentStatistics * stats, 
                                 double val ):
@@ -1311,7 +1300,6 @@ cdef void compressSampleIndex( EnrichmentStatistics * stats ):
     while observed_idx < l and stats.samples[stats.sorted2sample[observed_idx]] <= stats.observed:
         observed_idx += 1
 
-    stats.observed_idx = observed_idx
     # print "obs_idx=", observed_idx, "observed=", observed
     x = observed_idx - 1
     lastval = stats.samples[stats.sorted2sample[x]]
@@ -1401,9 +1389,12 @@ cdef class AnnotatorResult(object):
     format_fold = "%6.4f"
     format_pvalue = "%6.4e"
 
-    headers = ["track", "annotation",
-               "observed", "expected",
-               "CI95low", "CI95high",
+    headers = ["track", 
+               "annotation",
+               "observed", 
+               "expected",
+               "CI95low", 
+               "CI95high",
                "stddev",
                "fold",
                "pvalue",
@@ -1426,10 +1417,10 @@ cdef class AnnotatorResult(object):
 
     def __str__(self):
 
-        if self.stats.nsamples < 10**6:
-            format_pvalue = "%7.6f"
-        else:
-            format_pvalue = "%7.6e"
+        # if self.stats.nsamples < 10**6:
+        #     format_pvalue = "%7.6f"
+        # else:
+        #     format_pvalue = "%7.6e"
 
         return "\t".join( (self.track,
                            self.annotation,
@@ -1439,8 +1430,8 @@ cdef class AnnotatorResult(object):
                            self.format_expected % self.stats.upper95,
                            self.format_expected % self.stats.stddev,
                            self.format_fold % self.stats.fold,
-                           format_pvalue % self.stats.pvalue,
-                           format_pvalue % self.stats.qvalue,
+                           self.format_pvalue % self.stats.pvalue,
+                           self.format_pvalue % self.stats.qvalue,
                            ) )
 
     def __dealloc__(self):
@@ -1469,22 +1460,83 @@ cdef class AnnotatorResult(object):
 
     property pvalue:
         def __get__(self): return self.stats.pvalue
+        def __set__(self, val): self.stats.pvalue = val
 
     property qvalue:
         def __get__(self): return self.stats.qvalue
+        def __set__(self, val): self.stats.qvalue = val
+ 
+    property nsamples:
+        def __get__(self): return self.stats.nsamples
 
     property samples:
         def __get__(self): 
             cdef long x
             r = numpy.zeros( self.nsamples, dtype = numpy.float )
-            for x from 0 <= x < self.nsamples:
-                r[x] = self.samples[x]
+            for x from 0 <= x < self.stats.nsamples:
+                r[x] = self.stats.samples[x]
             return r
+
     def isSampleSignificantAtPvalue( self, sample_id, double pvalue ):
         return isSampleSignificantAtPvalue( self.stats, sample_id, pvalue )
 
     def getSample( self, sample_id ):
         return self.stats.samples[sample_id]
+
+    def getEmpiricalPValue( self, value ):
+        return getTwoSidedPValue( self.stats, value )
+
+def getNormedPValue( value, r ):
+    '''return pvalue assuming that samples are normal distributed.'''
+    absval = abs(value - r.expected)
+    pvalue = 1.0 - scipy.stats.norm.cdf( absval, 0, r.stddev )
+    return pvalue
+
+def getEmpiricalPValue( value, r ):
+    return r.getEmpiricalPValue( value )
+
+def updatePValues( annotator_results, method = "empirical" ):
+    '''update pvalues.
+
+    empirical
+        report pvalues from simulations. Minimum pvalue is 
+        1/nsamples
+    norm
+        fit Gaussian to simulated values and compute pvalue from
+        the distribution
+    '''
+
+    if method == "norm":
+        methodf = getNormedPValue
+    elif method == "empirical":
+        methodf = getEmpiricalPValue
+    else:
+        raise ValueError( "unknown method '%s'" % method )
+
+    for r in annotator_results:
+        r.pvalue = methodf( r.observed, r )
+
+def updateQValues( annotator_results, method = "storey", **kwargs ):
+    '''update qvalues in annotator results
+
+    storey
+        qvalue from the method by Storey et al.
+        print track, other_track, contig
+    '''
+
+    pvalues = [ r.pvalue for r in annotator_results ]
+
+    if method == "storey":
+        try:
+            fdr = gat.Stats.computeQValues( pvalues, 
+                                            vlambda = kwargs.get( "vlambda", numpy.arange( 0,0.95,0.05) ),
+                                            pi0_method = kwargs.get( "pi0_method", "smoother") )
+        except ValueError, msg:
+            E.warn( "qvalue computation failed: %s" % msg )
+            return
+
+        for r, qvalue in zip(annotator_results, fdr.qvalues):
+            r.qvalue = qvalue
 
 ############################################################
 ############################################################
@@ -1534,106 +1586,6 @@ def computeCounts( counter, aggregator,
 
     return counts
 
-############################################################
-############################################################
-############################################################
-## FDR computation
-############################################################
-cdef double computeFalsePositiveRate( EnrichmentStatistics ** allstats,
-                                      long nresults,
-                                      long nsamples,
-                                      double pvalue ):
-    '''return the number of expected number of false positives
-    for less than or equal to *pvalue*.
-    '''
-
-    cdef long y, nsample, nfp, total_nfp
-    cdef double efp
-
-    total_nfp = 0
-
-    # Compute for each sample the number of simulated
-    # data points that are called significant at pvalue.
-    # As there are the same number of "terms" in each sample
-    # that are tested, a simple summation suffices.
-    for nsample from 0 <= nsample < nsamples:
-        nfp = 0
-        for y from 0 <= y < nresults:
-            if isSampleSignificantAtPvalue( allstats[y], nsample, pvalue ): 
-                nfp += 1
-        total_nfp += nfp
-
-    efp = <double>total_nfp / nsamples
-
-    return efp
-
-cpdef computeFDR( annotator_results ):
-    '''compute an experimental fdr across all segments and annotations.
-
-    The experimental fdr is given by
-
-    E(FP) = average number of terms in each sample run with P-Value <= p
-        aka: experimental number of false positives
-
-    R = number of nodes in observed data, that have a P-Value of less than or 
-        equal to p.
-        aka: pos=positives in observed data
-
-    fdr = E(FP)/R
-
-    The results are added to annotator_results.
-    '''
-    fdr_cache = {}
-
-    cdef long nresults
-    cdef AnnotatorResult r
-    cdef EnrichmentStatistics * r1
-    cdef EnrichmentStatistics ** allstats
-    cdef long nsample, nfp, R, x,y, total_nfp
-    cdef long * nfps
-
-    cdef double pvalue, efp
-
-    nresults = len(annotator_results)
-
-    # collect results
-    allstats = <EnrichmentStatistics **>calloc( nresults, sizeof(EnrichmentStatistics *))
-
-    for x from 0 <= x < nresults:
-        r = annotator_results[x]
-        allstats[x] = r.stats
-
-    all_pvalues = numpy.array( [ r.stats.pvalue for r in annotator_results ], dtype = numpy.float )
-    all_pvalues.sort()
-
-    for x from 0 <= x < nresults:
-
-        E.debug( "progress: %i/%i " % (x+1, nresults))
-        r1 = allstats[x]
-
-        pvalue = r1.pvalue
-        
-        if pvalue in fdr_cache:
-            r1.qvalue = fdr_cache[ pvalue ]
-            continue
-
-        efp = computeFalsePositiveRate( allstats, 
-                                        nresults,
-                                        r1.nsamples,
-                                        pvalue )
-
-        # number of positives at P-Value
-        R = numpy.searchsorted( all_pvalues, r1.pvalue )
-        while R < nresults and all_pvalues[R] <= pvalue:
-            R += 1
-
-        r1.qvalue = dmin( 1.0, dmax( 1.0 / r1.nsamples, efp / R))
-        # print "pvalue=", r1.pvalue, "qvalue=", r1.qvalue, "efp=", efp, "nfp=", total_nfp, "nsamples=", \
-            # r1.nsamples, "R=", R, "vals=", all_pvalues[max(0,R-3):R+3]
-
-        fdr_cache[pvalue] = r1.qvalue
-        
-        break
 ############################################################
 ############################################################
 ############################################################
@@ -1892,6 +1844,8 @@ def readFromBed( filenames ):
 
     segment_lists = collections.defaultdict( _genie )
 
+    if type(filenames) == str:
+        filenames = (filenames,)
     for filename in filenames:
         infile = IOTools.openFile( filename, "r")
         for bed in bed_iterator( infile ):
@@ -1899,7 +1853,6 @@ def readFromBed( filenames ):
                 name = bed.track["name"]
             else:
                 name = bed.name
-
             l = segment_lists[name][bed.contig]
             l.add( atol(bed.fields[1]), atol(bed.fields[2]) )
 
@@ -1923,6 +1876,16 @@ class IntervalCollection(object):
     def load( self, filenames ):
         '''load segments from filenames and pre-process them.'''
         self.intervals = readFromBed( filenames )
+        self.normalize()
+
+    def save( self, outfile ):
+        '''save in bed format to *outfile*.'''
+
+        for track, vv in self.intervals.iteritems():
+            outfile.write("track name=%s\n" % track )
+            for contig, segmentlist in vv.items():
+                for start, end in segmentlist:
+                    outfile.write( "%s\t%i\t%i\n" % (contig, start, end))
 
     def normalize( self ):
         '''normalize segment lists individually.
@@ -1962,7 +1925,7 @@ class IntervalCollection(object):
         self.normalize()
 
     def sum( self ):
-        '''remove all intervals not overlapping with intervals in other.'''
+        '''return sum of all segment lists.'''
         s = 0
         for track, vv in self.intervals.iteritems():
             for contig, segmentlist in vv.iteritems():
@@ -2009,14 +1972,6 @@ class IntervalCollection(object):
                     vv[isochore] = newlist
                 del vv[contig]
 
-    def dump( self, outfile ):
-        '''dump in bed format.'''
-
-        for track, vv in self.intervals.iteritems():
-            outfile.write("track name=%s\n" % track )
-            for contig, segmentlist in vv.items():
-                for start, end in segmentlist:
-                    outfile.write( "%s\t%i\t%i\n" % (contig, start, end))
 
     @property
     def tracks(self): return self.intervals.keys()
@@ -2083,6 +2038,9 @@ cdef class Samples( object ):
         if sample_id not in self.samples[track]: return False
         return isochore in self.samples[track][sample_id]
 
+    def __contains__(self, track ):
+        return track in self.samples
+
     def __getitem__(self, track ):
         '''return all samples for track (as an :class:`IntervalCollection`)'''
         return self.samples[track]
@@ -2092,6 +2050,29 @@ cdef class Samples( object ):
 
     def __delitem__(self, key ):
         del self.samples[key]
+
+cdef class SamplesFile( Samples ):
+    '''a collection of samples.
+
+    Samples :class:`IntervalCollections` identified by track and sample_id.
+    '''
+    def __init__(self, filenames, regex ):
+        '''create a new SampleCollection.
+        
+        Samples are read from *filenames* at startup.
+        The track name is given by applying the regular
+        expression to the pattern.
+        '''
+        Samples.__init__(self)
+        
+        for filename in filenames:
+            track = regex.search(filename).groups()[0]
+            s = IntervalCollection( track )
+            s.load( filename )
+            self.samples[track] = s
+            
+    def load( self, track, sample_id, isochore ):
+        return True
 
 cdef class SamplesCached( Samples ):
     '''a collection of samples.
@@ -2171,7 +2152,7 @@ cdef class SamplesCached( Samples ):
         # 1 * sizeof(unsigned char) - key length (max 255 chars)
         # 1 * sizeof(long) - number of segments (nsegments)
         # nsegments * sizeof(Segment) - the segment list
-        tempkey = "%s-%i-%s" % (track,sample_id,isochore)
+        tempkey = self.toKey( track, sample_id, isochore )
         assert len(tempkey) <= 255
         key = tempkey
         keylen = strlen( key ) + 1
@@ -2187,18 +2168,16 @@ cdef class SamplesCached( Samples ):
         fwrite( key, sizeof(char), keylen, self.findex )
         fwrite( &pos, sizeof(off_t), 1, self.findex )
 
+    def toKey( self, track, sample_id, isochore ):
+        return "%s-%s-%s" % (track,sample_id,isochore) 
+
     def hasSample( self, track, sample_id, isochore ):
         '''return true if cache has sample.'''
-        key = "%s-%i-%s" % (track,sample_id,isochore)
-        return key in self.index
+        return self.toKey( track, sample_id, isochore ) in self.index
 
     def __dealloc__(self):
         fclose( self.fcache )
         fclose( self.findex )
-
-    def __getitem__(self, track ):
-        '''return all samples for track (as an :class:`IntervalCollection`)'''
-        return self.samples[track]
 
     def load( self, track, sample_id, isochore ):
         '''load data into memory'''
@@ -2206,7 +2185,7 @@ cdef class SamplesCached( Samples ):
         cdef SegmentList seglist
         cdef long nsegments
 
-        tempkey = "%s-%i-%s" % (track,sample_id,isochore)
+        tempkey = self.toKey( track, sample_id, isochore )
         pos = self.index[tempkey]
         fseeko( self.fcache, pos, SEEK_SET )
         fread( &nsegments, sizeof(long), 1, self.fcache )
@@ -2218,6 +2197,147 @@ cdef class SamplesCached( Samples ):
 
         Samples.add( self, track, sample_id, isochore, seglist )
 
+############################################################
+############################################################
+############################################################
+## FDR computation - obsolete
+############################################################
+cdef double computeFalsePositiveRate( EnrichmentStatistics ** allstats,
+                                      long nresults,
+                                      long nsamples,
+                                      double pvalue ):
+    '''return the number of expected number of false positives
+    for less than or equal to *pvalue*.
+    '''
+
+    cdef long y, nsample, nfp, total_nfp
+    cdef double efp
+
+    total_nfp = 0
+
+    # Compute for each sample the number of simulated
+    # data points that are called significant at pvalue.
+    # As there are the same number of "terms" in each sample
+    # that are tested, a simple summation suffices.
+    for nsample from 0 <= nsample < nsamples:
+        nfp = 0
+        for y from 0 <= y < nresults:
+            if isSampleSignificantAtPvalue( allstats[y], nsample, pvalue ): 
+                nfp += 1
+        total_nfp += nfp
+
+    efp = <double>total_nfp / nsamples
+
+    return efp
+
+cpdef computeFDR( annotator_results ):
+    '''compute an experimental fdr across all segments and annotations.
+
+    The experimental fdr is given by
+
+    E(FP) = average number of terms in each sample run with P-Value <= p
+        aka: experimental number of false positives
+
+    R = number of nodes in observed data, that have a P-Value of less than or 
+        equal to p.
+        aka: pos=positives in observed data
+
+    fdr = E(FP)/R
+
+    The results are added to annotator_results.
+    '''
+    fdr_cache = {}
+
+    cdef long nresults
+    cdef AnnotatorResult r
+    cdef EnrichmentStatistics * r1
+    cdef EnrichmentStatistics ** allstats
+    cdef long nsample, nfp, R, x,y, total_nfp
+    cdef long * nfps
+
+    cdef double pvalue, efp
+
+    nresults = len(annotator_results)
+
+    # collect results
+    allstats = <EnrichmentStatistics **>calloc( nresults, sizeof(EnrichmentStatistics *))
+
+    for x from 0 <= x < nresults:
+        r = annotator_results[x]
+        allstats[x] = r.stats
+
+    all_pvalues = numpy.array( [ r.stats.pvalue for r in annotator_results ], dtype = numpy.float )
+    all_pvalues.sort()
+
+    for x from 0 <= x < nresults:
+
+        E.debug( "progress: %i/%i " % (x+1, nresults))
+        r1 = allstats[x]
+
+        pvalue = r1.pvalue
+        
+        if pvalue in fdr_cache:
+            r1.qvalue = fdr_cache[ pvalue ]
+            continue
+
+        efp = computeFalsePositiveRate( allstats, 
+                                        nresults,
+                                        r1.nsamples,
+                                        pvalue )
+
+        # number of positives at P-Value
+        R = numpy.searchsorted( all_pvalues, r1.pvalue )
+        while R < nresults and all_pvalues[R] <= pvalue:
+            R += 1
+
+        r1.qvalue = dmin( 1.0, dmax( 1.0 / r1.nsamples, efp / R))
+        # print "pvalue=", r1.pvalue, "qvalue=", r1.qvalue, "efp=", efp, "nfp=", total_nfp, "nsamples=", \
+            # r1.nsamples, "R=", R, "vals=", all_pvalues[max(0,R-3):R+3]
+
+        fdr_cache[pvalue] = r1.qvalue
+        
+        break
+
+@cython.profile(False)
+cdef inline int isSampleSignificantAtPvalue( EnrichmentStatistics * stats, 
+                                             long sample_id, 
+                                             double pvalue ):
+    '''return True, if sample sample_id would be called
+    significant at threshold *pvalue*
+
+    This method is fast for small pvalues, but slow for large
+    pvalues because the method does not a full search.
+
+    This method works by scanning the first/last samples
+    until one is found that is larger/smaller than the
+    value of samples[sample_id].
+    '''
+    cdef double pval, min_pval, val
+    cdef long l
+
+    l = stats.nsamples
+    min_pval = 1.0 / l
+
+    cdef int idx
+    idx = stats.sample2sorted[sample_id]
+    val = stats.samples[sample_id]
+    if val > stats.expected:
+        # over-representation
+        while idx > 0 and stats.samples[stats.sorted2sample[idx]] == val: 
+            idx -= 1
+        idx = l - (idx + 1)
+    elif val < stats.expected:
+        # under-representation
+        while idx < l and stats.samples[stats.sorted2sample[idx]] == val: 
+            idx += 1
+
+    pval = float(idx) / l
+
+    # = is important, such that a sample itself is called significant
+    # print "val=", val, "idx=", idx, "sample_id=", sample_id, "pval=", pval, "refpval=", pvalue, "true=", pval <= pvalue
+    return dmax( min_pval, pval ) <= pvalue
+
+        
 # import tables
 # import warnings
 # warnings.filterwarnings('ignore', category=tables.NaturalNameWarning)

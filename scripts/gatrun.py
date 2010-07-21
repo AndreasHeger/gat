@@ -64,11 +64,14 @@ import os, sys, re, optparse, collections, types, glob, time
 import numpy
 
 import Experiment as E
-
 import IOTools
 import gat
 
-import matplotlib.pyplot as plt
+try:
+    import matplotlib.pyplot as plt
+    HASPLOT = True
+except (ImportError,RuntimeError):
+    HASPLOT = False
 
 def fromSegments( options, args ):
     '''run analysis from segment files. 
@@ -84,7 +87,7 @@ def fromSegments( options, args ):
     options.segment_files = expandGlobs( options.segment_files )
     options.annotation_files = expandGlobs( options.annotation_files )
     options.workspace_files = expandGlobs( options.workspace_files )
-
+    options.sample_files = expandGlobs( options.sample_files )
 
     ##################################################
     # arguments sanity check
@@ -155,6 +158,13 @@ def fromSegments( options, args ):
         annotations.toIsochores( isochores )
         segments.toIsochores( isochores )
 
+        if workspaces.sum() == 0:
+            raise ValueError( "isochores and workspaces do not overlap" )
+        if annotations.sum() == 0:
+            raise ValueError( "isochores and annotations do not overlap" )
+        if segments.sum() == 0:
+            raise ValueError( "isochores and segments do not overlap" )
+
         dumpStats( workspaces, "stats_workspaces_isochores" )
         dumpStats( annotations, "stats_annotations_isochores" )
         dumpStats( segments, "stats_segments_isochores" )
@@ -175,7 +185,7 @@ def fromSegments( options, args ):
     
     # output segment densities per workspace
     for track in segments.tracks:
-        workspaces.outputOverlapStats( options.stdout, segments[track] )
+        workspaces.outputOverlapStats( E.openOutputFile( "overlap_%s" % track), segments[track] )
 
     ##################################################
     ##################################################
@@ -207,7 +217,9 @@ def fromSegments( options, args ):
                                  counter,
                                  num_samples = options.num_samples,
                                  cache = options.cache,
-                                 output_counts = E.getOutputFile( "counts" ) )
+                                 output_counts = E.getOutputFile( "counts" ),
+                                 output_samples_pattern = options.output_samples_pattern,
+                                 sample_files = options.sample_files )
 
     return annotator_results
 
@@ -235,6 +247,9 @@ def main( argv = None ):
     parser.add_option("-i", "--isochore-file", dest="isochore_files", type="string", action="append",
                       help="filename with isochore segments. Also accepts a glob in parantheses [default=%default]."  )
 
+    parser.add_option("-l", "--sample-file", dest="sample_files", type="string", action="append",
+                      help="filename with sample files. Start processing from samples [default=%default]."  )
+
     parser.add_option("-c", "--counter", dest="counter", type="choice",
                       choices=("nucleotide-overlap", 
                                "nucleotide-density",
@@ -249,15 +264,44 @@ def main( argv = None ):
 
     parser.add_option("-o", "--order", dest="output_order", type="choice",
                       choices = ( "track", "annotation", "fold", "pvalue", "qvalue" ),
-                      help="output order of results [default=%default]."  )
+                      help="order results in output by fold, track, etc. [default=%default]."  )
+
+    parser.add_option("-p", "--pvalue-method", dest="pvalue_method", type="choice",
+                      choices = ( "empirical", "norm", ),
+                      help="type of pvalue reported [default=%default]."  )
+
+    parser.add_option("-q", "--qvalue-method", dest="qvalue_method", type="choice",
+                      choices = ( "storey", ),
+                      help="method to perform multiple testing correction by controlling the fdr [default=%default]."  )
+
+    parser.add_option( "--qvalue-lambda", dest="qvalue_lambda", type="float",
+                      help="fdr computation: lambda [default=%default]."  )
+
+    parser.add_option( "--qvalue-pi0-method", dest="qvalue_pi0_method", type="choice",
+                       choices = ("smoother", "bootstrap" ),
+                       help="fdr computation: method for estimating pi0 [default=%default]."  )
 
     parser.add_option( "--counts-file", dest="input_filename_counts", type="string", 
                       help="start processing from counts - no segments required [default=%default]."  )
+
+    parser.add_option( "--output-plots-pattern", dest="output_plots_pattern", type="string", 
+                       help="output pattern for plots [default=%default]" )
+
+    parser.add_option( "--output-samples-pattern", dest="output_samples_pattern", type="string", 
+                       help="output pattern for samples. Samples are stored in bed format, one for "
+                            " each segment [default=%default]" )
+
+    parser.add_option( "--bucket-size", dest="bucket_size", type="int", 
+                       help="size of a bin for histogram of segment lengths [default=%default]" )
+
+    parser.add_option( "--nbuckets", dest="nbuckets", type="int", 
+                       help="number of bins for histogram of segment lengths [default=%default]" )
 
     parser.set_defaults(
         annotation_files = [],
         segment_files = [],
         workspace_files = [],  
+        sample_files = [],
         num_samples = 1000,
         nbuckets = 100000,
         bucket_size = 1,
@@ -267,6 +311,12 @@ def main( argv = None ):
         output_order = "fold",
         cache = None,
         input_filename_counts = None,
+        pvalue_method = "empirical",
+        output_plots_pattern = None,
+        output_samples_pattern = None,
+        qvalue_method = "storey",
+        qvalue_lambda = None,
+        qvalue_pi0_method = "smoother",
         )
 
     ## add common options (-h/--help, ...) and parse command line 
@@ -278,16 +328,46 @@ def main( argv = None ):
     else:
         annotator_results = fromSegments( options, args )
 
+    if options.pvalue_method != "empirical":
+        E.info("updating pvalues to %s" % options.pvalue_method )
+        gat.updatePValues( gat.iterator_results(annotator_results), options.pvalue_method )
+
     ##################################################
-    # plotting
-    for r in gat.iterator_results(annotator_results):
-        plt.figure()
-        key = "%s-%s" % (r.track, r.annotation)
-        hist, bins = numpy.histogram( r.samples, 
-                                      new = True,
-                                      bins = 100 )
-        plt.plot( bins[:-1], hist, label = key )
-        plt.savefig( "%s.png" % key )
+    ##################################################
+    ##################################################
+    ## compute global fdr
+    ##################################################
+    E.info( "computing FDR statistics" )
+    gat.updateQValues( list(gat.iterator_results(annotator_results)), 
+                       method = options.qvalue_method,
+                       vlambda = options.qvalue_lambda,
+                       pi0_method = options.qvalue_pi0_method )
+    
+    ##################################################
+    # plot histograms
+    if options.output_plots_pattern and HASPLOT:
+        E.info("plotting sample stats" )
+
+        for r in gat.iterator_results(annotator_results):
+            plt.figure()
+            key = "%s-%s" % (r.track, r.annotation)
+            s = r.samples
+            hist, bins = numpy.histogram( s,
+                                          new = True,
+                                          normed = True,
+                                          bins = numpy.arange( s.min(), s.max() + 1, 1.0) )
+            plt.plot( bins[:-1], hist, label = key )
+            sigma = r.stddev
+            mu = r.expected
+            plt.plot(bins, 
+                     1.0/(sigma * numpy.sqrt(2 * numpy.pi)) *
+                     numpy.exp( - (bins - mu)**2 / (2 * sigma**2) ),
+                     label = "fit",
+                     linewidth=2, 
+                     color='r' )
+            plt.legend()
+            filename = re.sub(options.output_plots_pattern, "%s", key)
+            plt.savefig( filename )
 
     ##################################################
     ##################################################

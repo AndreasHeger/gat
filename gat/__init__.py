@@ -1,6 +1,6 @@
 from cgat import *
 
-import os, sys, re, optparse, collections, types
+import os, sys, re, optparse, collections, types, gzip
 import numpy
 
 import Bed
@@ -56,13 +56,27 @@ def run( segments,
 
     output_counts
        output counts to filename 
+
+    output_samples_pattern
+       if given, output samles to these files, one per segment
+
+    sample_files
+       if given, read samples from these files.
+
+    fdr
+       method to compute qvalues
     '''
 
     ## get arguments
     num_samples = kwargs.get( "num_samples", 10000 )
     cache = kwargs.get( "cache", None )
     output_counts = kwargs.get( "output_counts", None )
-    
+    sample_files = kwargs.get( "sample_files", [] )
+    output_samples_pattern = kwargs.get( "output_samples_pattern", None )
+    if output_samples_pattern != None: 
+        if "%s" not in output_samples_pattern:
+            raise ValueError( "output_samples_pattern should contain at least one '%s'")
+
     ##################################################
     ##################################################
     ##################################################
@@ -84,25 +98,49 @@ def run( segments,
     if cache:
         E.info( "samples are cached in %s" % cache)
         samples = SamplesCached( filename = cache )
+    elif sample_files:
+        if not output_samples_pattern:
+            raise ValueError( "require output_samples_pattern if loading samples from files" )
+        # build regex
+        regex = re.compile( re.sub("%s", "(\S+)", output_samples_pattern ) )
+        E.info( "loading samples from %i files" % len(sample_files) )
+        samples = SamplesFile( filenames = sample_files,
+                               regex = regex ) 
     else:
-        samples = Samples( )
+        samples = Samples()
 
     sampled_counts = {}
     
-    for track in segments.tracks:
+    counts = E.Counter()
+
+    ntracks = len(segments.tracks)
+    for ntrack, track in enumerate(segments.tracks):
         segs = segments[track]
-        E.info( "sampling: %s" % (track))
+        E.info( "sampling: %s: %i/%i " % (track, ntrack+1, ntracks))
         for x in xrange( num_samples ):
+            # use textual sample ids to avoid parsing from dumped samples
+            sample_id = str(x)
             E.debug( "progress: %s: %i/%i" % (track, x+1, num_samples))
             for isochore in segs.keys():
+                counts.pairs += 1
                 # skip empty isochores
-                if workspace[isochore].isEmpty or segs[isochore].isEmpty: continue
+                if workspace[isochore].isEmpty or segs[isochore].isEmpty: 
+                    E.debug( "skipping empty isochore %s" % isochore )
+                    counts.skipped += 1
+                    continue
                 # skip if read from cache
-                if samples.hasSample( track, x, isochore ): 
-                    samples.load( track, x, isochore )
+                if samples.hasSample( track, sample_id, isochore ): 
+                    counts.loaded += 1
+                    samples.load( track, sample_id, isochore )
                 else:
+                    counts.sampled += 1
                     r = sampler.sample( segs[isochore], workspace[isochore] )
-                    samples.add( track, x, isochore, r )
+                    samples.add( track, sample_id, isochore, r )
+
+        E.info( "sampling stats: %s" % str(counts))
+        if track not in samples:
+            E.warn( "no samples for track %s" % track )
+            continue
 
         sampled_counts[track] = computeCounts( counter = counter,
                                                aggregator = sum,
@@ -110,9 +148,20 @@ def run( segments,
                                                annotations = annotations,
                                                workspace = workspace,
                                                append = True )
+
+        if output_samples_pattern and not sample_files:
+            filename = re.sub("%s", track, output_samples_pattern )
+            E.debug( "saving samples to %s" % filename)
+            if filename.endswith(".gz"):
+                outfile = gzip.open( filename, "w" )                
+            else:
+                outfile = open( filename, "w" )
+            samples[track].save( outfile )
+            outfile.close()
+
         # clean up samples
         del samples[track]
-
+        
     E.info( "sampling finished" )
 
     ##################################################
@@ -151,14 +200,6 @@ def run( segments,
                                (x, 
                                 "\t".join(map(str, [o.getSample(x) for o in output ] ) ) ) )
 
-    ##################################################
-    ##################################################
-    ##################################################
-    ## compute global fdr
-    ##################################################
-    E.info( "computing FDR statistics" )
-    computeFDR( list(iterator_results(annotator_results)) )
-
     return annotator_results
 
 def fromCounts( filename ):
@@ -184,14 +225,6 @@ def fromCounts( filename ):
                 annotation = annotation,
                 observed = observed[x],
                 samples = samples[:,x+1] )
-
-    ##################################################
-    ##################################################
-    ##################################################
-    ## compute global fdr
-    ##################################################
-    E.info( "computing FDR statistics" )
-    # computeFDR( list(iterator_results(annotator_results)) )
 
     return annotator_results
 
