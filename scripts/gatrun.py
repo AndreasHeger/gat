@@ -113,7 +113,7 @@ def fromSegments( options, args ):
     E.info( "%s: read %i tracks from %i files" % ("segments", len(segments), len(options.segment_files)))
     dumpStats( segments, "stats_segments_raw" )
     segments.normalize()
-    dumpStats( segments, "stats_segments_raw" )
+    dumpStats( segments, "stats_segments_normed" )
 
     # read one or more annotations
     annotations = gat.IntervalCollection( name = "annotations " )
@@ -239,13 +239,13 @@ def main( argv = None ):
                       help="filename with annotations [default=%default]."  )
 
     parser.add_option("-s", "--segment-file", dest="segment_files", type="string", action="append",
-                      help="filename with segments. Also accepts a glob in parantheses [default=%default]."  )
+                      help="filename with segments. Also accepts a glob in parentheses [default=%default]."  )
 
     parser.add_option("-w", "--workspace-file", dest="workspace_files", type="string", action="append",
-                      help="filename with workspace segments. Also accepts a glob in parantheses [default=%default]."  )
+                      help="filename with workspace segments. Also accepts a glob in parentheses [default=%default]."  )
 
     parser.add_option("-i", "--isochore-file", dest="isochore_files", type="string", action="append",
-                      help="filename with isochore segments. Also accepts a glob in parantheses [default=%default]."  )
+                      help="filename with isochore segments. Also accepts a glob in parentheses [default=%default]."  )
 
     parser.add_option("-l", "--sample-file", dest="sample_files", type="string", action="append",
                       help="filename with sample files. Start processing from samples [default=%default]."  )
@@ -373,7 +373,7 @@ def main( argv = None ):
     ##################################################
     ## output
     ##################################################
-    outfile = sys.stdout
+    outfile = options.stdout
 
     outfile.write("\t".join( gat.AnnotatorResult.headers ) + "\n" )
 

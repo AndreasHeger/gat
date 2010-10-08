@@ -1724,8 +1724,10 @@ cdef class BedProxy( TupleProxy ):
 
    property name:
        def __get__(self):
-           assert 3 < self.nfields
-           return self.fields[3]
+           if self.nfields >= 4:
+               return self.fields[3]
+           else:
+               return None
 
    property track:
        def __get__(self):
@@ -1734,7 +1736,7 @@ cdef class BedProxy( TupleProxy ):
 class Track(object):
     '''bed track information.'''
     def __init__(self, line ):
-        r= re.compile('([^ =]+) *= *("[^"]*"|[^ ]*)')
+        r= re.compile('([^\s=]+) *= *("[^"]*"|[^ ]*)')
 
         self._d = {}
         for k, v in r.findall(line[:-1]):
@@ -1850,9 +1852,13 @@ def readFromBed( filenames ):
         infile = IOTools.openFile( filename, "r")
         for bed in bed_iterator( infile ):
             if bed.track:
-                name = bed.track["name"]
+                try:
+                    name = bed.track["name"]
+                except KeyError:
+                    raise KeyError( "track without field 'name' in file '%s'" % filename)
             else:
                 name = bed.name
+
             l = segment_lists[name][bed.contig]
             l.add( atol(bed.fields[1]), atol(bed.fields[2]) )
 
