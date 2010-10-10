@@ -2,8 +2,8 @@
 # cython: profile=False
 
 import types, collections, re, os
-import IOTools
-import Experiment as E
+import gat.IOTools as IOTools
+import gat.Experiment as E
 import gat.Stats
 
 cimport cython
@@ -158,13 +158,21 @@ cdef inline long segment_overlap_raw(  Segment a, Segment b ):
 cdef inline long segment_length(  Segment a ):
     return a.end - a.start
 
+
 # trick to permit const void * in function definitions
 cdef extern from *:
     ctypedef void * const_void_ptr "const void*"
 
 @cython.profile(False)
 cdef int cmpSegments( const_void_ptr s1, const_void_ptr s2 ):
-    return (<Segment *>s1).start - (<Segment *>s2).start;
+    return (<Segment *>s1).start - (<Segment *>s2).start
+
+@cython.profile(False)
+cdef int cmpSegmentsStartAndEnd( const_void_ptr s1, const_void_ptr s2 ):
+    cdef int x
+    x = (<Segment *>s1).start - (<Segment *>s2).start
+    if x != 0: return x
+    return (<Segment *>s1).end - (<Segment *>s2).end
 
 @cython.profile(False)
 cdef int cmpLong( const_void_ptr s1, const_void_ptr s2 ):
@@ -194,7 +202,7 @@ cdef class SegmentList:
                  iter = None,
                  normalize = False ):
         '''create empty list of segments.'''
-        cdef long idx
+        cdef long idx, nsegments
         self.nsegments = 0
         # an empty list is normalized
         self.is_normalized = 1
@@ -208,7 +216,8 @@ cdef class SegmentList:
             self.is_normalized = clone.is_normalized
         elif iter:
             a = tuple(iter)
-            self.nsegments = self.allocated = len(a)
+            nsegments = len(a)
+            self.nsegments = self.allocated = nsegments
             self.segments = <Segment*>calloc( self.nsegments, sizeof( Segment ) )
             idx = 0
             for start, end in a:
@@ -689,9 +698,7 @@ cdef class SegmentList:
         x = self.__len__().__cmp__(len(other))
         if x != 0: return x
         for idx from 0 <= idx < self.nsegments:
-            x = self.segments[idx].start.__cmp__(other.segments[idx].start)
-            if x != 0: return x
-            x = self.segments[idx].end.__cmp__(other.segments[idx].end)
+            x = cmpSegmentsStartAndEnd( &self.segments[idx], &other.segments[idx] )
             if x != 0: return x
         return 0
 

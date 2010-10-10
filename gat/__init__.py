@@ -3,9 +3,9 @@ from cgat import *
 import os, sys, re, optparse, collections, types, gzip
 import numpy
 
-import Bed
-import IOTools
-import Experiment as E
+import gat.Bed as Bed
+import gat.IOTools as IOTools
+import gat.Experiment as E
 
 def readFromBedOld( filenames, name = "track" ):
     '''read Segment Lists from one or more bed files.

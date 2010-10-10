@@ -49,7 +49,7 @@ metadata = {
     'platforms': "ALL",
     'url': "",
     'py_modules': [
-      "gat/__init__", "gat/Stats" ],
+      "gat/__init__", "gat/Stats", "gat/IOTools", "gat/Experiment", "gat/Bed" ],
     'ext_modules': [cgat],
     'cmdclass' : {'build_ext': build_ext},
     'scripts' : ['scripts/gatrun.py' ],
