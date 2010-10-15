@@ -1,0 +1,63 @@
+{% extends "layout.html" %}
+{% set title = 'GAT - Genomic Association Tester' %}
+
+{% block body %}
+
+<p>
+<img src="_static/logo.png" alt="logo">
+</p>
+
+<h1> Genomic association tester</h1>
+
+<p>
+The genomic association tester (GAT) tests for association
+between sets of genomic intervals.
+<p>
+GAT tests if two sets of genomic intervals are associated more than expected by chance.
+Assocation typically means nucleotide overlap, but other 
+measures such as the distance between elements or the number of
+overlapping segments can be used. 
+<p>
+The tests are performed by simulation within a genomic context. 
+The simulation part takes care of segment length distribution. 
+The genomic context takes into account chromosomal location and optionally 
+isochores.
+
+<h2> Documentation</h2>
+
+<table class="contentstable" align="center" style="margin-left: 30px"><tr>
+  <td width="50%">
+    <p class="biglink"><a class="biglink" href="contents.html">Contents</a><br/>
+    <span class="linkdescr">for a complete overview</span></p>
+    <p class="biglink"><a class="biglink" href="search.html">Search page</a><br/>
+    <span class="linkdescr">search the documentation</span></p>
+  </td>
+  <!--
+  <td width="50%">
+    
+    <p class="biglink"><a class="biglink" href="genindex.html">General Index</a><br/>
+    <span class="linkdescr">all functions, classes, terms</span></p>
+    <p class="biglink"><a class="biglink" href="modindex.html">Module Index</a><br/>
+    <span class="linkdescr">quick access to all documented modules</span></p>
+  </td>
+  -->
+</tr>
+</table>
+
+<h2>Examples</h2>
+
+A tutorial example.
+
+
+<h2>Get gat</h2>
+
+<p>
+    <i>Gat</i> is available as an <a href="http://peak.telecommunity.com/DevCenter/EasyInstall">easy-install</a>able
+    package on the <a href="http://pypi.python.org/pypi/gat">Python Package
+    Index</a>.
+  </p>
+  <p>The code can be found at <a href="http://code.google.com/p/genomic-association-tester">Google Code</a>, at
+    <tt>http://code.google.com/p/genomic-association-tester/</tt>.
+</p>
+
+{% endblock %}

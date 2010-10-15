@@ -1609,12 +1609,15 @@ cdef class TupleProxy:
         char ** fields
         int nfields
         int index
+        int min_fields
 
     def __cinit__(self ):
 
         self.data = NULL
         self.fields = NULL
         self.index = 0
+        self.nfields = 0
+        self.min_fields = 0
 
     cdef take( self, char * buffer, size_t nbytes ):
         '''start presenting buffer.
@@ -1680,6 +1683,10 @@ cdef class TupleProxy:
 
         self.nfields = field
 
+        if self.nfields < self.min_fields:
+            raise IOError("not enough fields, expected >%i, got %i" % \
+                              (self.min_fields, self.nfields))
+
     def __getitem__( self, key ):
 
         cdef int i
@@ -1713,20 +1720,18 @@ cdef class BedProxy( TupleProxy ):
    cdef track
    def __init__(self, track ):
        self.track = track
+       self.min_fields = 3
 
    property contig:
        def __get__(self):
-           assert 0 < self.nfields
            return self.fields[0]
 
    property start:
        def __get__(self):
-           assert 1 < self.nfields
            return atol(self.fields[1])
 
    property end:
        def __get__(self):
-           assert 2 < self.nfields
            return atol(self.fields[2])
 
    property name:
@@ -1846,10 +1851,14 @@ def readFromBed( filenames ):
 
     Segment lists are grouped by *contig* and *track*.
 
-    If no track is given, the *name* attribute is taken.
+    If no *track* is given, the *name* attribute is taken
+    instead. If that is not present (BED3 format), the
+    *track* is called ``default``.
+    
     '''
     cdef SegmentList l
     cdef BedProxy bed
+    cdef long lineno
 
     segment_lists = collections.defaultdict( _genie )
 
@@ -1857,17 +1866,27 @@ def readFromBed( filenames ):
         filenames = (filenames,)
     for filename in filenames:
         infile = IOTools.openFile( filename, "r")
-        for bed in bed_iterator( infile ):
-            if bed.track:
-                try:
-                    name = bed.track["name"]
-                except KeyError:
-                    raise KeyError( "track without field 'name' in file '%s'" % filename)
-            else:
-                name = bed.name
+        lineno = 0
+        try:
+            for bed in bed_iterator( infile ):
+                if bed.track:
+                    try:
+                        name = bed.track["name"]
+                    except KeyError:
+                        raise KeyError( "track without field 'name' in file '%s'" % filename)
+                elif bed.name: 
+                    name = bed.name
+                else:
+                    name = "default"
 
-            l = segment_lists[name][bed.contig]
-            l.add( atol(bed.fields[1]), atol(bed.fields[2]) )
+                l = segment_lists[name][bed.contig]
+                l.add( atol(bed.fields[1]), atol(bed.fields[2]) )
+                lineno += 1
+
+        except IOError, msg:
+            raise IOError("malformatted entry in line %s:%i, msg=%s" % (filename,
+                                                                        lineno,
+                                                                        msg))
 
     return segment_lists
 
@@ -1945,6 +1964,24 @@ class IntervalCollection(object):
                 s += segmentlist.sum()
         return s
 
+    def counts( self ):
+        '''return number of all segments in all segments lists.'''
+        s = 0
+        for track, vv in self.intervals.iteritems():
+            for contig, segmentlist in vv.iteritems():
+                s += len(segmentlist)
+        return s
+
+    def countsPerTrack( self ):
+        '''return number of all segments in all segments lists.'''
+        counts = {}
+        for track, vv in self.intervals.iteritems():
+            s = 0
+            for contig, segmentlist in vv.iteritems():
+                s += len(segmentlist)
+            counts[track] = s 
+        return counts
+        
     def prune( self, other ):
         '''remove all intervals not overlapping with intervals in other.'''
         for track, vv in self.intervals.iteritems():
@@ -1984,7 +2021,6 @@ class IntervalCollection(object):
                     isochore = "%s.%s" % (contig, other_track)
                     vv[isochore] = newlist
                 del vv[contig]
-
 
     @property
     def tracks(self): return self.intervals.keys()
@@ -2062,7 +2098,11 @@ cdef class Samples( object ):
         raise ValueError( "loading called for uncached data" )
 
     def __delitem__(self, key ):
+        E.debug("releasing memory for sample %s" % key )
         del self.samples[key]
+
+    def __len__(self):
+        return len(self.samples)
 
 cdef class SamplesFile( Samples ):
     '''a collection of samples.

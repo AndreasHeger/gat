@@ -190,11 +190,24 @@ def fromSegments( options, args ):
     ##################################################
     ##################################################
     ##################################################
+    ## check memory requirements
+    counts = segments.countsPerTrack() 
+    max_counts = max(counts.values())
+    memory = 8 * 2 * options.num_samples * max_counts * len(workspace)
+    print max_counts, len(workspace), options.num_samples, 8*2, memory, memory / 1000000000
+
+    ##################################################
+    ##################################################
+    ##################################################
     # initialize sampler
     sampler = gat.SamplerAnnotator(
         bucket_size = options.bucket_size,
         nbuckets = options.nbuckets )
 
+
+    ##################################################
+    ##################################################
+    ##################################################
     # initialize counter
     if options.counter == "nucleotide-overlap":
         counter = gat.CounterNucleotideOverlap()

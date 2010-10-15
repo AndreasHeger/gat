@@ -93,8 +93,6 @@ def run( segments,
     ##################################################
     # sample and collect counts
     ##################################################
-    E.info( "starting sampling" )
-
     if cache:
         E.info( "samples are cached in %s" % cache)
         samples = SamplesCached( filename = cache )
@@ -116,11 +114,13 @@ def run( segments,
     ntracks = len(segments.tracks)
     for ntrack, track in enumerate(segments.tracks):
         segs = segments[track]
-        E.info( "sampling: %s: %i/%i " % (track, ntrack+1, ntracks))
+
+        E.info( "sampling: %s: %i/%i" % (track, ntrack+1, ntracks))
+
         for x in xrange( num_samples ):
             # use textual sample ids to avoid parsing from dumped samples
             sample_id = str(x)
-            E.debug( "progress: %s: %i/%i" % (track, x+1, num_samples))
+            E.debug( "progress: %s: %i/%i %i isochores" % (track, x+1, num_samples, len(segs.keys())))
             for isochore in segs.keys():
                 counts.pairs += 1
                 # skip empty isochores
