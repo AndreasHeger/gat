@@ -825,6 +825,11 @@ cdef class SegmentListSamplerWithEdgeEffects:
 
         return start, end, overlap
 
+    def __dealloc__(self):
+        if self.cdf != NULL:
+            free(self.cdf)
+            self.cdf = NULL
+
 cdef class SegmentListSampler:
     '''return a new position within segment list.
 
@@ -897,6 +902,11 @@ cdef class SegmentListSampler:
              self.segment_list.segments[segment_index])
 
         return start, end, overlap
+
+    def __dealloc__(self):
+        if self.cdf != NULL:
+            free(self.cdf)
+            self.cdf = NULL
 
 cdef class HistogramSamplerSlow:
 
@@ -982,6 +992,7 @@ cdef class HistogramSampler:
     def __dealloc__(self ):
         if self.cdf != NULL:
             free( self.cdf )
+            self.cdf = NULL
 
 cdef class Sampler:
     pass
@@ -1702,6 +1713,7 @@ cdef class TupleProxy:
     def __dealloc__(self):
         if self.data != NULL:
             free(self.data)
+            self.data = NULL
 
     def __iter__(self):
         self.index = 0
@@ -2195,7 +2207,7 @@ cdef class SamplesCached( Samples ):
         cdef off_t pos
         cdef char * key
         cdef char keylen
-
+        
         l = len(seglist)
         if l == 0: return
 
@@ -2211,6 +2223,7 @@ cdef class SamplesCached( Samples ):
         keylen = strlen( key ) + 1
 
         self.index[ key ] = pos
+
         fwrite( &seglist.nsegments, sizeof( long ), 1, self.fcache )
         toCompressedFile( <unsigned char *>seglist.segments,
                           sizeof( Segment) * seglist.nsegments,

@@ -108,21 +108,24 @@ def fromSegments( options, args ):
         
     # read one or more segment files
     segments = gat.IntervalCollection( name = "segments" )
-    E.info( "%s: reading intervals from %i files" % ("segments", len(options.segment_files)))
+    E.info( "%s: reading segment tracks from %i files" % ("segments", len(options.segment_files)))
     segments.load( options.segment_files )
-    E.info( "%s: read %i tracks from %i files" % ("segments", len(segments), len(options.segment_files)))
+    E.info( "%s: read %i segment tracks from %i files" % ("segments", len(segments), len(options.segment_files)))
     dumpStats( segments, "stats_segments_raw" )
     segments.normalize()
     dumpStats( segments, "stats_segments_normed" )
 
     # read one or more annotations
     annotations = gat.IntervalCollection( name = "annotations " )
+    E.info( "%s: reading annotation tracks from %i files" % ("annotations", len(options.annotation_files)))
     annotations.load( options.annotation_files )
+    E.info( "%s: read %i annotation tracks from %i files" % ("annotations", len(annotations), len(options.annotation_files)))
     dumpStats( annotations, "stats_annotations_raw" )
     annotations.normalize()
     dumpStats( annotations, "stats_annotations_normed" )
-
+    
     # read one or more workspaces
+
     workspaces = gat.IntervalCollection( name = "workspaces " )
     workspaces.load( options.workspace_files )
     dumpStats( workspaces, "stats_workspaces_raw" )
@@ -193,8 +196,8 @@ def fromSegments( options, args ):
     ## check memory requirements
     counts = segments.countsPerTrack() 
     max_counts = max(counts.values())
+    # previous algorithm: memory requirements if all samples are stored
     memory = 8 * 2 * options.num_samples * max_counts * len(workspace)
-    print max_counts, len(workspace), options.num_samples, 8*2, memory, memory / 1000000000
 
     ##################################################
     ##################################################
@@ -203,7 +206,6 @@ def fromSegments( options, args ):
     sampler = gat.SamplerAnnotator(
         bucket_size = options.bucket_size,
         nbuckets = options.nbuckets )
-
 
     ##################################################
     ##################################################

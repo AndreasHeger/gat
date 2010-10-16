@@ -108,11 +108,16 @@ def run( segments,
         samples = Samples()
 
     sampled_counts = {}
+    old_sampled_counts = {}
     
     counts = E.Counter()
 
     ntracks = len(segments.tracks)
+
     for ntrack, track in enumerate(segments.tracks):
+
+        counts_per_track = collections.defaultdict( list )
+        
         segs = segments[track]
 
         E.info( "sampling: %s: %i/%i" % (track, ntrack+1, ntracks))
@@ -121,6 +126,7 @@ def run( segments,
             # use textual sample ids to avoid parsing from dumped samples
             sample_id = str(x)
             E.debug( "progress: %s: %i/%i %i isochores" % (track, x+1, num_samples, len(segs.keys())))
+            counts_per_isochore = collections.defaultdict( list )
             for isochore in segs.keys():
                 counts.pairs += 1
                 # skip empty isochores
@@ -128,26 +134,33 @@ def run( segments,
                     E.debug( "skipping empty isochore %s" % isochore )
                     counts.skipped += 1
                     continue
+
                 # skip if read from cache
                 if samples.hasSample( track, sample_id, isochore ): 
                     counts.loaded += 1
                     samples.load( track, sample_id, isochore )
+                    r = samples[track][sample_id][isochore]
+                    del samples[track][sample_id][isochore]
                 else:
                     counts.sampled += 1
                     r = sampler.sample( segs[isochore], workspace[isochore] )
-                    samples.add( track, sample_id, isochore, r )
+                # compute counts for each annotation/isochore and save
+                for annotation in annotations.tracks:
+                    annos = annotations[annotation]
+                    counts_per_isochore[annotation].append( counter( r, annos[isochore], workspace[isochore] ) )
 
+                # TODO: save sample
+
+            # TODO: choose aggregator
+            for annotation in annotations.tracks:
+                counts_per_track[annotation].append( sum( counts_per_isochore[annotation] ) )
+
+        sampled_counts[track] = counts_per_track
+        
         E.info( "sampling stats: %s" % str(counts))
         if track not in samples:
             E.warn( "no samples for track %s" % track )
             continue
-
-        sampled_counts[track] = computeCounts( counter = counter,
-                                               aggregator = sum,
-                                               segments = samples[track],
-                                               annotations = annotations,
-                                               workspace = workspace,
-                                               append = True )
 
         if output_samples_pattern and not sample_files:
             filename = re.sub("%s", track, output_samples_pattern )
@@ -161,7 +174,7 @@ def run( segments,
 
         # clean up samples
         del samples[track]
-        
+
     E.info( "sampling finished" )
 
     ##################################################
