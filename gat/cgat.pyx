@@ -1998,7 +1998,10 @@ class IntervalCollection(object):
         '''remove all intervals not overlapping with intervals in other.'''
         for track, vv in self.intervals.iteritems():
             for contig, segmentlist in vv.iteritems():
-                segmentlist.intersect( other[contig] )
+                if contig in other:
+                    segmentlist.intersect( other[contig] )
+                else:
+                    del vv[contig]
 
     def sort( self ):
         '''sort all intervals lists.'''

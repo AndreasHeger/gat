@@ -122,13 +122,28 @@ def run( segments,
 
         E.info( "sampling: %s: %i/%i" % (track, ntrack+1, ntracks))
 
+        if output_samples_pattern and not sample_files:
+            filename = re.sub("%s", track, output_samples_pattern )
+            E.debug( "saving samples to %s" % filename)
+            if filename.endswith(".gz"):
+                samples_outfile = gzip.open( filename, "w" )                
+            else:
+                samples_outfile = open( filename, "w" )
+        else:
+            samples_outfile = None
+
         for x in xrange( num_samples ):
             # use textual sample ids to avoid parsing from dumped samples
             sample_id = str(x)
             E.debug( "progress: %s: %i/%i %i isochores" % (track, x+1, num_samples, len(segs.keys())))
             counts_per_isochore = collections.defaultdict( list )
+
+            if samples_outfile: 
+                samples_outfile.write("track name=%s\n" % sample_id)
+
             for isochore in segs.keys():
                 counts.pairs += 1
+
                 # skip empty isochores
                 if workspace[isochore].isEmpty or segs[isochore].isEmpty: 
                     E.debug( "skipping empty isochore %s" % isochore )
@@ -144,36 +159,37 @@ def run( segments,
                 else:
                     counts.sampled += 1
                     r = sampler.sample( segs[isochore], workspace[isochore] )
+                    E.debug( "sample=%s, isochore=%s, segs=%i, sample=%i" % \
+                                 (sample_id, isochore, segs[isochore].sum(), r.sum()) )
                 # compute counts for each annotation/isochore and save
                 for annotation in annotations.tracks:
                     annos = annotations[annotation]
                     counts_per_isochore[annotation].append( counter( r, annos[isochore], workspace[isochore] ) )
 
-                # TODO: save sample
+                # save sample
+                if samples_outfile: 
+                    for start, end in r:
+                        samples_outfile.write( "%s\t%i\t%i\n" % (isochore, start, end))
+
 
             # TODO: choose aggregator
             for annotation in annotations.tracks:
                 counts_per_track[annotation].append( sum( counts_per_isochore[annotation] ) )
 
+        if samples_outfile: samples_outfile.close()
+
         sampled_counts[track] = counts_per_track
         
-        E.info( "sampling stats: %s" % str(counts))
-        if track not in samples:
-            E.warn( "no samples for track %s" % track )
-            continue
+        # old code, refactor into loop to save samples
+        if 0:
+            E.info( "sampling stats: %s" % str(counts))
+            if track not in samples:
+                E.warn( "no samples for track %s" % track )
+                continue
 
-        if output_samples_pattern and not sample_files:
-            filename = re.sub("%s", track, output_samples_pattern )
-            E.debug( "saving samples to %s" % filename)
-            if filename.endswith(".gz"):
-                outfile = gzip.open( filename, "w" )                
-            else:
-                outfile = open( filename, "w" )
-            samples[track].save( outfile )
-            outfile.close()
 
-        # clean up samples
-        del samples[track]
+            # clean up samples
+            del samples[track]
 
     E.info( "sampling finished" )
 

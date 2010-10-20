@@ -101,7 +101,7 @@ def fromSegments( options, args ):
     ##################################################
     ##################################################
     ##################################################
-    # process segments
+    # process input
     def dumpStats( coll, section ):
         if section in options.output_stats or "all" in options.output_stats:
             coll.outputStats( E.openOutputFile( section ) )
@@ -125,7 +125,6 @@ def fromSegments( options, args ):
     dumpStats( annotations, "stats_annotations_normed" )
     
     # read one or more workspaces
-
     workspaces = gat.IntervalCollection( name = "workspaces " )
     workspaces.load( options.workspace_files )
     dumpStats( workspaces, "stats_workspaces_raw" )
@@ -139,6 +138,7 @@ def fromSegments( options, args ):
     # use merged workspace only, discard others
     workspaces.restrict("merged")
 
+    # build isochores or intersect annotations/segments with workspace
     if options.isochore_files:
 
         # read one or more isochore files
@@ -172,14 +172,15 @@ def fromSegments( options, args ):
         dumpStats( annotations, "stats_annotations_isochores" )
         dumpStats( segments, "stats_segments_isochores" )
     
-    workspace = workspaces["merged"] 
+    else:
+        # intersect workspace and segments/annotations
+        annotations.prune( workspaces["merged"] )
+        segments.prune( workspaces["merged"] )
 
-    # prune segments and annotations keeping only
-    # those overlapping the workspace
-    #segments.prune( workspace )
-    #segments.outputStats( options.stdout )
-    #annotations.prune( workspace )
-    #annotations.outputStats( options.stdout )
+        dumpStats( annotations, "stats_annotations_pruned" )
+        dumpStats( segments, "stats_segments_pruned" )
+
+    workspace = workspaces["merged"] 
 
     # segments.dump( open("segments_dump.bed", "w" ) )
     # workspaces.dump( open("workspaces_dump.bed", "w" ) )
@@ -250,16 +251,16 @@ def main( argv = None ):
     parser = optparse.OptionParser( version = "%prog version: $Id: script_template.py 2871 2010-03-03 10:20:44Z andreas $", 
                                     usage = globals()["__doc__"] )
 
-    parser.add_option("-a", "--annotation-file", dest="annotation_files", type="string", action="append",
+    parser.add_option("-a", "--annotation-file", "--annotations", dest="annotation_files", type="string", action="append",
                       help="filename with annotations [default=%default]."  )
 
-    parser.add_option("-s", "--segment-file", dest="segment_files", type="string", action="append",
+    parser.add_option("-s", "--segment-file", "--segments", dest="segment_files", type="string", action="append",
                       help="filename with segments. Also accepts a glob in parentheses [default=%default]."  )
 
-    parser.add_option("-w", "--workspace-file", dest="workspace_files", type="string", action="append",
+    parser.add_option("-w", "--workspace-file", "--workspace", dest="workspace_files", type="string", action="append",
                       help="filename with workspace segments. Also accepts a glob in parentheses [default=%default]."  )
 
-    parser.add_option("-i", "--isochore-file", dest="isochore_files", type="string", action="append",
+    parser.add_option("-i", "--isochore-file", "--isochores", dest="isochore_files", type="string", action="append",
                       help="filename with isochore segments. Also accepts a glob in parentheses [default=%default]."  )
 
     parser.add_option("-l", "--sample-file", dest="sample_files", type="string", action="append",
