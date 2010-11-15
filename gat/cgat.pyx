@@ -285,7 +285,7 @@ cdef class SegmentList:
 
         assert self.is_normalized, "trimming in non-normalized list"
 
-        cdef long idx
+        cdef long idx, l
         cdef Segment other, seg
 
         assert self.sum() > size, "trimming more than the total length (%i < %i)" % (self.sum(), size)
@@ -303,9 +303,10 @@ cdef class SegmentList:
 
         while size > 0:
             seg = self.segments[idx]
+            l = segment_length( seg )
             if segment_length( seg ) < size:
                 self.segments[idx] = Segment(0,0)
-                size -= len(seg)
+                size -= l
             else:
                 self.segments[idx] = Segment( seg.start + size, seg.end )
                 size = 0
@@ -331,30 +332,39 @@ cdef class SegmentList:
         self.sort()
 
         insertion_idx = 0
+
+        # skip to first non-empty segment
         idx = 0
         while idx < self.nsegments and self.segments[idx].start == self.segments[idx].end: 
             idx += 1
+
         # only empty segments - empty list, but declare normalized
         if idx == self.nsegments:
             self.nsegments = 0
             self.is_normalized = 1
             return
 
+        self.segments[insertion_idx].start = self.segments[idx].start
         max_end = self.segments[idx].end
-
-        for idx from 0 <= idx < self.nsegments:
-            if self.segments[idx].start == self.segments[idx].end: continue
+        
+        while idx < self.nsegments:
+            # skip empty
+            if self.segments[idx].start == self.segments[idx].end: 
+                idx += 1
+                continue
+            # no overlap - save segment
             if self.segments[idx].start >= max_end:
                 self.segments[insertion_idx].end = max_end
                 insertion_idx += 1
                 self.segments[insertion_idx].start = self.segments[idx].start
+
             max_end = lmax( self.segments[idx].end, max_end )
+            idx += 1
 
         # store final segment
         self.segments[insertion_idx].end = max_end
 
         # truncate array
-        idx += 1
         insertion_idx += 1
         self.nsegments = insertion_idx
         self.segments = <Segment*>realloc( self.segments, self.nsegments * sizeof( Segment ) )
@@ -565,6 +575,66 @@ cdef class SegmentList:
                                         ) )
             histogram[i] += 1
         return histogram
+
+    cpdef SegmentList filter( self, SegmentList other ):
+        '''remove all segments that are not in *other*
+
+        Both this and other are assumed to have been normalized.
+        '''
+
+        # avoid self-self comparison
+        if other.segments == self.segments: return self
+
+        cdef Segment * new_segments
+        cdef size_t allocated
+        # create new list
+        new_segments =<Segment*>malloc( self.nsegments * sizeof( Segment ) )
+
+        cdef long this_idx, other_idx, working_idx, last_this_idx, last_other_idx
+        working_idx = this_idx = other_idx = 0
+        last_this_idx = last_other_idx = -1
+        cdef Segment this_segment, other_segment
+        cdef long last_start = -1
+
+        while this_idx < self.nsegments and other_idx < other.nsegments:
+
+            # print "this=", this_idx, self.nsegments, "other=", other_idx, other.nsegments
+            if last_this_idx != this_idx:
+                this_segment = self.segments[this_idx]
+                last_this_idx = this_idx
+            if last_other_idx != other_idx:
+                other_segment = other.segments[other_idx]
+                last_other_idx = other_idx
+
+            # print this_segment, other_segment
+            # skip segments in this not overlapping other
+            if this_segment.end <= other_segment.start:
+                this_idx += 1
+            # skip segments in other not overlapping this
+            elif other_segment.end <= this_segment.start:
+                other_idx += 1
+            else:
+                # deal with overlap
+                if last_start != this_segment.start:
+                    new_segments[working_idx].start = this_segment.start
+                    new_segments[working_idx].end = this_segment.end
+                    working_idx += 1
+                    last_start = this_segment.start
+
+                if this_segment.end < other_segment.end:
+                    this_idx += 1
+                elif other_segment.end < this_segment.end:
+                    other_idx += 1
+                else:
+                    this_idx += 1
+                    other_idx += 1
+
+        free( self.segments )
+        self.nsegments = working_idx
+        self.allocated = self.nsegments
+
+        self.segments = <Segment*>realloc( new_segments, self.nsegments * sizeof(Segment ) )
+        return self
 
     cpdef SegmentList intersect( self, SegmentList other ):
         '''intersect this segment list with another.
@@ -1041,7 +1111,6 @@ cdef class SamplerAnnotator(Sampler):
         cdef int nunsuccessful_rounds
         cdef int max_unsuccessful_rounds
         cdef long length
-        cdef long pos
         cdef long overlap
         cdef Segment segment, sampled_segment
         cdef SegmentList sampled_segments
@@ -1097,26 +1166,25 @@ cdef class SamplerAnnotator(Sampler):
             # If we can now potentially get required number of nucleotides, recompute
             # the required amount since we might need more due to overlap
             if remaining <= length:
-                # print "recomputing segments"
-                # print " sampled segments", sampled_segments.asList()
+                #print "recomputing segments", nunsuccessful_rounds
+                #print " sampled segments", sampled_segments.asList()
                 unintersected_segments.extend( sampled_segments )
                 unintersected_segments.normalize()
-                # print "extended"
+                #print "extended"
                 sampled_segments.clear()
                 # compute overlap with workspace
                 intersected_segments = SegmentList( clone = unintersected_segments )
                 intersected_segments.normalize()
                 intersected_segments.intersect( workspace )
-                # print " sampled_segments", sampled_segments.sum(), len(sampled_segments)
-                # print " unintersected_segments", unintersected_segments.sum(), len(unintersected_segments)
-                # print unintersected_segments.asList()
-                # print " intersected_segments", intersected_segments.sum(), len(intersected_segments)
-                # print intersected_segments.asList()
-                # assert intersected_segments.sum() <= unintersected_segments.sum()
-                # if not intersected_segments.sum() <= ltotal:
-                #     print "\n".join( [str(x) for x in intersected_segments ] ) + "\n"
-                # assert intersected_segments.sum() <= ltotal, \
-                #     "length of segments exceeds ltotal: %i > %i" % (intersected_segments.sum(), ltotal)
+                #print " unintersected_segments", unintersected_segments.sum(), len(unintersected_segments)
+                #print unintersected_segments.asList()
+                #print " intersected_segments", intersected_segments.sum(), len(intersected_segments)
+                #print intersected_segments.asList()
+                #assert intersected_segments.sum() <= unintersected_segments.sum()
+                #if not intersected_segments.sum() <= ltotal:
+                #   print "\n".join( [str(x) for x in intersected_segments ] ) + "\n"
+                #assert intersected_segments.sum() <= ltotal, \
+                #    "length of segments exceeds ltotal: %i > %i" % (intersected_segments.sum(), ltotal)
                 remaining = ltotal - intersected_segments.sum()
                 if true_remaining == remaining:
                     nunsuccessful_rounds += 1
@@ -1125,10 +1193,17 @@ cdef class SamplerAnnotator(Sampler):
 
             # deal with overshoot
             if true_remaining < 0:
-                # print "removing overshoot"
+                #print "removing overshoot", true_remaining
                 temp_sampler = SegmentListSampler( unintersected_segments )
                 start, end, overlap = temp_sampler.sample( length )
+                #print "unintersected_segments before trim", unintersected_segments.sum(), unintersected_segments.asList()
                 unintersected_segments.trim( start, -true_remaining )
+                # trimming might remove residues outside the workspace
+                # hence - recompute true_remaining by going back to loop.
+                #print "unintersected_segments after  trim", unintersected_segments.sum(), unintersected_segments.asList()
+                true_remaining = 1
+                continue
+
 
             # sample a position until we get a nonzero overlap
             start, end, overlap = sls.sample( length )
@@ -1139,19 +1214,24 @@ cdef class SamplerAnnotator(Sampler):
             # overshoot the mark.  However, if we can't increase the amount of overlap in a
             # reasonable amount of time, don't bother
             if remaining < overlap and nunsuccessful_rounds < max_unsuccessful_rounds:
-                # print "truncating sampled segment", remaining, overlap
-                if workspace.overlapWithRange( pos, pos+1 ) > 0:
+                #print "truncating sampled segment", remaining, overlap, str(sampled_segment)
+                if workspace.overlapWithRange( sampled_segment.start, sampled_segment.start+1 ) > 0:
                     # Left end overlaps with workspace
                     sampled_segment.end = sampled_segment.start + remaining;
-                else:
+                elif workspace.overlapWithRange( sampled_segment.end-1, sampled_segment.end ) > 0:
                     # Right end does?
                     sampled_segment.start = sampled_segment.end - remaining;
+
                 overlap = workspace.overlapWithRange( sampled_segment.start, sampled_segment.end );
+                #print "truncated to ", str(sampled_segment)
 
             if true_remaining > 0:
                 # print "adding segment ", sampled_segment, true_remaining
                 sampled_segments._add( sampled_segment )
                 remaining -= overlap
+
+
+        #print "final length: ", intersected_segments.sum()
 
         self.nunsuccessful_rounds = nunsuccessful_rounds
         return intersected_segments
@@ -1958,7 +2038,7 @@ class IntervalCollection(object):
 
     def merge( self ):
         '''merge all tracks into a single segment list
-        creating a new track called 'merged`
+        creating a new track called 'merged'
         '''
         merged = collections.defaultdict( SegmentList )
         
@@ -1967,6 +2047,21 @@ class IntervalCollection(object):
                 merged[contig].extend( segmentlist )
         self.intervals["merged"] = merged
         self.normalize()
+
+    def collapse( self ):
+        '''collapse all tracks into a single segment list
+        creating a new track called 'collapsed'
+        '''
+        result = collections.defaultdict( SegmentList )
+        
+        for track, vv in self.intervals.iteritems():
+            for contig, segmentlist in vv.iteritems():
+                if contig not in result:
+                    result[contig] = SegmentList( clone = segmentlist )
+                else:
+                    result[contig].intersect( segmentlist )
+                    
+        self.intervals["collapsed"] = result
 
     def sum( self ):
         '''return sum of all segment lists.'''
@@ -1994,12 +2089,21 @@ class IntervalCollection(object):
             counts[track] = s 
         return counts
         
-    def prune( self, other ):
-        '''remove all intervals not overlapping with intervals in other.'''
+    def intersect( self, other ):
+        '''intersect with intervals in other.'''
         for track, vv in self.intervals.iteritems():
-            for contig, segmentlist in vv.iteritems():
+            for contig, segmentlist in vv.items():
                 if contig in other:
                     segmentlist.intersect( other[contig] )
+                else:
+                    del vv[contig]
+
+    def filter( self, other ):
+        '''remove all intervals not overlapping with intervals in other.'''
+        for track, vv in self.intervals.iteritems():
+            for contig, segmentlist in vv.items():
+                if contig in other:
+                    segmentlist.filter( other[contig] )
                 else:
                     del vv[contig]
 

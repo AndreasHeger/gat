@@ -125,6 +125,8 @@ def run( segments,
         if output_samples_pattern and not sample_files:
             filename = re.sub("%s", track, output_samples_pattern )
             E.debug( "saving samples to %s" % filename)
+            dirname = os.path.dirname( filename )
+            if dirname and not os.path.exists( dirname ): os.makedirs( dirname )
             if filename.endswith(".gz"):
                 samples_outfile = gzip.open( filename, "w" )                
             else:
@@ -170,7 +172,6 @@ def run( segments,
                 if samples_outfile: 
                     for start, end in r:
                         samples_outfile.write( "%s\t%i\t%i\n" % (isochore, start, end))
-
 
             # TODO: choose aggregator
             for annotation in annotations.tracks:

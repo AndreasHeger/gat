@@ -28,6 +28,20 @@ class TestSegmentList( unittest.TestCase ):
         self.assertEqual( len(s), 10 )
         self.assertEqual( s.sum(), 100 )
 
+    def testNormalize1b( self ):
+        '''non-overlapping segments.'''
+
+        ss = [ (x, x + 10 ) for x in range( 100, 1100, 100) ]
+        random.shuffle(ss)
+        s = gat.SegmentList()
+        for start, end in ss: s.add( start, end )
+        s.normalize()
+        print str(s)
+        self.assertEqual( len(s), 10 )
+        self.assertEqual( s.sum(), 100 )
+
+        
+
     def testNormalizeEmpty( self ):
         '''non-overlapping segments.'''
 
@@ -85,6 +99,13 @@ class TestSegmentList( unittest.TestCase ):
         self.assertEqual( len(s), 1 )
         self.assertEqual( s.sum(), 1090 )
 
+    def testNormalize5( self ):
+        ss = [(489, 589), (1966, 2066), (2786, 2886), (0, 0), (3889, 3972), (3998, 4098), (6441, 6541), (6937, 7054), (7392, 7492), (8154, 8254), (9046, 9146)]
+        s = gat.SegmentList( iter = ss )
+        s.normalize()
+        self.assertEqual( len(s), len( [x for x in ss if x[1]-x[0] > 0] ) )
+        self.assertEqual( s.sum(), 1000 )
+
     def testExtend( self ):
         
         s1 = gat.SegmentList( iter =  [ (x, x + 100 ) for x in range( 0, 1000, 100) ] )
@@ -92,6 +113,17 @@ class TestSegmentList( unittest.TestCase ):
         s1.extend(s2 )
         self.assertEqual( s1.sum(), s2.sum() * 2 )
         self.assertEqual( len(s1), len(s2) * 2 )
+
+    def testTrim( self ):
+        '''test trimming over full range of insertion points and deletions.'''
+
+        for point in xrange( 0, 1100 ):
+            for size in xrange( 0, 200 ):
+                s = gat.SegmentList( iter =  [ (x, x + 100 ) for x in range( 0, 1000, 100) ],
+                                     normalize = True )
+                orig = s.sum()
+                s.trim( point, size )
+                self.assertEqual( orig - size, s.sum() ) 
 
 class TestSegmentListOverlap( unittest.TestCase ):
     
@@ -131,6 +163,7 @@ class TestSegmentListOverlap( unittest.TestCase ):
 class TestSegmentListIntersection( unittest.TestCase):
 
     def setUp( self ):
+        #[(0, 10), (100, 110), (200, 210), (300, 310), (400, 410), (500, 510), (600, 610), (700, 710), (800, 810), (900, 910)]
         self.a = gat.SegmentList( iter = ( (x, x + 10 ) for x in range( 0, 1000, 100) ), normalize = True )
 
     def testIntersectionFull( self ):
@@ -178,6 +211,10 @@ class TestSegmentListIntersection( unittest.TestCase):
         self.assertEqual( self.a.intersectionWithSegments( b ), 10 )
         self.assertEqual( b.intersectionWithSegments( self.a ), 20 )
 
+    def testFilter( self ):
+        
+        b = gat.SegmentList( iter = ( (x, x + 5 ) for x in range( 500, 2000, 100) ), normalize = True )
+        self.assertEqual( b.filter(self.a).asList(), [(500, 505), (600, 605), (700, 705), (800, 805), (900, 905)] )
 
 class TestIntervalCollection( unittest.TestCase):
 

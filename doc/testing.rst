@@ -35,6 +35,69 @@ as expected. In particular, look out for edge effects.
 
    10 workspaces of size 100, segment size of 1 (SNP).
 
+Sampling
+========
+
+The following plots benchmark the segment sampling behaviour of GAT and Annotator.
+The tests below sample from a segment list *10* segments with each segment of size *100*.
+
+
+GAT
+---
+
+.. figure:: ../test/testSingleWorkspace.TestSegmentSamplingGat.png
+   :width: 500
+
+   Single continuous workspace.
+
+.. figure:: ../test/testSegmentedWorkspaceSmallGap.TestSegmentSamplingGat.png
+   :width: 500
+
+   Workspace segmented into 10 segments of size 999 with a single nucleotide
+   gap between workspaces.
+
+.. figure:: ../test/testSegmentedWorkspaceLargeGap.TestSegmentSamplingGat.png
+   :width: 500
+
+   Workspace segmented into 10 segments of size 900 with a 100 nucleotide
+   gap between workspaces.
+
+.. figure:: ../test/testSegmentedWorkspace2x.TestSegmentSamplingGat.png
+   :width: 500
+
+   Workspace segmented into 10 segments of size 200 with a 800 nucleotide
+   gap between workspaces. In this case, workspace segments are only twice 
+   the size of segments.
+
+Annotator
+---------
+
+.. note::
+   If annotator is not installed, the annotator plots will be missing.
+
+.. figure:: ../test/testSingleWorkspace.TestSegmentSamplingGat.png
+   :width: 500
+
+   Single continuous workspace.
+
+.. figure:: ../test/testSegmentedWorkspaceSmallGap.TestSegmentSamplingGat.png
+   :width: 500
+
+   Workspace segmented into 10 segments of size 999 with a single nucleotide
+   gap between workspaces.
+
+.. figure:: ../test/testSegmentedWorkspaceLargeGap.TestSegmentSamplingGat.png
+   :width: 500
+
+   Workspace segmented into 10 segments of size 900 with a 100 nucleotide
+   gap between workspaces.
+
+.. figure:: ../test/testSegmentedWorkspace2x.TestSegmentSamplingGat.png
+   :width: 500
+
+   Workspace segmented into 10 segments of size 200 with a 800 nucleotide
+   gap between workspaces. In this case, workspace segments are only twice 
+   the size of segments.
 
 Statistics
 ==========

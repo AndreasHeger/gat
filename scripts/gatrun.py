@@ -103,46 +103,41 @@ def fromSegments( options, args ):
     ##################################################
     # process input
     def dumpStats( coll, section ):
-        if section in options.output_stats or "all" in options.output_stats:
+        if section in options.output_stats or \
+                "all" in options.output_stats or \
+                len( [ x for x in options.output_stats if re.search( x, section ) ] ) > 0:
             coll.outputStats( E.openOutputFile( section ) )
-        
-    # read one or more segment files
-    segments = gat.IntervalCollection( name = "segments" )
-    E.info( "%s: reading segment tracks from %i files" % ("segments", len(options.segment_files)))
-    segments.load( options.segment_files )
-    E.info( "%s: read %i segment tracks from %i files" % ("segments", len(segments), len(options.segment_files)))
-    dumpStats( segments, "stats_segments_raw" )
-    segments.normalize()
-    dumpStats( segments, "stats_segments_normed" )
 
-    # read one or more annotations
-    annotations = gat.IntervalCollection( name = "annotations " )
-    E.info( "%s: reading annotation tracks from %i files" % ("annotations", len(options.annotation_files)))
-    annotations.load( options.annotation_files )
-    E.info( "%s: read %i annotation tracks from %i files" % ("annotations", len(annotations), len(options.annotation_files)))
-    dumpStats( annotations, "stats_annotations_raw" )
-    annotations.normalize()
-    dumpStats( annotations, "stats_annotations_normed" )
-    
-    # read one or more workspaces
-    workspaces = gat.IntervalCollection( name = "workspaces " )
-    workspaces.load( options.workspace_files )
-    dumpStats( workspaces, "stats_workspaces_raw" )
-    workspaces.normalize()
-    dumpStats( workspaces, "stats_workspaces_normed" )
+    def readSegmentList( label, filenames ):
+        # read one or more segment files
+        results = gat.IntervalCollection( name = label )
+        E.info( "%s: reading tracks from %i files" % (label, len(filenames)))
+        results.load( filenames )
+        E.info( "%s: read %i tracks from %i files" % (label, len(results), len(filenames)))
+        dumpStats( results, "stats_%s_raw" % label )
+        results.normalize()
+        dumpStats( results, "stats_%s_normed" % label )
+        return results
+
+    # read one or more segment files
+    segments = readSegmentList( "segments", options.segment_files)
+    annotations = readSegmentList( "annotations", options.annotation_files)
+    workspaces = readSegmentList( "workspaces", options.workspace_files)
 
     # intersect workspaces to build a single workspace
-    workspaces.merge()
-    dumpStats( workspaces, "stats_workspaces_merged" )
+    E.info( "collapsing workspaces" )
+    workspaces.collapse()
+    dumpStats( workspaces, "stats_workspaces_collapsed" )
 
     # use merged workspace only, discard others
-    workspaces.restrict("merged")
+    workspaces.restrict("collapsed")
 
     # build isochores or intersect annotations/segments with workspace
     if options.isochore_files:
 
         # read one or more isochore files
         isochores = gat.IntervalCollection( name = "isochores" )
+        E.info( "%s: reading isochores from %i files" % ("isochores", len(options.isochore_files)))
         isochores.load( options.isochore_files )
         dumpStats( isochores, "stats_isochores_raw" )
 
@@ -151,16 +146,18 @@ def fromSegments( options, args ):
 
         # check that there are no overlapping segments within isochores
         isochores.check()
+
         # TODO: flag is_normalized not properly set
         isochores.normalize()
 
         # check that there are no overlapping segments between isochores
 
         # intersect isochores and workspaces, segments and annotations
+        E.info( "adding isochores to workspace" )
         workspaces.toIsochores( isochores )
         annotations.toIsochores( isochores )
         segments.toIsochores( isochores )
-
+        
         if workspaces.sum() == 0:
             raise ValueError( "isochores and workspaces do not overlap" )
         if annotations.sum() == 0:
@@ -174,22 +171,24 @@ def fromSegments( options, args ):
     
     else:
         # intersect workspace and segments/annotations
-        annotations.prune( workspaces["merged"] )
-        segments.prune( workspaces["merged"] )
+        annotations.filter( workspaces["collapsed"] )
+        segments.filter( workspaces["collapsed"] )
 
         dumpStats( annotations, "stats_annotations_pruned" )
         dumpStats( segments, "stats_segments_pruned" )
 
-    workspace = workspaces["merged"] 
+    workspace = workspaces["collapsed"] 
 
     # segments.dump( open("segments_dump.bed", "w" ) )
     # workspaces.dump( open("workspaces_dump.bed", "w" ) )
 
     E.info( "intervals loaded in %i seconds" % (time.time() - tstart) )
-    
+
+    # output overlap stats
     # output segment densities per workspace
     for track in segments.tracks:
-        workspaces.outputOverlapStats( E.openOutputFile( "overlap_%s" % track), segments[track] )
+        workspaces.outputOverlapStats( E.openOutputFile( "overlap_%s" % track), 
+                                       segments[track] )
 
     ##################################################
     ##################################################
@@ -233,10 +232,56 @@ def fromSegments( options, args ):
                                  counter,
                                  num_samples = options.num_samples,
                                  cache = options.cache,
-                                 output_counts = E.getOutputFile( "counts" ),
+                                 output_counts = options.output_filename_counts,
                                  output_samples_pattern = options.output_samples_pattern,
                                  sample_files = options.sample_files )
 
+    return annotator_results
+
+class DummyAnnotatorResult:
+
+    format_observed = "%i"
+    format_expected = "%6.4f"
+    format_fold = "%6.4f"
+    format_pvalue = "%6.4e"
+
+    def __init__( self ):
+        pass
+
+    @classmethod
+    def _fromLine( cls, line ):
+        x = cls()
+        data = line[:-1].split("\t")
+        x.track, x.annotation = data[:2]
+        x.observed, x.expected, x.lower95, x.upper95, x.stddev, x.fold, x.pvalue, x.qvalue = \
+            map(float, data[2:] )
+        
+        return x
+
+    def __str__(self):
+        return "\t".join( (self.track,
+                           self.annotation,
+                           self.format_observed % self.observed,
+                           self.format_expected % self.expected,
+                           self.format_expected % self.lower95,
+                           self.format_expected % self.upper95,
+                           self.format_expected % self.stddev,
+                           self.format_fold % self.fold,
+                           self.format_pvalue % self.pvalue,
+                           self.format_pvalue % self.qvalue ) )
+
+def fromResults( filename ):
+    '''load annotator results from a tab-separated results table.'''
+
+    annotator_results = collections.defaultdict( dict )
+
+    with open(filename, "r") as infile:
+        for line in infile:
+            if line.startswith("#"): continue
+            if line.startswith("track"): continue
+            r = DummyAnnotatorResult._fromLine( line ) 
+            annotator_results[r.track][r.annotation] = r
+            
     return annotator_results
 
 def main( argv = None ):
@@ -300,6 +345,12 @@ def main( argv = None ):
     parser.add_option( "--counts-file", dest="input_filename_counts", type="string", 
                       help="start processing from counts - no segments required [default=%default]."  )
 
+    parser.add_option( "--output-counts-file", dest="output_filename_counts", type="string", 
+                      help="output counts to filename [default=%default]."  )
+
+    parser.add_option( "--results-file", dest="input_filename_results", type="string", 
+                      help="start processing from results - no segments required [default=%default]."  )
+
     parser.add_option( "--output-plots-pattern", dest="output_plots_pattern", type="string", 
                        help="output pattern for plots [default=%default]" )
 
@@ -313,6 +364,13 @@ def main( argv = None ):
     parser.add_option( "--nbuckets", dest="nbuckets", type="int", 
                        help="number of bins for histogram of segment lengths [default=%default]" )
 
+    parser.add_option( "--output-stats", dest="output_stats", type="choice",
+                      choices = ( "all", 
+                                  "annotations", "segments", 
+                                  "workspaces", "isochores",
+                                  "overlap" ),
+                      help="type of pvalue reported [default=%default]."  )
+
     parser.set_defaults(
         annotation_files = [],
         segment_files = [],
@@ -322,11 +380,12 @@ def main( argv = None ):
         nbuckets = 100000,
         bucket_size = 1,
         counter = "nucleotide-overlap",
-        output_stats = "all",
-        output_counts = True,
+        output_stats = [],
+        output_filename_counts = None,
         output_order = "fold",
         cache = None,
         input_filename_counts = None,
+        input_filename_results = None,
         pvalue_method = "empirical",
         output_plots_pattern = None,
         output_samples_pattern = None,
@@ -341,6 +400,9 @@ def main( argv = None ):
     ##################################################
     if options.input_filename_counts:
         annotator_results = gat.fromCounts( options.input_filename_counts )
+    elif options.input_filename_results:
+        E.info( "reading annotator results from %s" % options.input_filename_results )
+        annotator_results = fromResults( options.input_filename_results )
     else:
         annotator_results = fromSegments( options, args )
 
@@ -362,6 +424,14 @@ def main( argv = None ):
     ##################################################
     # plot histograms
     if options.output_plots_pattern and HASPLOT:
+
+        def buildPlotFilename( options, key ):
+            filename = re.sub("%s", key, options.output_plots_pattern)
+            filename = re.sub("[^a-zA-Z0-9-_./]", "_", filename )
+            dirname = os.path.dirname( filename )
+            if dirname and not os.path.exists( dirname ): os.makedirs( dirname )
+            return filename
+
         E.info("plotting sample stats" )
 
         for r in gat.iterator_results(annotator_results):
@@ -369,10 +439,10 @@ def main( argv = None ):
             key = "%s-%s" % (r.track, r.annotation)
             s = r.samples
             hist, bins = numpy.histogram( s,
-                                          new = True,
                                           normed = True,
-                                          bins = numpy.arange( s.min(), s.max() + 1, 1.0) )
-            plt.plot( bins[:-1], hist, label = key )
+                                          bins = 100 )
+            # bins = numpy.arange( s.min(), s.max() + 1, 1.0) )
+            plt.bar( bins[:-1], hist, width=1.0, label = key )
             sigma = r.stddev
             mu = r.expected
             plt.plot(bins, 
@@ -381,9 +451,34 @@ def main( argv = None ):
                      label = "fit",
                      linewidth=2, 
                      color='r' )
+
             plt.legend()
-            filename = re.sub(options.output_plots_pattern, "%s", key)
+            filename = buildPlotFilename( options, key )
             plt.savefig( filename )
+
+        E.info( "plotting P-value distribution" )
+        
+        key = "pvalue"
+        plt.figure()
+
+        x,bins,y = plt.hist( [r.pvalue for r in gat.iterator_results(annotator_results) ],
+                             bins = numpy.arange( 0, 1.05, 0.025) ,
+                             label = "pvalue" )
+
+        plt.hist( [r.qvalue for r in gat.iterator_results(annotator_results) ],
+                  bins = numpy.arange( 0, 1.05, 0.025) ,
+                  label = "qvalue",
+                  alpha=0.5 )
+
+        plt.legend()
+
+        # hist, bins = numpy.histogram( \
+        #     [r.pvalue for r in gat.iterator_results(annotator_results) ],
+        #     bins = 20 )
+        # plt.plot( bins[:-1], hist, label = key )
+
+        filename = buildPlotFilename( options, key )
+        plt.savefig( filename )
 
     ##################################################
     ##################################################

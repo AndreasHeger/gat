@@ -1,11 +1,10 @@
-'''test gat functionality
+'''test gat correctness
 '''
 
 import unittest
-import random, tempfile, shutil, os, re, gzip, sys
+import random, tempfile, shutil, os, re, gzip, sys, subprocess
 import gat
 import numpy, math
-
 import matplotlib.pyplot as plt
 
 def smooth(x,window_len=11,window='hanning'):
@@ -65,7 +64,7 @@ def smooth(x,window_len=11,window='hanning'):
     return y[window_len-1:-window_len+1]
 
 class TestSamplerLength( unittest.TestCase ):
-
+    '''sample from length distribution.'''
     ntests = 1000
     nsegments = 10000
     sampler = None
@@ -124,11 +123,15 @@ class TestSamplerLengthSlow( TestSamplerLength ):
 
     sampler = gat.HistogramSamplerSlow
 
+
 class TestSamplerPosition( unittest.TestCase ):
+    '''test segment position sampling (fixed length).'''
 
     ntests = 100000
 
-    def getWorkspaceCounts( self, workspace, sampler, 
+    def getWorkspaceCounts( self, 
+                            workspace, 
+                            sampler, 
                             sample_length ):
 
         l = workspace.max()
@@ -238,110 +241,310 @@ class TestSamplerPosition( unittest.TestCase ):
         sampler = gat.SegmentListSampler( workspace )
 
         counts_within_workspace = self.getWorkspaceCounts( workspace, sampler, 1 )        
-        
-class TestSamplerAnnotator( unittest.TestCase ):
+
+def getWorkspaceCounts( workspace, 
+                        samples,
+                        filename ):
+    '''compute sample counts within workspace.
+
+    returns array of size workspace with counts
+    '''
+
+    l = workspace.max()
+    counts = numpy.zeros( l, numpy.int )
+    ntests = len(samples)
+
+    segment_sizes = []
+
+    for sample_id, s in enumerate(samples):
+        for start, end in s:
+            start = max(0, start)
+            end = min( end, l )
+            counts[start:end] += 1
+        ss = [x[1] - x[0] for x in s ] 
+
+        segment_sizes.append( (numpy.std(ss),
+                               min(ss), 
+                               max(ss),
+                               numpy.mean(ss),
+                               numpy.median(ss) ) )
+                               
+
+    counts_within_workspace = []
+    for start, end in workspace:
+        counts_within_workspace.extend( counts[start:end] )
+
+    if l > 10:
+        dx = 10
+    else:
+        dx = 1
+
+    counts_within_workspace = numpy.array( counts_within_workspace, dtype = numpy.int )
+    newy = smooth( counts_within_workspace, window_len = dx)
+
+    plt.figure()
+    plt.subplot( "211" )
+    plt.plot( xrange(len(counts_within_workspace)), counts_within_workspace, '.', label = "coverage" )
+
+    plt.plot( xrange(len(counts_within_workspace)), newy, '-', 
+              label="smooth - window = %i" % dx )
+
+    plt.title( "%s : nworkspaces=%i, sample_length=%i" % ( filename, len(workspace), len(samples) ) )
+    plt.xlabel( "position" )
+    plt.ylabel( "counts" )
+    plt.legend()
+
+    plt.subplot( "212" )
+    segment_sizes.sort()
+    segment_sizes = zip(*segment_sizes)
+    plt.plot( segment_sizes[0], label="stddev" )
+    plt.plot( segment_sizes[1], label="min" )
+    plt.plot( segment_sizes[2], label="max" )
+    plt.plot( segment_sizes[3], label="mean" )
+    plt.plot( segment_sizes[4], label="median" )
+    plt.legend()
+    plt.xlabel( "sample" )
+    plt.ylabel( "segment size" )
+    plt.savefig( filename )
+
+    return counts_within_workspace
+
+class TestSegmentSamplingGat( unittest.TestCase ):
 
     ntests = 1000
 
-    def testTestSamplingSimple( self ):
-        '''test if we sample the exactly right amount of nucleotides.'''
+    def setUp(self):
+        self.sampler = gat.SamplerAnnotator()
+
+    def getSample( self, segments, workspace ):
+        '''return a single sample'''
+        return self.sampler.sample( segments, workspace )
+
+    def getSamples( self, segments, workspace ):
+        '''return a list of samples.'''
+        samples = []
+
+        for x in xrange( self.ntests):
+            sample = self.getSample( segments, workspace )
+            samples.append( sample )
+
+        return samples
+
+    def checkSample( self, samples, segments, workspace ):
+        '''check if sample corresponds to expectation.
+
+        segment_length: total length of segments (nsegments * segment_length)
+        '''
+        
+        filename = "%s.png" % re.sub( "[ ()]", "", str(self) )
+        filename = re.sub( "__main__", "", filename )
+
+        self.assertEqual( self.ntests, len(samples) )
+
+        counts_within_workspace = getWorkspaceCounts( workspace, 
+                                                      samples,
+                                                      filename )
+        
+        # check if each sample has the correct number of nucleotides  
+        sums = [x.sum() for x in samples ]
+
+        for x, s in enumerate(sums):
+            self.assertEqual( s, segments.sum(), 
+                              "incorrect number of nucleotides in sample %i, got %i, expected %i" %\
+                                  (x, s, segments.sum() ) )
+
+
+        # check if coverage is uniform over workspace
+        # expected coverage
+        # number_of_samples * segment_length / workspace_length
+        # modifier: 
+        # can be simplified
+        nsegments = float(len(segments))
+        segment_length = segments.sum() / nsegments
+        expected = len(samples) * segments.sum() / float( workspace.sum())
+        #   float(workspace.sum()) / (workspace.sum() + segments.sum()  * len(workspace) )
+         
+
+        d = abs(counts_within_workspace.mean() - expected) / float(expected)
+
+        self.assert_( d < 0.1, "expected counts (%f) != sampled counts (%f)" % (expected,
+                                                                                counts_within_workspace.mean()))
+        
+        stddev = numpy.std( counts_within_workspace )
+        d = stddev / float(expected)
+
+        self.assert_( d < 0.1, "coverage variation too large : stddev (%f) / %f = %f > 0.01" %\
+                          ( d, 
+                            stddev,
+                            expected) )
+        
+
+    def testSegmentedWorkspaceSmallGap( self ):
+        '''test sampling within a segmented workspace.
+
+        The gap between adjacent workspaces is a single nucleotide
+        to avoid the merging of intervals.
+        '''
         nsegments = 10
+        segment_size = 100
 
-        workspace = gat.SegmentList( iter = ( (x, x + 1000 ) \
+        workspace = gat.SegmentList( iter = ( (x, x + 999 ) \
                                                   for x in range( 0, 1000 * nsegments, 1000) ), 
                                      normalize = True )
 
-        segments = gat.SegmentList( iter = ( (x,  x + 100)   \
-                                        for x in range( 0, 1000 * nsegments, 1000) ),
-                                    normalize = True )
-        
-        sampler = gat.SamplerAnnotator()
-        
-        counts = numpy.zeros( 1000 * nsegments, numpy.int )
-
-        for x in range( self.ntests):
-            sample = sampler.sample( segments, workspace )
-            self.assertEqual( sample.sum(), segments.sum() )
-
-    def testTestSampling( self ):
-        '''test if we sample the exactly right amount of nucleotides
-        and the density is as expected.'''
-        nsegments = 10000
-
-        workspace = gat.SegmentList( iter = ( (x, x + 1000 ) \
-                                                  for x in range( 0, 1000 * nsegments, 1000) ), 
-                                     normalize = True )
-        segments = gat.SegmentList( iter = ( (x,  x + int(numpy.random.randn() * 10.0 + 100.0)  ) \
+        segments = gat.SegmentList( iter = ( (x,  x + segment_size)   \
                                                  for x in range( 0, 1000 * nsegments, 1000) ),
                                     normalize = True )
         
-        sampler = gat.SamplerAnnotator()
+        samples = self.getSamples( segments, workspace )
+
+        self.checkSample( samples, segments, workspace )
+
+    def testSegmentedWorkspaceLargeGap( self ):
+        '''test sampling within a segmented workspace.
+
+        The gap is the size of a segment.
+        '''
+        nsegments = 10
+        segment_size = 100
+        workspace = gat.SegmentList( iter = ( (x, x + 900 ) \
+                                                  for x in range( 0, 1000 * nsegments, 1000) ), 
+                                     normalize = True )
+
+        segments = gat.SegmentList( iter = ( (x,  x + segment_size)   \
+                                                 for x in range( 0, 1000 * nsegments, 1000) ),
+                                    normalize = True )
         
-        counts = numpy.zeros( 1000 * nsegments, numpy.int )
+        samples = self.getSamples( segments, workspace )
 
-        for x in range( self.ntests):
-            sample = sampler.sample( segments, workspace )
-            self.assertEqual( sample.sum(), segments.sum() )
-            for start, end in sample: counts[start:end] += 1
+        self.checkSample( samples, segments, workspace )
 
-        counts_within_workspace = []
-        for start, end in workspace:
-            counts_within_workspace.extend( counts[start:end] )
+    def testSingleWorkspace( self ):
+        '''test sampling within a single continuous workspace.'''
+        nsegments = 10
+        segment_size = 100
 
-        # expected density: ntests * segment_size / workspace_size = numtest / 100
-        self.assertAlmostEqual( numpy.mean(counts_within_workspace), 
-                               self.ntests * segments.sum() / workspace.sum(),
-                               places = 0 )
+        workspace = gat.SegmentList( iter = [ (0, 10000) ],
+                                     normalize = True )
 
-        print "standard deviation", numpy.std( counts_within_workspace )
+        segments = gat.SegmentList( iter = ( (x,  x + segment_size)   \
+                                                 for x in range( 0, 1000 * nsegments, 1000) ),
+                                    normalize = True )
+        
+        samples = self.getSamples( segments, workspace )
 
-        plt.figure()
-        plt.plot( xrange(len(counts)), counts, '.' )
-        plt.xlabel( "position" )
-        plt.ylabel( "counts" )
-        plt.savefig( "test_%s.png" % re.sub( " ()", "", str(self) ))
+        self.checkSample( samples, segments, workspace )
 
-    def testPositionSampling( self ):
-        '''test if we sample the exactly right amount of nucleoutides
-        and bases are overlapped uniformly.
+    def testSegmentedWorkspace2x( self ):
+        '''test if workspace segments are only twice the size of segmments.
         '''
 
-        workspace = gat.SegmentList( iter = ( (x, x + 100 ) for x in range( 0, 10000, 1000) ),
+        nsegments = 10 
+        segment_size = 100
+
+        workspace = gat.SegmentList( iter = ( (x, x + 2 * segment_size )
+                                              for x in range( 0, 1000 * nsegments, 1000) ), 
+                                     normalize = True )
+        segments = gat.SegmentList( iter = ( (x, x + segment_size ) 
+                                             for x in range( 0, 1000 * nsegments, 1000) ),
                                     normalize = True )
-        segments = gat.SegmentList( iter = ( (x, x + 10 ) for x in range( 0, 10000, 1000) ),
-                                    normalize = True )
+
+        samples = self.getSamples( segments, workspace )
+
+        self.checkSample( samples, segments, workspace )
+
+    # def testVariableLengthSampling( self ):
         
-        sampler = gat.SamplerAnnotator()
+    #     nsegments = 10000
+    #     # create normaly distributed lengths of mean 100.0 and sigma = 10.0
+    #     segments = gat.SegmentList( iter = [ (x, x + numpy.random.randn() * 10.0 + 100.0  ) \
+    #                                              for x in range(0, 1000 * nsegments, 1000) ],
+    #                                 normalize = True )
 
-        counts_within_workspace = self.getWorkspaceCounts( segments, workspace, sampler )        
+    #     histogram = segments.getLengthDistribution( 1, 1000 * nsegments )
+    #     hs = gat.HistogramSampler( histogram, 1 )
 
-        # expected density: ntests * segment_size / workspace_size = numtest / 100
-        self.assertAlmostEqual( numpy.mean(counts_within_workspace), 
-                                self.ntests * segments.sum() / workspace.sum(),
-                                places = 2 )
-        print numpy.std( counts_within_workspace )
+    #     samples = [hs.sample() for x in range(0, 1 * nsegments )]
 
-    def testLengthSampling( self ):
+    #     self.assertAlmostEqual( numpy.mean(samples),
+    #                             100.0,
+    #                             places = 0 )
+
+    #     self.assertAlmostEqual( numpy.std(samples),
+    #                             10.0,
+    #                             places = 0 )
+
+
+class TestSegmentSamplingTheAnnotator( TestSegmentSamplingGat ):
+    '''use annotator to sample segments.'''
+    
+    cmd = '''/cpp-software/bin/java -Xmx8000M -cp /home/andreas/projects/annotator/lib/commons-cli-1.0.jar:/home/andreas/projects/annotator/lib/Annotator.jar app.Annotator -verbose 4'''
+
+    def writeSegments( self, outfile, segmentlist, section ):
         
-        nsegments = 10000
-        # create normaly distributed lengths of mean 100.0 and sigma = 10.0
-        segments = gat.SegmentList( iter = [ (x, x + numpy.random.randn() * 10.0 + 100.0  ) \
-                                                 for x in range(0, 1000 * nsegments, 1000) ],
-                                    normalize = True )
+        if section == "workspace":
+            prefix = "##Work"
+        elif section == "segments":
+            prefix = "##Seg"
+        elif section == "annotations":
+            prefix = "##Id\t0"
 
-        histogram = segments.getLengthDistribution( 1, 1000 * nsegments )
-        hs = gat.HistogramSampler( histogram, 1 )
+        contig = "chr1" 
+        os.write( outfile,
+                  "%s\t%s\t%s\n" % (
+                prefix,
+                contig,
+                "\t".join( ["(%i,%i)" % (x,y) for x,y in segmentlist] ) ))
 
-        samples = [hs.sample() for x in range(0, 1 * nsegments )]
+        if section == "annotations":
+            os.write(outfile, "##Ann\ttest\t0" )
 
-        self.assertAlmostEqual( numpy.mean(samples),
-                                100.0,
-                                places = 0 )
+        os.close(outfile)
 
-        self.assertAlmostEqual( numpy.std(samples),
-                                10.0,
-                                places = 0 )
+    def getSamples( self, 
+                    segments,
+                    workspace ):
 
+        fsegments, nsegments = tempfile.mkstemp()
+        fworkspace, nworkspace = tempfile.mkstemp()
+        fannotations, nannotations = tempfile.mkstemp()
+
+        self.writeSegments( fsegments, segments, "segments" )
+        self.writeSegments( fworkspace, workspace, "workspace" )
+        self.writeSegments( fannotations, workspace, "annotations" )
+
+        statement = " ".join( (self.cmd,
+                               "-dumpsegments",
+                               "-iterations %i" % self.ntests,
+                               "-annotation %s" % nannotations,
+                               "-segments %s" % nsegments,
+                               "-workspace %s" % nworkspace ) )
+
+        process = subprocess.Popen(  statement,
+                                     cwd = os.getcwd(), 
+                                     shell = True,
+                                     stdin = subprocess.PIPE,
+                                     stdout = subprocess.PIPE,
+                                     stderr = subprocess.PIPE )
+
+        # process.stdin.close()
+        stdout, stderr = process.communicate()
+
+        if process.returncode != 0:
+            raise PipelineError( "Child was terminated by signal %i: \nThe stderr was: \n%s\n%s\n" % (-process.returncode, stderr, statement ))
+
+        samples = []
+        for line in stdout.split("\n"):
+            if not line.startswith( "##Segments" ): continue
+            data = line.split("\t")[2:]
+            coords = [ map(int, x[1:-1].split(",")) for x in data ]
+            samples.append( gat.SegmentList( iter = coords ) )
+
+        os.unlink( nsegments )
+        os.unlink( nworkspace )
+        os.unlink( nannotations )
+
+        return samples
 
 class TestStatsSNPSampling( unittest.TestCase ):
     '''test Stats by running a SNP (1-size interval) analysis.
@@ -808,7 +1011,7 @@ class TestStats( unittest.TestCase ):
         for r in results: 
             self.assert_( r.qvalue > 0.5, "%f" % r.qvalue  )
 
-class TestStatsSamplingErrors( unittest.TestCase ):
+class TestStatsSampling( unittest.TestCase ):
     '''test Stats by running a SNP (1-size interval) analysis.
 
     For SNPs, the hypergeometric distribution applies.
@@ -816,6 +1019,18 @@ class TestStatsSamplingErrors( unittest.TestCase ):
 
     sample_size = 10
 
+    def getSamples( self, segments,
+             annotations,
+             workspace,
+             sampler,
+             counter ):
+        return gat.run( segments,
+                        annotations,
+                        workspace,
+                        sampler,
+                        counter,
+                        num_samples = self.sample_size )
+        
     def check( self, workspace, annotations, segments ):
 
         workspace_size = workspace["chr1"].sum()
@@ -827,13 +1042,11 @@ class TestStatsSamplingErrors( unittest.TestCase ):
         #print segments["default"]["chr1"]
         #print workspace["chr1"]
     
-        annotator_results = gat.run( segments,
-                                     annotations,
-                                     workspace,
-                                     sampler,
-                                     counter,
-                                     num_samples = self.sample_size )
-        
+        annotator_results = self.getSamples( segments,
+                                             annotations,
+                                             workspace,
+                                             sampler,
+                                             counter )
 
         outfile = sys.stdout
 

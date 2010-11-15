@@ -35,6 +35,7 @@ def computeQValues(pvalues,
 
     if vlambda == None: vlambda = numpy.arange(0,0.95,0.05)
 
+
     if pi0 == None:
         if type(vlambda) == float:
             vlambda = (vlambda,)
@@ -61,14 +62,13 @@ def computeQValues(pvalues,
                 pi0[i] = numpy.mean( [x >= vlambda[i] for x in pvalues ]) / (1.0 -vlambda[i] )
 
             if pi0_method=="smoother":
-
-                if smooth_log_pi0: pi0 = math.log(pi0)
-                tck = scipy.interpolate.splrep( vlambda, pi0, k = smooth_df )
+                if smooth_log_pi0: pi0 = numpy.log(pi0)
+                tck = scipy.interpolate.splrep( vlambda, pi0, k = smooth_df, s = 10000 )
                 pi0 = scipy.interpolate.splev( max(vlambda), tck )
-                if smooth_log_pi0: pi0 = math.exp(pi0)
-
+                if smooth_log_pi0: pi0 = numpy.exp(pi0)
+                
             elif pi0_method=="bootstrap":
-
+                print "there"
                 minpi0 = min(pi0)
 
                 mse = numpy.zeros( len(vlambda), numpy.float )
@@ -90,7 +90,7 @@ def computeQValues(pvalues,
             pi0 = min(pi0,1.0)
     
     if pi0 <= 0:
-        raise ValueError( "The estimated pi0 <= 0. Check that you have valid p-values or use another vlambda method." )
+        raise ValueError( "The estimated pi0 <= 0 (%f). Check that you have valid p-values or use another vlambda method." %  pi0)
 
     if fdr_level != None and (fdr_level <= 0 or fdr_level > 1):
         raise ValueError( "'fdr_level' must be within (0, 1].")
@@ -118,7 +118,7 @@ def computeQValues(pvalues,
 
     # bound qvalues by 1 and make them monotonic
     qvalues[idx[m-1]] = min(qvalues[idx[m-1]],1.0)
-    for i in xrange(m-1):
+    for i in xrange(m-2,-1,-1):
         qvalues[idx[i]] = min(min(qvalues[idx[i]],qvalues[idx[i+1]]),1.0)
 
     # fill result
