@@ -203,10 +203,13 @@ def fromSegments( options, args ):
     ##################################################
     ##################################################
     # initialize sampler
-    sampler = gat.SamplerAnnotator(
-        bucket_size = options.bucket_size,
-        nbuckets = options.nbuckets )
-
+    if options.sampler == "annotator":
+        sampler = gat.SamplerAnnotator(
+            bucket_size = options.bucket_size,
+            nbuckets = options.nbuckets )
+    elif options.sampler == "segments":
+        sampler = gat.SamplerSegments()
+        
     ##################################################
     ##################################################
     ##################################################
@@ -238,38 +241,6 @@ def fromSegments( options, args ):
 
     return annotator_results
 
-class DummyAnnotatorResult:
-
-    format_observed = "%i"
-    format_expected = "%6.4f"
-    format_fold = "%6.4f"
-    format_pvalue = "%6.4e"
-
-    def __init__( self ):
-        pass
-
-    @classmethod
-    def _fromLine( cls, line ):
-        x = cls()
-        data = line[:-1].split("\t")
-        x.track, x.annotation = data[:2]
-        x.observed, x.expected, x.lower95, x.upper95, x.stddev, x.fold, x.pvalue, x.qvalue = \
-            map(float, data[2:] )
-        
-        return x
-
-    def __str__(self):
-        return "\t".join( (self.track,
-                           self.annotation,
-                           self.format_observed % self.observed,
-                           self.format_expected % self.expected,
-                           self.format_expected % self.lower95,
-                           self.format_expected % self.upper95,
-                           self.format_expected % self.stddev,
-                           self.format_fold % self.fold,
-                           self.format_pvalue % self.pvalue,
-                           self.format_pvalue % self.qvalue ) )
-
 def fromResults( filename ):
     '''load annotator results from a tab-separated results table.'''
 
@@ -279,7 +250,7 @@ def fromResults( filename ):
         for line in infile:
             if line.startswith("#"): continue
             if line.startswith("track"): continue
-            r = DummyAnnotatorResult._fromLine( line ) 
+            r = gat.DummyAnnotatorResult._fromLine( line ) 
             annotator_results[r.track][r.annotation] = r
             
     return annotator_results
@@ -315,6 +286,11 @@ def main( argv = None ):
                       choices=("nucleotide-overlap", 
                                "nucleotide-density",
                                "segment-overlap", ),
+                      help="quantity to test [default=%default]."  )
+
+    parser.add_option("-m", "--sampler", dest="sampler", type="choice",
+                      choices=("annotator", 
+                               "segments" ),
                       help="quantity to test [default=%default]."  )
 
     parser.add_option("-n", "--num-samples", dest="num_samples", type="int", 
@@ -392,6 +368,7 @@ def main( argv = None ):
         qvalue_method = "storey",
         qvalue_lambda = None,
         qvalue_pi0_method = "smoother",
+        sampler = "annotator",
         )
 
     ## add common options (-h/--help, ...) and parse command line 

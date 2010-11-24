@@ -1,6 +1,6 @@
 from cgat import *
 
-import os, sys, re, optparse, collections, types, gzip
+import os, sys, re, optparse, collections, types, gzip, pprint
 import numpy
 
 import gat.Bed as Bed
@@ -37,6 +37,39 @@ def iterator_results( annotator_results ):
     for k1, v1 in annotator_results.iteritems():
         for k2, v2 in v1.iteritems():
             yield v2
+
+class DummyAnnotatorResult:
+
+    format_observed = "%i"
+    format_expected = "%6.4f"
+    format_fold = "%6.4f"
+    format_pvalue = "%6.4e"
+
+    def __init__( self ):
+        pass
+
+    @classmethod
+    def _fromLine( cls, line ):
+        x = cls()
+        data = line[:-1].split("\t")
+        x.track, x.annotation = data[:2]
+        x.observed, x.expected, x.lower95, x.upper95, x.stddev, x.fold, x.pvalue, x.qvalue = \
+            map(float, data[2:] )
+        
+        return x
+
+    def __str__(self):
+        return "\t".join( (self.track,
+                           self.annotation,
+                           self.format_observed % self.observed,
+                           self.format_expected % self.expected,
+                           self.format_expected % self.lower95,
+                           self.format_expected % self.upper95,
+                           self.format_expected % self.stddev,
+                           self.format_fold % self.fold,
+                           self.format_pvalue % self.pvalue,
+                           self.format_pvalue % self.qvalue ) )
+
 
 def run( segments, 
          annotations, 
@@ -87,6 +120,8 @@ def run( segments,
                                      segments = segments,
                                      annotations = annotations,
                                      workspace = workspace )
+
+    E.info( "collecting observed densities" )
 
     ##################################################
     ##################################################

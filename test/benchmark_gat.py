@@ -2,7 +2,7 @@
 '''
 
 import unittest
-import random, tempfile, shutil, os, re, gzip, sys, subprocess
+import random, tempfile, shutil, os, re, gzip, sys, subprocess, collections
 import gat
 import numpy, math
 import matplotlib.pyplot as plt
@@ -63,7 +63,83 @@ def smooth(x,window_len=11,window='hanning'):
     y=numpy.convolve(w/w.sum(),s,mode='same')
     return y[window_len-1:-window_len+1]
 
-class TestSamplerLength( unittest.TestCase ):
+def getPlotFilename( s ):
+    filename = "%s.png" % re.sub( "[ ()]", "", s )
+    filename = re.sub( "__main__", "", filename )
+    return filename
+
+class GatTest( unittest.TestCase ):
+    def shortDescription( self ): return None
+
+ANNOTATOR_CMD = '''/cpp-software/bin/java -Xmx8000M -cp /home/andreas/projects/annotator/lib/commons-cli-1.0.jar:/home/andreas/projects/annotator/lib/Annotator.jar app.Annotator -verbose 4'''
+
+def writeAnnotatorSegments( outfile, segmentlist, section ):
+
+    if section == "workspace":
+        prefix = "##Work"
+    elif section == "segments":
+        prefix = "##Seg"
+    elif section == "annotations":
+        prefix = "##Id\t0"
+
+    contig = "chr1" 
+    os.write( outfile,
+              "%s\t%s\t%s\n" % (
+            prefix,
+            contig,
+            "\t".join( ["(%i,%i)" % (x,y) for x,y in segmentlist] ) ))
+
+    if section == "annotations":
+        os.write(outfile, "##Ann\ttest\t0" )
+
+    os.close(outfile)
+
+def writeAnnotatorSegments2( outfile, segmentlists, section ):
+
+    if section == "workspace":
+        prefix = "##Work"
+    elif section == "segments":
+        prefix = "##Seg"
+    elif section == "annotations":
+        prefix = "##Id\t0"
+
+    for contig, segmentlist in segmentlists.items():
+        os.write( outfile,
+                  "%s\t%s\t%s\n" % (
+                prefix,
+                contig,
+                "\t".join( ["(%i,%i)" % (x,y) for x,y in segmentlist] ) ))
+
+        if section == "annotations":
+            os.write(outfile, "##Ann\ttest\t0" )
+
+    os.close(outfile)
+
+def writeAnnotatorAnnotations( outfile, annotations ):
+
+    prefix = "##Id\t"
+    nid = 0
+    for track, segmentlists in annotations.iteritems():
+        nids = []
+        for contig, segmentlist in segmentlists.items():
+            os.write( outfile,
+                      "%s\t%i\t%s\t%s\n" % (
+                    prefix,
+                    nid,
+                    contig,
+                    "\t".join( ["(%i,%i)" % x for x in segmentlist] ) ))
+            nids.append( nid )
+            nid += 1
+
+        os.write(outfile, "##Ann\t%s\t%s\n" % (track, "\t".join( map(str, nids )) ) )
+
+    os.close(outfile)
+
+##############################################################################        
+##############################################################################        
+##############################################################################        
+##############################################################################        
+class TestSamplerLength( GatTest ):
     '''sample from length distribution.'''
     ntests = 1000
     nsegments = 10000
@@ -124,7 +200,11 @@ class TestSamplerLengthSlow( TestSamplerLength ):
     sampler = gat.HistogramSamplerSlow
 
 
-class TestSamplerPosition( unittest.TestCase ):
+##############################################################################        
+##############################################################################        
+##############################################################################        
+##############################################################################        
+class TestSamplerPosition( GatTest ):
     '''test segment position sampling (fixed length).'''
 
     ntests = 100000
@@ -162,7 +242,7 @@ class TestSamplerPosition( unittest.TestCase ):
         plt.plot( xrange(len(counts_within_workspace)), newy, '-', 
                   label="smooth - window = %i" % dx )
 
-        plt.title( "%s : nworkspaces=%i, sample_length=%i" % ( str(self), len(workspace), sample_length ) )
+        plt.title( "%s" % str(self) ) #  = : nworkspaces=%i, sample_length=%i" % ( str(self), len(workspace), sample_length ) )
         plt.xlabel( "position" )
         plt.ylabel( "counts" )
         plt.legend()
@@ -205,7 +285,8 @@ class TestSamplerPosition( unittest.TestCase ):
         counts_within_workspace = self.getWorkspaceCounts( workspace, sampler, 10 )
 
     def testPositionSamplingSplitWorkspace2( self ):
-        '''test if we sample the exactly right amount of nucleoutides
+        '''
+        test if we sample the exactly right amount of nucleoutides
         and bases are overlapped uniformly.
         '''
 
@@ -221,7 +302,8 @@ class TestSamplerPosition( unittest.TestCase ):
                                                            2 )
 
     def testMultipleWorkspaces( self ):
-        '''test if we sample the exactly right amount of nucleoutides
+        '''
+        test if we sample the exactly right amount of nucleoutides
         and bases are overlapped uniformly.
         '''
 
@@ -233,7 +315,8 @@ class TestSamplerPosition( unittest.TestCase ):
         counts_within_workspace = self.getWorkspaceCounts( workspace, sampler, 10 )        
 
     def testSNPPositionSampling( self ):
-        '''test if we sample the exactly right amount of nucleoutides.'''
+        '''
+        test if we sample the exactly right amount of nucleoutides.'''
 
         workspace = gat.SegmentList( iter = ( (x, x + 100 ) for x in range( 0, 10000, 1000) ),
                                     normalize = True )
@@ -242,9 +325,15 @@ class TestSamplerPosition( unittest.TestCase ):
 
         counts_within_workspace = self.getWorkspaceCounts( workspace, sampler, 1 )        
 
+##############################################################################        
+##############################################################################        
+##############################################################################        
+##############################################################################        
 def getWorkspaceCounts( workspace, 
                         samples,
-                        filename ):
+                        filename,
+                        expected = None,
+                        density = 0 ):
     '''compute sample counts within workspace.
 
     returns array of size workspace with counts
@@ -255,20 +344,24 @@ def getWorkspaceCounts( workspace,
     ntests = len(samples)
 
     segment_sizes = []
-
+    starts = numpy.zeros( l+1, numpy.int )
+    ends = numpy.zeros( l+1, numpy.int )
+    
     for sample_id, s in enumerate(samples):
         for start, end in s:
             start = max(0, start)
             end = min( end, l )
             counts[start:end] += 1
-        ss = [x[1] - x[0] for x in s ] 
+            starts[start] += 1
+            ends[end] += 1
 
+        ss = [x[1] - x[0] for x in s ] 
+        
         segment_sizes.append( (numpy.std(ss),
                                min(ss), 
                                max(ss),
                                numpy.mean(ss),
                                numpy.median(ss) ) )
-                               
 
     counts_within_workspace = []
     for start, end in workspace:
@@ -283,18 +376,27 @@ def getWorkspaceCounts( workspace,
     newy = smooth( counts_within_workspace, window_len = dx)
 
     plt.figure()
-    plt.subplot( "211" )
+    plt.subplot( "311" )
     plt.plot( xrange(len(counts_within_workspace)), counts_within_workspace, '.', label = "coverage" )
 
     plt.plot( xrange(len(counts_within_workspace)), newy, '-', 
               label="smooth - window = %i" % dx )
 
-    plt.title( "%s : nworkspaces=%i, sample_length=%i" % ( filename, len(workspace), len(samples) ) )
+    plt.title( "%s : density = %6.4f" % ( filename, density ) )
+    # : nworkspaces=%i, sample_length=%i" % ( filename, len(workspace), len(samples) ) )
     plt.xlabel( "position" )
     plt.ylabel( "counts" )
+    if expected: 
+        d = expected * 0.1
+        plt.plot( xrange(len(counts_within_workspace)), [expected] * len(counts_within_workspace), 
+                  '-', label = "expected" )
+        plt.plot( xrange(len(counts_within_workspace)), [expected-d] * len(counts_within_workspace), 
+                  '--' )
+        plt.plot( xrange(len(counts_within_workspace)), [expected+d] * len(counts_within_workspace), 
+                  '--' )
     plt.legend()
 
-    plt.subplot( "212" )
+    plt.subplot( "312" )
     segment_sizes.sort()
     segment_sizes = zip(*segment_sizes)
     plt.plot( segment_sizes[0], label="stddev" )
@@ -305,11 +407,23 @@ def getWorkspaceCounts( workspace,
     plt.legend()
     plt.xlabel( "sample" )
     plt.ylabel( "segment size" )
+
+    plt.subplot( "313" )
+    plt.plot( starts, label="starts" )
+    plt.plot( ends, label="ends" )
+    plt.legend()
+    plt.xlabel( "position" )
+    plt.ylabel( "counts" )
+
     plt.savefig( filename )
 
     return counts_within_workspace
 
-class TestSegmentSamplingGat( unittest.TestCase ):
+##############################################################################        
+##############################################################################        
+##############################################################################        
+##############################################################################        
+class TestSegmentSamplingGat( GatTest ):
 
     ntests = 1000
 
@@ -336,34 +450,47 @@ class TestSegmentSamplingGat( unittest.TestCase ):
         segment_length: total length of segments (nsegments * segment_length)
         '''
         
-        filename = "%s.png" % re.sub( "[ ()]", "", str(self) )
-        filename = re.sub( "__main__", "", filename )
+        filename = getPlotFilename( str(self) )
 
         self.assertEqual( self.ntests, len(samples) )
 
-        counts_within_workspace = getWorkspaceCounts( workspace, 
-                                                      samples,
-                                                      filename )
-        
-        # check if each sample has the correct number of nucleotides  
-        sums = [x.sum() for x in samples ]
-
-        for x, s in enumerate(sums):
-            self.assertEqual( s, segments.sum(), 
-                              "incorrect number of nucleotides in sample %i, got %i, expected %i" %\
-                                  (x, s, segments.sum() ) )
-
-
+        # compute expected coverage
         # check if coverage is uniform over workspace
         # expected coverage
         # number_of_samples * segment_length / workspace_length
         # modifier: 
         # can be simplified
         nsegments = float(len(segments))
-        segment_length = segments.sum() / nsegments
-        expected = len(samples) * segments.sum() / float( workspace.sum())
+        tmp = gat.SegmentList( clone = workspace )
+        tmp.intersect( segments )
+        segment_overlap = tmp.sum()
+        segment_density = float(segment_overlap) / workspace.sum()
+
+        segment_length = segment_overlap / nsegments
+        expected = len(samples) * segment_overlap / float( workspace.sum())
         #   float(workspace.sum()) / (workspace.sum() + segments.sum()  * len(workspace) )
-         
+
+        # compute actual coverage counts
+        counts_within_workspace = getWorkspaceCounts( workspace, 
+                                                      samples,
+                                                      filename,
+                                                      expected = expected,
+                                                      density = segment_density )
+        
+        # for x in samples: print str(x)
+
+        # check if each sample has the correct number of nucleotides  
+        sums = [x.sum() for x in samples ]
+
+        for x, s in enumerate(samples):
+            tmp = gat.SegmentList( clone = workspace, normalize = True )
+            s.normalize()
+            tmp.intersect( s )
+            ovl = tmp.sum()
+
+            self.assertEqual( ovl, segment_overlap, 
+                              "incorrect number of nucleotides in sample %i, got %i, expected %i\nsample=%s" %\
+                                  (x, ovl, segment_overlap, samples[x] ) )
 
         d = abs(counts_within_workspace.mean() - expected) / float(expected)
 
@@ -374,26 +501,97 @@ class TestSegmentSamplingGat( unittest.TestCase ):
         d = stddev / float(expected)
 
         self.assert_( d < 0.1, "coverage variation too large : stddev (%f) / %f = %f > 0.01" %\
-                          ( d, 
-                            stddev,
-                            expected) )
-        
+                          ( stddev,
+                            expected,
+                            d) )
 
     def testSegmentedWorkspaceSmallGap( self ):
-        '''test sampling within a segmented workspace.
+        '''
+        test sampling within a segmented workspace.
 
-        The gap between adjacent workspaces is a single nucleotide
-        to avoid the merging of intervals.
+        The gap between adjacent workspaces is 10 nucleotides
+        to avoid the merging of intervals. The gap is thus
+        much smaller than the segment size.
         '''
         nsegments = 10
         segment_size = 100
 
-        workspace = gat.SegmentList( iter = ( (x, x + 999 ) \
+        workspace = gat.SegmentList( iter = ( (x, x + 990 ) \
                                                   for x in range( 0, 1000 * nsegments, 1000) ), 
                                      normalize = True )
 
         segments = gat.SegmentList( iter = ( (x,  x + segment_size)   \
                                                  for x in range( 0, 1000 * nsegments, 1000) ),
+                                    normalize = True )
+
+        samples = self.getSamples( segments, workspace )
+
+        self.checkSample( samples, segments, workspace )
+
+    def testSegmentedWorkspaceSmallGapUnequalSides( self ):
+        '''
+        test sampling within a segmented workspace.
+
+        The workspace has two segments. The gap between
+        segments is half a segment size.
+
+        The gap between adjacent workspaces is 5 nucleotides.
+        '''
+        nsegments = 1
+        segment_size = 50
+
+        workspace = gat.SegmentList( iter = ( (0, 1 * segment_size ),
+                                              (int(1.5 * segment_size), 2 * segment_size ) ),
+                                     normalize = True )
+        segments = gat.SegmentList( iter = ( (x,  x + segment_size)   \
+                                                 for x in range( 0, 10 * nsegments, 20) ),
+                                    normalize = True )
+        
+        samples = self.getSamples( segments, workspace )
+
+        self.checkSample( samples, segments, workspace )
+
+    def testSegmentedWorkspaceSmallGapEqualSides( self ):
+        '''
+        test sampling within a segmented workspace.
+
+        The workspace has two segments. The gap between
+        segments is half a segment size.
+
+        The gap between adjacent workspaces is 5 nucleotides.
+        '''
+        nsegments = 1
+        segment_size = 50
+        gap = 5
+        workspace = gat.SegmentList( iter = ( (0, segment_size ),
+                                              (segment_size + gap, 2 * segment_size + gap  ) ),
+                                     normalize = True )
+        segments = gat.SegmentList( iter = ( (x,  x + segment_size)   \
+                                                 for x in range( 0, 10 * nsegments, 20) ),
+                                    normalize = True )
+        
+        samples = self.getSamples( segments, workspace )
+
+        self.checkSample( samples, segments, workspace )
+
+    def testSegmentedWorkspaceSmallGapEqualSidesManySegments( self ):
+        '''
+        test sampling within a segmented workspace.
+
+        The workspace has two segments. The gap between
+        segments is half a segment size.
+
+        The gap between adjacent workspaces is 5 nucleotides.
+        '''
+        nsegments = 10
+        segment_size = 5
+        gap = 5
+        half = nsegments * segment_size
+        workspace = gat.SegmentList( iter = ( (0, half ),
+                                              (half + gap, 2 * half + gap  ) ),
+                                     normalize = True )
+        segments = gat.SegmentList( iter = ( (x,  x + segment_size)   \
+                                                 for x in range( 0, half, 2 * segment_size) ),
                                     normalize = True )
         
         samples = self.getSamples( segments, workspace )
@@ -401,7 +599,8 @@ class TestSegmentSamplingGat( unittest.TestCase ):
         self.checkSample( samples, segments, workspace )
 
     def testSegmentedWorkspaceLargeGap( self ):
-        '''test sampling within a segmented workspace.
+        '''
+        test sampling within a segmented workspace.
 
         The gap is the size of a segment.
         '''
@@ -420,7 +619,8 @@ class TestSegmentSamplingGat( unittest.TestCase ):
         self.checkSample( samples, segments, workspace )
 
     def testSingleWorkspace( self ):
-        '''test sampling within a single continuous workspace.'''
+        '''
+        test sampling within a single continuous workspace.'''
         nsegments = 10
         segment_size = 100
 
@@ -435,8 +635,66 @@ class TestSegmentSamplingGat( unittest.TestCase ):
 
         self.checkSample( samples, segments, workspace )
 
+    def testFullWorkspace( self ):
+        '''
+        test sampling within a single continuous workspace.
+        Segments are larger than the workspace
+        '''
+        nsegments = 1
+        segment_size = 200
+
+        workspace = gat.SegmentList( iter = [ (0, 100) ],
+                                     normalize = True )
+
+        segments = gat.SegmentList( iter = ( (x,  x + segment_size)   \
+                                                 for x in range( 0, 5 * nsegments, 5) ),
+                                    normalize = True )
+        
+        samples = self.getSamples( segments, workspace )
+
+        self.checkSample( samples, segments, workspace )
+
+    def testSmallWorkspace( self ):
+        '''
+        test sampling within a single continuous workspace.
+        Segments half the size of the workspace
+        '''
+        nsegments = 1
+        segment_size = 50
+
+        workspace = gat.SegmentList( iter = [ (0, 100) ],
+                                     normalize = True )
+
+        segments = gat.SegmentList( iter = ( (x,  x + segment_size)   \
+                                                 for x in range( 0, 100 * nsegments, 100) ),
+                                    normalize = True )
+        
+        samples = self.getSamples( segments, workspace )
+
+        self.checkSample( samples, segments, workspace )
+
+    def testSmallWorkspaceManySegments( self ):
+        '''
+        test sampling within a single continuous workspace.
+        Segments half the size of the workspace
+        '''
+        nsegments = 10
+        segment_size = 5
+
+        workspace = gat.SegmentList( iter = [ (0, 100) ],
+                                     normalize = True )
+
+        segments = gat.SegmentList( iter = ( (x,  x + segment_size)   \
+                                                 for x in range( 0, segment_size * nsegments * 2, 2 * segment_size) ),
+                                    normalize = True )
+        
+        samples = self.getSamples( segments, workspace )
+
+        self.checkSample( samples, segments, workspace )
+
     def testSegmentedWorkspace2x( self ):
-        '''test if workspace segments are only twice the size of segmments.
+        '''
+        test if workspace segments are only twice the size of segmments.
         '''
 
         nsegments = 10 
@@ -477,29 +735,6 @@ class TestSegmentSamplingGat( unittest.TestCase ):
 
 class TestSegmentSamplingTheAnnotator( TestSegmentSamplingGat ):
     '''use annotator to sample segments.'''
-    
-    cmd = '''/cpp-software/bin/java -Xmx8000M -cp /home/andreas/projects/annotator/lib/commons-cli-1.0.jar:/home/andreas/projects/annotator/lib/Annotator.jar app.Annotator -verbose 4'''
-
-    def writeSegments( self, outfile, segmentlist, section ):
-        
-        if section == "workspace":
-            prefix = "##Work"
-        elif section == "segments":
-            prefix = "##Seg"
-        elif section == "annotations":
-            prefix = "##Id\t0"
-
-        contig = "chr1" 
-        os.write( outfile,
-                  "%s\t%s\t%s\n" % (
-                prefix,
-                contig,
-                "\t".join( ["(%i,%i)" % (x,y) for x,y in segmentlist] ) ))
-
-        if section == "annotations":
-            os.write(outfile, "##Ann\ttest\t0" )
-
-        os.close(outfile)
 
     def getSamples( self, 
                     segments,
@@ -509,11 +744,12 @@ class TestSegmentSamplingTheAnnotator( TestSegmentSamplingGat ):
         fworkspace, nworkspace = tempfile.mkstemp()
         fannotations, nannotations = tempfile.mkstemp()
 
-        self.writeSegments( fsegments, segments, "segments" )
-        self.writeSegments( fworkspace, workspace, "workspace" )
-        self.writeSegments( fannotations, workspace, "annotations" )
+        writeAnnotatorSegments( fsegments, segments, "segments" )
+        writeAnnotatorSegments( fworkspace, workspace, "workspace" )
+        writeAnnotatorSegments( fannotations, workspace, "annotations" )
 
-        statement = " ".join( (self.cmd,
+        statement = " ".join( (ANNOTATOR_CMD,
+                               "-seed %i" % random.getrandbits(16),
                                "-dumpsegments",
                                "-iterations %i" % self.ntests,
                                "-annotation %s" % nannotations,
@@ -531,13 +767,14 @@ class TestSegmentSamplingTheAnnotator( TestSegmentSamplingGat ):
         stdout, stderr = process.communicate()
 
         if process.returncode != 0:
-            raise PipelineError( "Child was terminated by signal %i: \nThe stderr was: \n%s\n%s\n" % (-process.returncode, stderr, statement ))
+            raise OSError( "Child was terminated by signal %i: \nThe stderr was: \n%s\n%s\n" % (-process.returncode, stderr, statement ))
 
         samples = []
         for line in stdout.split("\n"):
             if not line.startswith( "##Segments" ): continue
             data = line.split("\t")[2:]
             coords = [ map(int, x[1:-1].split(",")) for x in data ]
+            # print "annotator", coords
             samples.append( gat.SegmentList( iter = coords ) )
 
         os.unlink( nsegments )
@@ -546,7 +783,11 @@ class TestSegmentSamplingTheAnnotator( TestSegmentSamplingGat ):
 
         return samples
 
-class TestStatsSNPSampling( unittest.TestCase ):
+##############################################################################        
+##############################################################################        
+##############################################################################        
+##############################################################################        
+class TestStatsSNPSampling( GatTest ):
     '''test Stats by running a SNP (1-size interval) analysis.
 
     For SNPs, the hypergeometric distribution applies.
@@ -694,13 +935,14 @@ class TestStatsSNPSampling( unittest.TestCase ):
             gat.IntervalCollection( "annotation" )
 
         workspace_size = 1000
+        nsnps = 1
 
         # workspace of size 1000000
         workspaces.add( "default", "chr1", gat.SegmentList( iter = [(0,workspace_size),],
                                                             normalize = True ) )
         workspace = workspaces["default"]
 
-        segments.add( "default", "chr1", gat.SegmentList( iter = [(0,1),],
+        segments.add( "default", "chr1", gat.SegmentList( iter = [(x,x+1) for x in range(0,nsnps)],
                                                           normalize = True ) )
 
         # annotations: a collection of segments with increasing density
@@ -720,6 +962,7 @@ class TestStatsSNPSampling( unittest.TestCase ):
             gat.IntervalCollection( "annotation" )
 
         workspace_size = 1000
+        nsnps = 10
 
         # workspace of size 1000000
         workspaces.add( "default", "chr1", gat.SegmentList( iter = [(0,workspace_size),],
@@ -727,7 +970,7 @@ class TestStatsSNPSampling( unittest.TestCase ):
         workspace = workspaces["default"]
 
         # 10 snps
-        segments.add( "default", "chr1", gat.SegmentList( iter = [(x,x+1) for x in range(0,10)],
+        segments.add( "default", "chr1", gat.SegmentList( iter = [(x,x+1) for x in range(0,nsnps)],
                                                           normalize = True ) )
 
         # annotations: a collection of segments with increasing density
@@ -751,7 +994,6 @@ class TestStatsSNPSampling( unittest.TestCase ):
             gat.IntervalCollection( "annotation" )
 
         workspace_size = 1000
-
         nsnps = 100
 
         # workspace of size 1000000
@@ -831,6 +1073,7 @@ class TestStatsSNPSampling( unittest.TestCase ):
                       gat.SegmentList( iter = [(x,x+1) for x in xrange(0, workspace_size, 100) ],
                                        normalize = True ))
         
+        start = 0
         annotations.add( "%03i" % start, "chr1",
                          gat.SegmentList( iter = [(0,workspace_size)],
                                           normalize = True ) ) 
@@ -864,189 +1107,45 @@ class TestStatsSNPSampling( unittest.TestCase ):
                                               normalize = True ) ) 
             
         self.check( workspaces["default"], annotations, segments )
-        
-class TestCaching( unittest.TestCase ):
 
-    sample_size = 10
-    workspace_size = 1000
-
-    def testCaching( self ):
-
-        workspaces, segments, annotations = \
-            gat.IntervalCollection( "workspace" ), \
-            gat.IntervalCollection( "segment" ), \
-            gat.IntervalCollection( "annotation" )
-
-        workspaces.add( "default", "chr1", gat.SegmentList( iter = [(0,self.workspace_size),],
-                                                            normalize = True ) )
-        workspace = workspaces["default"]
-
-        segments.add( "default", "chr1", gat.SegmentList( iter = [(0,1),],
-                                                          normalize = True ) )
-
-        # annotations: a collection of segments with increasing density
-        # all are overlapping the segments
-        for y in range(1, 100, 2 ):
-            annotations.add( "%03i" % y, "chr1",
-                             gat.SegmentList( iter = [(0,y),],
-                                              normalize = True ) ) 
-            
-        workspace_size = workspace["chr1"].sum()
-
-        sampler = gat.SamplerAnnotator( bucket_size = 1, nbuckets = self.workspace_size )
-        
-        if os.path.exists( "test.cache"): os.remove( "test.cache" )
-        
-        outsamples = gat.SamplesCached( "test.cache" )
-        saved_samples = {}
-
-        for track in segments.tracks:
-            segs = segments[track]
-            for x in xrange( self.sample_size ):
-                for isochore in segs.keys():
-                    r = sampler.sample( segs[isochore], workspace[isochore] )
-                    saved_samples[(track,x,isochore)] = r
-                    outsamples.add( track, x, isochore, r )
-        
-        del outsamples
-        
-        insamples = gat.SamplesCached( "test.cache" )
-        
-        for track in segments.tracks:
-            segs = segments[track]
-            for x in xrange( self.sample_size ):
-                for isochore in segs.keys():
-                    insamples.load( track, x, isochore )
-                    
-        # compare
-        for track in segments.tracks:
-            segs = segments[track]
-            for x in xrange( self.sample_size ):
-                for isochore in segs.keys():
-                    self.assertEqual( saved_samples[(track,x,isochore)].asList(),
-                                      insamples[track][x][isochore].asList() )
-
-
-class TestStats( unittest.TestCase ):
-
-    ntracks = 10 # 17
-    nannotations = 10 # 90
-    nsamples = 1000
-
-    def testPValueComputation( self ):
-        
-        annotation_size = 100
-        workspace_size = 1000
-        segment_size = 10
-
-        l = 10
-
-        for y in xrange(1, l):
-
-            samples = [1] * y + [0] * (l - y)
-
-            for x, s in enumerate(samples):
-
-                g = gat.AnnotatorResult( "track", "samples",
-                                         s,
-                                         samples )
-                self.assertEqual( g.isSampleSignificantAtPvalue( x, g.pvalue ), True )
-                                  
-
-                t = 0
-                for z, s2 in enumerate(samples):
-                    t += g.isSampleSignificantAtPvalue( z, g.pvalue )
-                fpr = float(t) / l
-
-                # == should work, but there is a problem 
-                # for pvalue = 0.5
-                self.assert_( fpr >= g.pvalue - 0.0001, 
-                              "fpr (%f) != pvalue (%f): y=%i, x=%i, s=%i, t=%i" % \
-                                  ( fpr, g.pvalue, y, x, s, t) )
-
-
-    def testPValueComputation2( self ):
-        
-        samples = [0] * 66 + [1] * 2 + [2] * 20 + [3] * 1 + [4] * 6 + [6] * 2 + [8] * 2 + [16] * 1
-        
-        obs = 16
-
-        g = gat.AnnotatorResult( "track", "samples",
-                                 obs,
-                                 samples )
-
-        self.assertEqual( g.pvalue, 0.01 )
-
-
-    def testStats( self ):
-        
-        annotation_size = 100
-        workspace_size = 1000
-        segment_size = 10
-
-        observed = numpy.random.hypergeometric(annotation_size, 
-                                               workspace_size - annotation_size,
-                                               segment_size, 
-                                               self.ntracks * self.nannotations )
-
-        results = []
-        x = 0
-        for track in range(self.ntracks ):
-            for annotation in range(self.nannotations ):
-                samples = numpy.random.hypergeometric(annotation_size, 
-                                                      workspace_size - annotation_size,
-                                                      segment_size, 
-                                                      self.nsamples )
-
-                samples.sort()
-                # print "obs", observed[x], "sample=", samples
-
-                results.append( gat.AnnotatorResult( str(track),                                                      str(annotation),
-                                                     observed[x],
-                                                     samples ) )
-
-                x += 1
-
-        gat.computeFDR( results )
-        for r in results: 
-            self.assert_( r.qvalue > 0.5, "%f" % r.qvalue  )
-
-class TestStatsSampling( unittest.TestCase ):
-    '''test Stats by running a SNP (1-size interval) analysis.
-
-    For SNPs, the hypergeometric distribution applies.
+##############################################################################        
+##############################################################################        
+##############################################################################        
+##############################################################################        
+class TestStatsGat( GatTest ):
+    '''
     '''
 
-    sample_size = 10
+    sample_size = 1000
 
-    def getSamples( self, segments,
-             annotations,
-             workspace,
-             sampler,
-             counter ):
+    def getSamples( self, 
+                    segments,
+                    annotations,
+                    workspace ):
+
+        workspace_size = workspace["chr1"].sum()
+
+        sampler = gat.SamplerAnnotator( bucket_size = 1, nbuckets = workspace_size )
+
+        counter = gat.CounterNucleotideOverlap()
+
         return gat.run( segments,
                         annotations,
                         workspace,
                         sampler,
                         counter,
                         num_samples = self.sample_size )
-        
+
     def check( self, workspace, annotations, segments ):
 
         workspace_size = workspace["chr1"].sum()
-        
-        sampler = gat.SamplerAnnotator( bucket_size = 1, nbuckets = workspace_size )
-
-        counter = gat.CounterNucleotideOverlap()
 
         #print segments["default"]["chr1"]
         #print workspace["chr1"]
     
         annotator_results = self.getSamples( segments,
                                              annotations,
-                                             workspace,
-                                             sampler,
-                                             counter )
+                                             workspace )
 
         outfile = sys.stdout
 
@@ -1061,9 +1160,9 @@ class TestStatsSampling( unittest.TestCase ):
 
         for track, r in annotator_results.iteritems():
             for annotation, result in r.iteritems():
-                #print workspace["chr1"]
-                #print annotations[annotation]["chr1"]
-                
+                # print workspace["chr1"]
+                # print annotations[annotation]["chr1"]
+
                 intersection = gat.SegmentList( clone = annotations[annotation]["chr1"] )
                 intersection.intersect( workspace["chr1"] )
 
@@ -1071,9 +1170,10 @@ class TestStatsSampling( unittest.TestCase ):
 
                 # expected overlap for sampling with replacement
                 expected_with = annotation_size / float(workspace_size)
-                
+
                 if annotation_size < workspace_size:
                     
+
                     # test sampling (# of expected)
                     # sampling without replacement follows hypergeometric distribution
                     # good = annotation_size
@@ -1114,6 +1214,8 @@ class TestStatsSampling( unittest.TestCase ):
                     expected_pvalue = 1.0
                     error = 0.1
 
+                # print annotation_size, workspace_size - annotation_size, segment_size, self.sample_size, result.observed, result.expected, result.pvalue, expected_pvalue, result.stddev, expected_std
+
                 self.assert_( abs( result.expected - expected_without) < error,
                               "simulated results deviates from hypergeometric expectation for annotation `%s`: sizes(seg=%i/anno=%i/work=%i) observed=%f, expected=%f (%f, margin=%f)" %\
                                   ( annotation,
@@ -1145,23 +1247,27 @@ class TestStatsSampling( unittest.TestCase ):
 
         plt.figure()
         plt.subplot( 221 )
-        plt.scatter( anno_mean, dist_mean )
-        plt.xlabel( "simulated - mean" )
-        plt.ylabel( "distribution - mean" )
+        plt.scatter( dist_mean, anno_mean )
+        plt.ylabel( "simulated - mean" )
+        plt.xlabel( "distribution - mean" )
         plt.plot( anno_mean, anno_mean, "b" )
         plt.subplot( 222 )
-        plt.scatter( anno_std, dist_std)
-        plt.xlabel( "simulated - std" )
-        plt.ylabel( "distribution - std" )
+        plt.scatter( dist_std, anno_std )
+        plt.ylabel( "simulated - std" )
+        plt.xlabel( "distribution - std" )
         plt.plot( anno_std, anno_std, "b" )
         plt.subplot( 223 )
-        plt.scatter( anno_pvalue, dist_pvalue)
-        plt.xlabel( "simulated - pvalue" )
-        plt.ylabel( "distribution - pvalue" )
+        plt.scatter( dist_pvalue, anno_pvalue )
+        plt.ylabel( "simulated - pvalue" )
+        plt.xlabel( "distribution - pvalue" )
         plt.plot( anno_pvalue, anno_pvalue, "b" )
-        plt.savefig( "test_%s.png" % re.sub( "[ ()]", "", str(self) ))
+        plt.savefig( getPlotFilename( str(self) ) )
 
     def testSingleSNP( self ):
+        '''test stats using a single SNP
+
+        The counts should follow a hypergeometric distribution.
+        '''
 
         workspaces, segments, annotations = \
             gat.IntervalCollection( "workspace" ), \
@@ -1189,12 +1295,13 @@ class TestStatsSampling( unittest.TestCase ):
 
     def testMultipleSNPsFullOverlap( self ):
 
+        nsnps = 10
+        workspace_size = 1000
+
         workspaces, segments, annotations = \
             gat.IntervalCollection( "workspace" ), \
             gat.IntervalCollection( "segment" ), \
             gat.IntervalCollection( "annotation" )
-
-        workspace_size = 1000
 
         # workspace of size 1000000
         workspaces.add( "default", "chr1", gat.SegmentList( iter = [(0,workspace_size),],
@@ -1202,7 +1309,7 @@ class TestStatsSampling( unittest.TestCase ):
         workspace = workspaces["default"]
 
         # 10 snps
-        segments.add( "default", "chr1", gat.SegmentList( iter = [(x,x+1) for x in range(0,10)],
+        segments.add( "default", "chr1", gat.SegmentList( iter = [(x,x+1) for x in range(0,nsnps*2,2)],
                                                           normalize = True ) )
 
         # annotations: a collection of segments with increasing density
@@ -1220,14 +1327,14 @@ class TestStatsSampling( unittest.TestCase ):
 
         Tests if p-values are computed correctly.
         '''
+        workspace_size = 1000
+        nsnps = 100
+
         workspaces, segments, annotations = \
             gat.IntervalCollection( "workspace" ), \
             gat.IntervalCollection( "segment" ), \
             gat.IntervalCollection( "annotation" )
 
-        workspace_size = 1000
-
-        nsnps = 100
 
         # workspace of size 1000000
         workspaces.add( "default", "chr1", gat.SegmentList( iter = [(0,workspace_size),],
@@ -1235,12 +1342,12 @@ class TestStatsSampling( unittest.TestCase ):
         workspace = workspaces["default"]
 
         # 10 snps
-        segments.add( "default", "chr1", gat.SegmentList( iter = [(x,x+1) for x in range(0,nsnps)],
+        segments.add( "default", "chr1", gat.SegmentList( iter = [(x,x+1) for x in range(0,nsnps*2, nsnps)],
                                                           normalize = True ) )
 
         # annotations: a collection of segments.
         # overlap increases
-        for y in range(0, nsnps, 1 ):
+        for y in range(0, nsnps * 2, 2 ):
             annotations.add( "%03i" % y, "chr1",
                              gat.SegmentList( iter = [(y,nsnps+y),],
                                               normalize = True ) ) 
@@ -1252,29 +1359,29 @@ class TestStatsSampling( unittest.TestCase ):
         increasing amount of overlap.
 
         '''
+
+        workspace_size = 1000
+        segment_size = 100
+
         workspaces, segments, annotations = \
             gat.IntervalCollection( "workspace" ), \
             gat.IntervalCollection( "segment" ), \
             gat.IntervalCollection( "annotation" )
-
-        workspace_size = 1000
-
-        size = 100
 
         # workspace of size 1000000
         workspaces.add( "default", "chr1", gat.SegmentList( iter = [(0,workspace_size),],
                                                             normalize = True ) )
         workspace = workspaces["default"]
 
-        # segment of size 10
-        segments.add( "default", "chr1", gat.SegmentList( iter = [(0,size), ],
+        # segment of size segment_size
+        segments.add( "default", "chr1", gat.SegmentList( iter = [(0,segment_size), ],
                                                           normalize = True ))
 
         # annotations: a collection of segments.
         # overlap increases
-        for y in range(0, size):
+        for y in range(0, segment_size):
             annotations.add( "%03i" % y, "chr1",
-                             gat.SegmentList( iter = [(y,size+y),],
+                             gat.SegmentList( iter = [(y,segment_size+y),],
                                               normalize = True ) ) 
             
         self.check( workspace, annotations, segments )
@@ -1315,6 +1422,139 @@ class TestStatsSampling( unittest.TestCase ):
             
         self.check( workspaces["default"], annotations, segments )
 
+
+class TestStatsTheAnnotator( TestStatsGat ):
+
+    def getSamples( self, 
+                    segments,
+                    annotations,
+                    workspace ):
+
+        fsegments, nsegments = tempfile.mkstemp()
+        fworkspace, nworkspace = tempfile.mkstemp()
+        fannotations, nannotations = tempfile.mkstemp()
+
+        writeAnnotatorSegments2( fworkspace, workspace, "workspace" )
+        writeAnnotatorSegments2( fsegments, segments["default"], "segments" )
+        writeAnnotatorAnnotations( fannotations, annotations )
+        
+        statement = " ".join( (ANNOTATOR_CMD,
+                               "-seed %i" % random.getrandbits(16),
+                               "-dumpsegments",
+                               "-iterations %i" % self.sample_size,
+                               "-annotation %s" % nannotations,
+                               "-segments %s" % nsegments,
+                               "-workspace %s" % nworkspace ) )
+
+        process = subprocess.Popen(  statement,
+                                     cwd = os.getcwd(), 
+                                     shell = True,
+                                     stdin = subprocess.PIPE,
+                                     stdout = subprocess.PIPE,
+                                     stderr = subprocess.PIPE )
+
+        # process.stdin.close()
+        stdout, stderr = process.communicate()
+
+        if process.returncode != 0:
+            raise OSError( "Child was terminated by signal %i: \nThe stderr was: \n%s\n%s\n" % (-process.returncode, stderr, statement ))
+
+        annotator_results = collections.defaultdict( dict )
+
+        intersection = gat.SegmentList( clone = segments["default"]["chr1"] )
+        intersection.intersect( workspace["chr1"] )
+        segment_size = intersection.sum()
+
+        # intersection = gat.SegmentList( clone = annotations["default"]["chr1"] )
+        # intersection.intersect( workspace["chr1"] )
+        # annotation_size = intersection.sum()
+        # print "segment_size", segment_size, annotation_size
+
+        keep = False
+        for line in stdout.split("\n"):
+            
+            # print line
+            if line.startswith("#"): continue
+            if line.startswith("Z"): 
+                keep = True
+                continue
+            if not keep: continue
+
+            data = line.split("\t")
+            if len(data) != 9: break
+            z, fold, pvalue, observed, expected, lower95, upper95, stddev, annotation = data
+            pvalue, observed, expected, lower95, upper95, stddev = \
+                map(float, (pvalue, observed, expected, lower95, upper95, stddev) )
+
+            try:
+                fold = observed / expected
+            except ZeroDivisionError:
+                fold = 0.0
+
+            r = gat.DummyAnnotatorResult()
+            r.track = "default"
+            r.observed = observed * segment_size
+            r.expected = expected * segment_size
+            r.annotation = annotation[1:]
+            r.fold = fold
+            r.lower95 = lower95 * segment_size 
+            r.upper95 = upper95 * segment_size
+            r.pvalue = pvalue
+            r.qvalue = 1.0
+            r.stddev = stddev * segment_size 
+
+            annotator_results[r.track][r.annotation] = r
+
+        os.unlink( nsegments )
+        os.unlink( nworkspace )
+        os.unlink( nannotations )
+
+        return annotator_results
+
+
+class TestTrimming( GatTest ):
+
+    def testEndTrim( self ):
+        '''test end trimming.
+
+        5 segments of 10 with a gap of 10.
+
+        Count trimmed residues
+        '''
+
+        nrepeats = 100
+        npoints = 100
+        segment = 10
+        return
+
+        for size in range( 2, 3 * segment ):
+
+            plt.figure()
+            full = sum([ range( x+size, x+segment-size) for x in range( 0, npoints, 2*segment ) ], [])
+            trimmed = sum([ range( x, min(npoints-1,x+size)) for x in range( 0, npoints, 2*segment ) ] +\
+                              [ range( max(0,x+segment-size), x+segment) for x in range( 0, npoints, 2*segment ) ], [])
+
+            total = numpy.zeros( len(trimmed), numpy.int )
+
+            for repeat in range(nrepeats):
+                counts = numpy.zeros( npoints, numpy.int )
+                for y in range( 0, npoints, 2*segment ):
+                    for point in xrange( y, y+segment ):
+                        ss = [ (x, x + segment ) for x in range( 0, npoints, 2 * segment) ]
+                        s = gat.SegmentList( iter = ss,
+                                             normalize = True )
+                        s.trim_ends( point, size, numpy.random.randint( 0, 2 ) )
+                        for start, end in s:
+                            counts[start:end] += 1
+                t = counts[trimmed]
+                f = counts[full]
+                if len(f) > 0:
+                    self.assertEqual( min(f), max(f), "min=%i, npoints=%i, size=%i" % (min(f), npoints, size) )
+                total += t
+                
+            #plt.plot( xrange(len(total)), total )
+
+        # plt.show()
 
 if __name__ == '__main__':
     unittest.main()

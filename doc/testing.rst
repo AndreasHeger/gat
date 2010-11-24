@@ -45,10 +45,28 @@ The tests below sample from a segment list *10* segments with each segment of si
 GAT
 ---
 
+Continuous workspaces
++++++++++++++++++++++
+
 .. figure:: ../test/testSingleWorkspace.TestSegmentSamplingGat.png
    :width: 500
 
    Single continuous workspace.
+
+.. figure:: ../test/testFullWorkspace.TestSegmentSamplingGat.png
+   :width: 500
+
+   A single continuous workspace of size 100. Samples contain a single
+   segment of size 200.
+
+.. figure:: ../test/testSmallWorkspace.TestSegmentSamplingGat.png
+   :width: 500
+
+   A single continuous workspace of size 100. Samples contain a single
+   segment of size 50.
+
+Segmented workspaces
+++++++++++++++++++++
 
 .. figure:: ../test/testSegmentedWorkspaceSmallGap.TestSegmentSamplingGat.png
    :width: 500
@@ -68,6 +86,18 @@ GAT
    Workspace segmented into 10 segments of size 200 with a 800 nucleotide
    gap between workspaces. In this case, workspace segments are only twice 
    the size of segments.
+
+.. figure:: ../test/testSegmentedWorkspaceSmallGapUnequalSides.TestSegmentSamplingGat.png
+   :width: 500
+
+   A segmented workspace of size 100 split at position 50 with a gap of 25. There is 
+   a single segment of size 50.
+
+.. figure:: ../test/testSegmentedWorkspaceSmallGapEqualSides.TestSegmentSamplingGat.png
+   :width: 500
+
+   A segmented workspace of size 125 split at position 50 with a gap of 5. There is 
+   a single segment of size 50.
 
 Annotator
 ---------
@@ -75,57 +105,186 @@ Annotator
 .. note::
    If annotator is not installed, the annotator plots will be missing.
 
-.. figure:: ../test/testSingleWorkspace.TestSegmentSamplingGat.png
+Continuous workspaces
++++++++++++++++++++++
+
+.. figure:: ../test/testSingleWorkspace.TestSegmentSamplingTheAnnotator.png
    :width: 500
 
    Single continuous workspace.
 
-.. figure:: ../test/testSegmentedWorkspaceSmallGap.TestSegmentSamplingGat.png
+.. figure:: ../test/testFullWorkspace.TestSegmentSamplingTheAnnotator.png
+   :width: 500
+
+   A single continuous workspace of size 100. Samples contain a single
+   segment of size 200.
+
+.. figure:: ../test/testSmallWorkspace.TestSegmentSamplingTheAnnotator.png
+   :width: 500
+
+   A single continuous workspace of size 100. Samples contain a single
+   segment of size 50.
+
+Segmented workspaces
+++++++++++++++++++++
+
+.. figure:: ../test/testSegmentedWorkspaceSmallGap.TestSegmentSamplingTheAnnotator.png
    :width: 500
 
    Workspace segmented into 10 segments of size 999 with a single nucleotide
    gap between workspaces.
 
-.. figure:: ../test/testSegmentedWorkspaceLargeGap.TestSegmentSamplingGat.png
+.. figure:: ../test/testSegmentedWorkspaceLargeGap.TestSegmentSamplingTheAnnotator.png
    :width: 500
 
    Workspace segmented into 10 segments of size 900 with a 100 nucleotide
    gap between workspaces.
 
-.. figure:: ../test/testSegmentedWorkspace2x.TestSegmentSamplingGat.png
+.. figure:: ../test/testSegmentedWorkspace2x.TestSegmentSamplingTheAnnotator.png
    :width: 500
 
    Workspace segmented into 10 segments of size 200 with a 800 nucleotide
    gap between workspaces. In this case, workspace segments are only twice 
    the size of segments.
 
+.. figure:: ../test/testSegmentedWorkspaceSmallGapUnequalSides.TestSegmentSamplingTheAnnotator.png
+   :width: 500
+
+   A segmented workspace of size 100 split at position 50 with a gap of 25. There is 
+   a single segment of size 50.
+
+.. figure:: ../test/testSegmentedWorkspaceSmallGapEqualSides.TestSegmentSamplingTheAnnotator.png
+   :width: 500
+
+   A segmented workspace of size 125 split at position 50 with a gap of 5. There is 
+   a single segment of size 50.
+
 Statistics
 ==========
 
 For 1-sized fragments (i.e. SNPs), the statistics can be checked against
-a hypergeometric distribution (sampling without replacement).
+a hypergeometric distribution (sampling without replacement). All the
+tests below use a single continuous workspace of 1000 nucleotides seeded
+with a varying number of SNPs. 
 
-Test with a single SNP. Here, there are no issues with multiple hits.
-
-.. figure:: ../test/test_testSingleSNP__main__.TestStatsSNPSampling.png
+.. figure:: ../test/test_testSingleSNP.TestStatsSNPSampling.png
    :width: 500
 
-In the following test, multiple SNPs are in the segment list, all overlap the
-annotations. Hence all results are highly signficant. The size of the annotations 
-increases.
+   Test with a single SNP. Here, there are no issues with multiple hits.
+   The workspace contains a single annotation of increasing size (1,3,5,...,99)
 
-.. figure:: ../test/test_testMultipleSNPsFullOverlap__main__.TestStatsSNPSampling.png
+.. figure:: ../test/test_testMultipleSNPsFullOverlap.TestStatsSNPSampling.png
    :width: 500
 
-In the following test, multiple SNPs are in the segment list, but with decreasing overlap with the
-annotation. Annotations have similar sizes, hence the expected overlap is the same in all tests
-and you will expect two point clouds in the top plots. Tests with little observed overlap between 
-segments and annotations should not be significant.
+   In this test, *10* SNPs are in the segment list. The workspace contains a
+   single annotation of size (10, 15, ..., 105). All SNPs overlap the annotated
+   part of the workspace and hence all results are highly signficant. 
 
-.. figure:: ../test/test_testMultipleSNPsPartialOverlap__main__.TestStatsSNPSampling.png
+.. figure:: ../test/test_testMultipleSNPsPartialOverlap.TestStatsSNPSampling.png
    :width: 500
 
+   In this test, *10* SNPs are in the segment list. The workspace contains 
+   a single annotation. Annotations are all of size *10*, but the overlap of
+   SNPs with annotations varies from 0 to 10.
 
+Statistics
+==========
+
+Gat
+---
+
+SNPs
+++++
+
+For 1-sized fragments (i.e. SNPs), the statistics can be checked against
+a hypergeometric distribution (sampling without replacement). All the
+tests below use a single continuous workspace of 1000 nucleotides seeded
+with a varying number of SNPs. 
+
+.. figure:: ../test/testSingleSNP.TestStatsGat.png
+   :width: 500
+
+   Test with a single SNP. Here, there are no issues with multiple hits.
+   The workspace contains a single annotation of increasing size (1,3,5,...,99)
+
+.. figure:: ../test/testMultipleSNPsFullOverlap.TestStatsGat.png
+   :width: 500
+
+   In this test, *10* SNPs are in the segment list. The workspace contains a
+   single annotation of size (10, 15, ..., 105). All SNPs overlap the annotated
+   part of the workspace and hence all results are highly signficant. 
+
+.. figure:: ../test/testMultipleSNPsPartialOverlap.TestStatsGat.png
+   :width: 500
+
+   In this test, *10* SNPs are in the segment list. The workspace contains 
+   a single annotation. Annotations are all of size *10*, but the overlap of
+   SNPs with annotations varies from 0 to 10.
+
+.. figure:: ../test/testWorkspaces.TestStatsGat.png
+   :width: 500
+
+   workspace = 500 segments of size 1000, separated by a gap of 1000
+   annotations = 500 segments of size 1000, separated by a gap of 1000, shifted up 100 bases
+   segments = a SNP every 100 bp
+
+Intervals
++++++++++
+
+.. figure:: ../test/testIntervalsPartialOverlap.TestStatsGat.png
+   :width: 500
+
+   In this test, there is one segment of size *100*. Annotations
+   are of size *100* with decreasing overlap.
+
+
+Annotator
+---------
+
+SNPs
+++++
+
+For 1-sized fragments (i.e. SNPs), the statistics can be checked against
+a hypergeometric distribution (sampling without replacement). All the
+tests below use a single continuous workspace of 1000 nucleotides seeded
+with a varying number of SNPs. 
+
+.. figure:: ../test/testSingleSNP.TestStatsTheAnnotator.png
+   :width: 500
+
+   Test with a single SNP. Here, there are no issues with multiple hits.
+   The workspace contains a single annotation of increasing size (1,3,5,...,99)
+
+.. figure:: ../test/testMultipleSNPsFullOverlap.TestStatsTheAnnotator.png
+   :width: 500
+
+   In this test, *10* SNPs are in the segment list. The workspace contains a
+   single annotation of size (10, 15, ..., 105). All SNPs overlap the annotated
+   part of the workspace and hence all results are highly signficant. 
+
+.. figure:: ../test/testMultipleSNPsPartialOverlap.TestStatsTheAnnotator.png
+   :width: 500
+
+   In this test, *10* SNPs are in the segment list. The workspace contains 
+   a single annotation. Annotations are all of size *10*, but the overlap of
+   SNPs with annotations varies from 0 to 10.
+
+.. figure:: ../test/testWorkspaces.TestStatsTheAnnotator.png
+   :width: 500
+
+   workspace = 500 segments of size 1000, separated by a gap of 1000
+   annotations = 500 segments of size 1000, separated by a gap of 1000, shifted up 100 bases
+   segments = a SNP every 100 bp
+
+Intervals
++++++++++
+
+.. figure:: ../test/testIntervalsPartialOverlap.TestStatsTheAnnotator.png
+   :width: 500
+
+   In this test, *10* SNPs are in the segment list. The workspace contains 
+   a single annotation. Annotations are all of size *10*, but the overlap of
+   SNPs with annotations varies from 0 to 10.
 
 
 
