@@ -1269,7 +1269,7 @@ cdef class SamplerAnnotator(Sampler):
         cdef int nunsuccessful_rounds
         cdef int max_unsuccessful_rounds
         cdef long length
-        cdef long overlap
+        cdef long start, end, overlap
         cdef Segment segment, sampled_segment
         cdef SegmentList sampled_segments
         cdef SegmentList unintersected_segments
@@ -1398,27 +1398,37 @@ cdef class SamplerAnnotator(Sampler):
                 remaining -= overlap
 
         self.nunsuccessful_rounds = nunsuccessful_rounds
-
+        
         intersected_segments = SegmentList( clone = unintersected_segments )
+        # print "final: unintersected", intersected_segments.sum(), intersected_segments.asList()
         intersected_segments.merge()
+        # print "final: merged", intersected_segments.sum(), intersected_segments.asList()
         intersected_segments.filter( workspace )
-        #print "final:", intersected_segments.sum(), intersected_segments.asList()
+        # print "final: filtered", intersected_segments.sum(), intersected_segments.asList()
+        # print "final:", intersected_segments.sum(), intersected_segments.asList()
         
         assert intersected_segments.sum() > 0
         return intersected_segments
 
+########################################################
+########################################################
+########################################################
 cdef class SamplerSegments(Sampler):
 
     cdef long bucket_size
     cdef long nbuckets
-    cdef long nunsuccessful_rounds
 
     def __init__( self, bucket_size = 1, nbuckets = 100000 ):
-        '''sample segments from length distribution.
+        '''sample *n* segments from length distribution.
 
-        Sample exactly n segments.
+        The segment length distribution is derived from
+        the argument *segments* supplied to the :meth:`sample`
+        method.
 
-        Segments does not need to be normalized. In fact,
+        *n* is given by the number of segments in the observed
+        data.
+
+        *segments* does not need to be normalized. In fact,
         supplying overlapping segments is likely to be the 
         most realistic use case.
         '''
@@ -1466,6 +1476,123 @@ cdef class SamplerSegments(Sampler):
 
             sample._add( Segment( start, end ) )
 
+        return sample
+
+########################################################
+########################################################
+########################################################
+cdef class SamplerUniform(Sampler):
+
+    cdef long bucket_size
+    cdef long nbuckets
+    cdef long increment
+    cdef long start_at
+    cdef long current_workspace
+    cdef long current_position
+    cdef int current_orientation
+
+    def __init__( self, 
+                  increment,
+                  bucket_size = 1,
+                  nbuckets = 100000 ):
+        '''
+        For debugging purposes.
+
+        Every *increment* residues within the worspace
+        a new segment is generated. The segment length is
+        taken from the segment size distribution.
+
+        Segments are alternately forward/backward looking.
+        '''
+
+        self.bucket_size = bucket_size
+        self.nbuckets = nbuckets
+        self.increment = increment
+        self.current_orientation = 0
+        self.current_workspace = 0
+        self.current_position = 0
+
+    cpdef SegmentList sample( self,
+                              SegmentList segments,
+                              SegmentList workspace ):
+        '''return a sampled list of segments.'''
+        assert workspace.is_normalized, "workspace is not normalized"
+
+        cdef SegmentList sample
+        cdef SegmentListSampler sls
+        cdef long increment = self.increment
+        cdef long start, end, x, length, i, added, nsegments, nworkspaces
+        cdef long current_offset, current_workspace
+
+        # collect all segments in workspace
+        working_segments = SegmentList( clone = segments )
+        working_segments.filter( workspace )
+
+        # allocate sample large enough
+        sample = SegmentList( allocate = (len(workspace) / increment + workspace.sum() ) )
+
+        if len(working_segments) == 0:
+            return sample
+
+        # build length histogram
+        histogram = working_segments.getLengthDistribution( self.bucket_size,
+                                                            self.nbuckets )
+
+        hs = HistogramSampler( histogram, self.bucket_size )
+
+        sample = SegmentList( allocate = increment )
+
+        added = 0
+
+        nsegments = len(working_segments)
+        nworkspaces = len(workspace)
+
+        x = self.current_position 
+        current_workspace = self.current_workspace
+        start, end = workspace[current_workspace]        
+
+        while added < nsegments:
+
+            while x > end:
+                x -= end
+                current_workspace = (current_workspace + 1) % nworkspaces
+                start, end = workspace[current_workspace]        
+                x += start            
+
+            # sample a segment length from the histogram
+            length = hs.sample()
+            assert length > 0
+            if self.current_orientation:
+                sample._add( Segment( x, x + length ) )
+                self.current_orientation = 0
+            else:
+                sample._add( Segment( x-length, x) )
+                self.current_orientation = 1
+            x += increment
+            added += 1
+                             
+        self.current_position = x
+        self.current_workspace = current_workspace
+
+        return sample
+
+########################################################
+########################################################
+########################################################
+cdef class SamplerDummy(Sampler):
+
+    def __init__( self ):
+        '''
+        returns a copy of the observed data.
+        '''
+
+    cpdef SegmentList sample( self,
+                              SegmentList segments,
+                              SegmentList workspace ):
+        '''return a sampled list of segments.'''
+
+        cdef SegmentList sample
+        sample = SegmentList( clone = sample )
         return sample
 
 ############################################################

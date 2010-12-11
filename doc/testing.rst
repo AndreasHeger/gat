@@ -4,160 +4,20 @@ Benchmarking
 
 This section contains quality control plots from the unit testing.
 
-Position sampling
-=================
-
-The :class:`TestSamplerPosition` tests if the position sampling works
-as expected. In particular, look out for edge effects.
-
-.. figure:: ../test/test_testMultipleWorkspaces__main__.TestSamplerPosition.png
-   :width: 500
-
-   Multiple work spaces. 10 workspaces of size 100, spaced every 1000 nucleotides
-
-.. figure:: ../test/test_testPositionSamplingSingleWorkspace__main__.TestSamplerPosition.png
-   :width: 500
-
-   A single work space.
-
-.. figure:: ../test/test_testPositionSamplingSplitWorkspace__main__.TestSamplerPosition.png
-   :width: 500
-
-   A workspace split in the middle without a gap.
-
-.. figure:: ../test/test_testPositionSamplingSplitWorkspace2__main__.TestSamplerPosition.png
-   :width: 500
-
-   A workspace split in the middle with a gap in between.
-
-.. figure:: ../test/test_testSNPPositionSampling__main__.TestSamplerPosition.png
-   :width: 500
-
-   10 workspaces of size 100, segment size of 1 (SNP).
-
 Sampling
 ========
 
 The following plots benchmark the segment sampling behaviour of GAT and Annotator.
 The tests below sample from a segment list *10* segments with each segment of size *100*.
 
+.. toctree::
+   :maxdepth: 2
 
-GAT
----
-
-Continuous workspaces
-+++++++++++++++++++++
-
-.. figure:: ../test/testSingleWorkspace.TestSegmentSamplingGat.png
-   :width: 500
-
-   Single continuous workspace.
-
-.. figure:: ../test/testFullWorkspace.TestSegmentSamplingGat.png
-   :width: 500
-
-   A single continuous workspace of size 100. Samples contain a single
-   segment of size 200.
-
-.. figure:: ../test/testSmallWorkspace.TestSegmentSamplingGat.png
-   :width: 500
-
-   A single continuous workspace of size 100. Samples contain a single
-   segment of size 50.
-
-Segmented workspaces
-++++++++++++++++++++
-
-.. figure:: ../test/testSegmentedWorkspaceSmallGap.TestSegmentSamplingGat.png
-   :width: 500
-
-   Workspace segmented into 10 segments of size 999 with a single nucleotide
-   gap between workspaces.
-
-.. figure:: ../test/testSegmentedWorkspaceLargeGap.TestSegmentSamplingGat.png
-   :width: 500
-
-   Workspace segmented into 10 segments of size 900 with a 100 nucleotide
-   gap between workspaces.
-
-.. figure:: ../test/testSegmentedWorkspace2x.TestSegmentSamplingGat.png
-   :width: 500
-
-   Workspace segmented into 10 segments of size 200 with a 800 nucleotide
-   gap between workspaces. In this case, workspace segments are only twice 
-   the size of segments.
-
-.. figure:: ../test/testSegmentedWorkspaceSmallGapUnequalSides.TestSegmentSamplingGat.png
-   :width: 500
-
-   A segmented workspace of size 100 split at position 50 with a gap of 25. There is 
-   a single segment of size 50.
-
-.. figure:: ../test/testSegmentedWorkspaceSmallGapEqualSides.TestSegmentSamplingGat.png
-   :width: 500
-
-   A segmented workspace of size 125 split at position 50 with a gap of 5. There is 
-   a single segment of size 50.
-
-Annotator
----------
-
-.. note::
-   If annotator is not installed, the annotator plots will be missing.
-
-Continuous workspaces
-+++++++++++++++++++++
-
-.. figure:: ../test/testSingleWorkspace.TestSegmentSamplingTheAnnotator.png
-   :width: 500
-
-   Single continuous workspace.
-
-.. figure:: ../test/testFullWorkspace.TestSegmentSamplingTheAnnotator.png
-   :width: 500
-
-   A single continuous workspace of size 100. Samples contain a single
-   segment of size 200.
-
-.. figure:: ../test/testSmallWorkspace.TestSegmentSamplingTheAnnotator.png
-   :width: 500
-
-   A single continuous workspace of size 100. Samples contain a single
-   segment of size 50.
-
-Segmented workspaces
-++++++++++++++++++++
-
-.. figure:: ../test/testSegmentedWorkspaceSmallGap.TestSegmentSamplingTheAnnotator.png
-   :width: 500
-
-   Workspace segmented into 10 segments of size 999 with a single nucleotide
-   gap between workspaces.
-
-.. figure:: ../test/testSegmentedWorkspaceLargeGap.TestSegmentSamplingTheAnnotator.png
-   :width: 500
-
-   Workspace segmented into 10 segments of size 900 with a 100 nucleotide
-   gap between workspaces.
-
-.. figure:: ../test/testSegmentedWorkspace2x.TestSegmentSamplingTheAnnotator.png
-   :width: 500
-
-   Workspace segmented into 10 segments of size 200 with a 800 nucleotide
-   gap between workspaces. In this case, workspace segments are only twice 
-   the size of segments.
-
-.. figure:: ../test/testSegmentedWorkspaceSmallGapUnequalSides.TestSegmentSamplingTheAnnotator.png
-   :width: 500
-
-   A segmented workspace of size 100 split at position 50 with a gap of 25. There is 
-   a single segment of size 50.
-
-.. figure:: ../test/testSegmentedWorkspaceSmallGapEqualSides.TestSegmentSamplingTheAnnotator.png
-   :width: 500
-
-   A segmented workspace of size 125 split at position 50 with a gap of 5. There is 
-   a single segment of size 50.
+   testingSamplerGatSegments.rst
+   testingSamplerGatAnnotator.rst
+   testingSamplerGatUniform.rst
+   testingSamplerAnnotator.rst
+   testingPosition.rst
 
 Statistics
 ==========

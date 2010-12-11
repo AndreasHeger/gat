@@ -426,6 +426,20 @@ def getWorkspaceCounts( workspace,
 class TestSegmentSamplingGat( GatTest ):
 
     ntests = 1000
+    # check if number of nucleotides returned
+    # is as expected. Set to False for samplers
+    # which do not return the exact number of nucleotides
+    check_nucleotides = True
+
+    # check average coverage, set to false for samples
+    check_average_coverage = True
+    # check for uniform covage 
+    check_uniform_coverage = True
+
+    # check segment size distribution
+    # turned off as segment length will vary 
+    # in testFullWorkspace
+    check_length = False
 
     def setUp(self):
         self.sampler = gat.SamplerAnnotator()
@@ -444,6 +458,26 @@ class TestSegmentSamplingGat( GatTest ):
 
         return samples
 
+    def checkLength( self, samples, segments, workspace ):
+        '''check length distribution of segments.'''
+
+        # check segment lengths
+        l = [ x[1] - x[0] for x in segments ]
+        values_input = min( l ), max(l ), numpy.mean( l ), numpy.std( l )
+
+        for i, sample in enumerate( samples ):
+            l = [ x[1] - x[0] for x in sample ]
+            values_sample = min( l ), max( l ), numpy.mean( l ), numpy.std( l )
+            
+            for val, inp, samp in zip( ("min", "max", "mean", "std" ),
+                                  values_input,
+                                  values_sample ):
+                d = abs(inp - samp) / float(inp)
+                self.assert_( d < 0.1, 
+                              "segment length distribution in sample %i: expected %s (%f) != observed %s (%f)" %\
+                                  ( i, val, inp, val, samp ) )
+
+
     def checkSample( self, samples, segments, workspace ):
         '''check if sample corresponds to expectation.
 
@@ -453,6 +487,9 @@ class TestSegmentSamplingGat( GatTest ):
         filename = getPlotFilename( str(self) )
 
         self.assertEqual( self.ntests, len(samples) )
+        
+        if self.check_length:
+            self.checkLength( samples, segments, workspace )
 
         # compute expected coverage
         # check if coverage is uniform over workspace
@@ -482,28 +519,33 @@ class TestSegmentSamplingGat( GatTest ):
         # check if each sample has the correct number of nucleotides  
         sums = [x.sum() for x in samples ]
 
-        for x, s in enumerate(samples):
-            tmp = gat.SegmentList( clone = workspace, normalize = True )
-            s.normalize()
-            tmp.intersect( s )
-            ovl = tmp.sum()
+        if self.check_nucleotides:
+            for x, s in enumerate(samples):
+                tmp = gat.SegmentList( clone = workspace, normalize = True )
+                s.normalize()
+                tmp.intersect( s )
+                ovl = tmp.sum()
 
-            self.assertEqual( ovl, segment_overlap, 
-                              "incorrect number of nucleotides in sample %i, got %i, expected %i\nsample=%s" %\
-                                  (x, ovl, segment_overlap, samples[x] ) )
+                self.assertEqual( ovl, segment_overlap, 
+                                  "incorrect number of nucleotides in sample %i, got %i, expected %i\nsample=%s" %\
+                                      (x, ovl, segment_overlap, samples[x] ) )
 
-        d = abs(counts_within_workspace.mean() - expected) / float(expected)
+        if self.check_average_coverage:
+            # check average coverage
+            d = abs(counts_within_workspace.mean() - expected) / float(expected)
 
-        self.assert_( d < 0.1, "expected counts (%f) != sampled counts (%f)" % (expected,
-                                                                                counts_within_workspace.mean()))
-        
-        stddev = numpy.std( counts_within_workspace )
-        d = stddev / float(expected)
+            self.assert_( d < 0.1, "expected counts (%f) != sampled counts (%f)" % (expected,
+                                                                                    counts_within_workspace.mean()))
 
-        self.assert_( d < 0.1, "coverage variation too large : stddev (%f) / %f = %f > 0.01" %\
-                          ( stddev,
-                            expected,
-                            d) )
+        if self.check_uniform_coverage:
+            # check for uniform coverage
+            stddev = numpy.std( counts_within_workspace )
+            d = stddev / float(expected)
+
+            self.assert_( d < 0.1, "coverage variation too large : stddev (%f) / %f = %f > 0.01" %\
+                              ( stddev,
+                                expected,
+                                d) )
 
     def testSegmentedWorkspaceSmallGap( self ):
         '''
@@ -637,36 +679,39 @@ class TestSegmentSamplingGat( GatTest ):
 
     def testFullWorkspace( self ):
         '''
-        test sampling within a single continuous workspace.
-        Segments are larger than the workspace
+        test sampling within a single continuous workspace
+        and a single segment.
+
+        The segment is larger than the workspace
         '''
         nsegments = 1
         segment_size = 200
+        offset = 1
 
         workspace = gat.SegmentList( iter = [ (0, 100) ],
                                      normalize = True )
 
         segments = gat.SegmentList( iter = ( (x,  x + segment_size)   \
-                                                 for x in range( 0, 5 * nsegments, 5) ),
+                                                 for x in range( 0, offset * nsegments, offset) ),
                                     normalize = True )
         
         samples = self.getSamples( segments, workspace )
-
         self.checkSample( samples, segments, workspace )
 
     def testSmallWorkspace( self ):
         '''
         test sampling within a single continuous workspace.
-        Segments half the size of the workspace
+        Segments are half the size of the workspace
         '''
         nsegments = 1
         segment_size = 50
+        offset = 1
 
         workspace = gat.SegmentList( iter = [ (0, 100) ],
                                      normalize = True )
 
         segments = gat.SegmentList( iter = ( (x,  x + segment_size)   \
-                                                 for x in range( 0, 100 * nsegments, 100) ),
+                                                 for x in range( 0, offset * nsegments, offset) ),
                                     normalize = True )
         
         samples = self.getSamples( segments, workspace )
@@ -708,7 +753,7 @@ class TestSegmentSamplingGat( GatTest ):
                                     normalize = True )
 
         samples = self.getSamples( segments, workspace )
-
+        
         self.checkSample( samples, segments, workspace )
 
     # def testVariableLengthSampling( self ):
@@ -732,6 +777,23 @@ class TestSegmentSamplingGat( GatTest ):
     #                             10.0,
     #                             places = 0 )
 
+class TestSegmentSamplingSamplerSegments( TestSegmentSamplingGat ):
+
+    check_nucleotides = False
+    check_average_coverage = False
+    check_uniform_coverage = False
+
+    def setUp(self):
+        self.sampler = gat.SamplerSegments()
+
+class TestSegmentSamplingSamplerUniform( TestSegmentSamplingGat ):
+
+    check_nucleotides = False
+    check_average_coverage = False
+    check_uniform_coverage = False
+
+    def setUp(self):
+        self.sampler = gat.SamplerUniform( increment = 1 )
 
 class TestSegmentSamplingTheAnnotator( TestSegmentSamplingGat ):
     '''use annotator to sample segments.'''
@@ -881,7 +943,7 @@ class TestStatsSNPSampling( GatTest ):
                     error = 0.1
 
                 self.assert_( abs( result.expected - expected_without) < error,
-                              "simulated results deviates from hypergeometric expectation for annotation `%s`: sizes(seg=%i/anno=%i/work=%i) observed=%f, expected=%f (%f, margin=%f)" %\
+                              "simulated results deviate from hypergeometric expectation for annotation `%s`: sizes(seg=%i/anno=%i/work=%i) observed=%f, expected=%f (%f, margin=%f)" %\
                                   ( annotation,
                                     segment_size,
                                     annotation_size,
