@@ -340,7 +340,7 @@ def main( argv = None ):
     parser.add_option( "--nbuckets", dest="nbuckets", type="int", 
                        help="number of bins for histogram of segment lengths [default=%default]" )
 
-    parser.add_option( "--output-stats", dest="output_stats", type="choice",
+    parser.add_option( "--output-stats", dest="output_stats", type="choice", action="append",
                       choices = ( "all", 
                                   "annotations", "segments", 
                                   "workspaces", "isochores",

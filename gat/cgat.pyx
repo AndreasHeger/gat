@@ -2264,12 +2264,26 @@ class IntervalCollection(object):
 
         outfile.write( "section\ttrack\tcontig\tnsegments\tlength\n" )
 
+        cdef long total_length = 0
+        cdef long total_segments = 0
+        cdef long length, segments
         for track, vv in self.intervals.iteritems():
+            total_length, total_segments = 0, 0
             for contig, segmentlist in vv.iteritems():
+                segments = len(segmentlist)
+                length = segmentlist.sum()
                 outfile.write( "\t".join( \
                         (self.name, track, contig, 
-                         "%i" % len(segmentlist), 
-                         "%i" % segmentlist.sum() ) ) + "\n" )
+                         "%i" % segments,
+                         "%i" % length ) ) + "\n" )
+                total_length += length
+                total_segments += segments
+            outfile.write("\t".join( \
+                (self.name, track, "total", 
+                         "%i" % total_segments,
+                         "%i" % total_length ) ) + "\n" )
+                 
+                
 
     def merge( self ):
         '''merge all tracks into a single segment list
