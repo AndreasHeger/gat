@@ -893,7 +893,7 @@ cdef class SegmentList:
         Note that this method does not shrink the allocated memory.
         '''
         self.nsegments = 0
-        self.is_normalized = 0
+        self.is_normalized = 1
 
     def __len__(self):
         return self.nsegments
@@ -1357,6 +1357,8 @@ cdef class SamplerAnnotator(Sampler):
                 # sample a position from current list of sampled segments
                 start, end, overlap = temp_sampler.sample( 1 )
                 #print "unintersected_segments before trim", unintersected_segments.sum(), unintersected_segments.asList()
+                # causes a potential bias for overlapping segments- in case of overlapping segments, the
+                # segment chosen is always the first
                 unintersected_segments.trim_ends( start, 
                                                   -true_remaining,
                                                   numpy.random.randint( 0,2) )
@@ -1435,7 +1437,6 @@ cdef class SamplerSegments(Sampler):
 
         self.bucket_size = bucket_size
         self.nbuckets = nbuckets
-        self.nunsuccessful_rounds
 
     cpdef SegmentList sample( self,
                               SegmentList segments,
@@ -1475,6 +1476,118 @@ cdef class SamplerSegments(Sampler):
             start, end, overlap = sls.sample( length )
 
             sample._add( Segment( start, end ) )
+
+        return sample
+
+########################################################
+########################################################
+########################################################
+cdef class SamplerBruteForce(Sampler):
+
+    cdef long bucket_size
+    cdef long nbuckets
+    cdef long ntries_inner
+    cdef long ntries_outer
+
+    def __init__( self, 
+                  bucket_size = 1, 
+                  nbuckets = 100000,
+                  ntries_inner = 100,
+                  ntries_outer = 10 ):
+        '''sample segments from length distribution until
+        workspace is covered by the same number of nucleotides
+        as input.
+
+        The segment length distribution is derived from
+        the argument *segments* supplied to the :meth:`sample`
+        method.
+
+        Sample by brute force - add and remove segments until
+        the correct number of nucleotides has been sampled.
+        '''
+
+        self.bucket_size = bucket_size
+        self.nbuckets = nbuckets
+        self.ntries_inner = ntries_inner
+        self.ntries_outer = ntries_outer
+
+    cpdef SegmentList sample( self,
+                              SegmentList segments,
+                              SegmentList workspace ):
+        '''return a sampled list of segments.'''
+
+        cdef long length
+        cdef SegmentListSampler sls
+        cdef SegmentList sample
+
+        assert workspace.is_normalized, "workspace is not normalized"
+
+        sample = SegmentList( allocate = len(segments) )
+
+        # collect all segments in workspace
+        working_segments = SegmentList( clone = segments )
+        working_segments.filter( workspace )
+
+        if len(working_segments) == 0:
+            return sample
+
+        # build length histogram
+        histogram = working_segments.getLengthDistribution( self.bucket_size,
+                                                            self.nbuckets )
+        hs = HistogramSampler( histogram, self.bucket_size )
+
+        # create segment sampler
+        sls = SegmentListSampler( workspace )
+
+        cdef long ntries_outer = self.ntries_outer
+        cdef long remaining
+        cdef long ntries_inner
+
+        
+        while ntries_outer > 0:
+
+            sample.clear()
+
+            remaining = segments.sum()
+            ntries_inner = self.ntries_inner
+            # print "starting inner tries"
+
+            while remaining > 0 and ntries_inner > 0:
+
+                # Sample a segment length from the histogram
+                length = hs.sample()
+                assert length > 0
+
+                # sample a position until we get a nonzero overlap
+                start, end, overlap = sls.sample( length )
+
+                # print str(sample), start, end, overlap, remaining
+
+                if overlap > remaining:
+                    ntries_inner -= 1
+                    continue
+
+                if sample.overlapWithRange( start, end ): 
+                    ntries_inner -= 1
+                    continue
+
+                sample._add( Segment( start, end ) )
+                # required in order to sort samples
+                sample.normalize()
+
+                # print "adding", start, end, str(sample)
+
+                ntries_inner = self.ntries_inner
+
+                remaining -= overlap
+
+            if ntries_inner > 0:
+                break
+
+            ntries_outer -= 1
+            
+        if ntries_outer == 0:
+            raise ValueError( "sampling did not converge: %s" % str(sample))
 
         return sample
 

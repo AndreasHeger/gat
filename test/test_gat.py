@@ -154,7 +154,7 @@ class TestSegmentList( GatTest ):
 
 
     def testInsertionPoint( self ):
-
+        '''check insertion point for normalized segment lists'''
         ss = [ (x, x + 10 ) for x in range( 0, 100, 10) ]
         s = gat.SegmentList( iter = ss,
                              normalize = True )
@@ -181,6 +181,17 @@ class TestSegmentList( GatTest ):
         for point in xrange( 0, 100 ):
             p = s.getInsertionPoint( point, point + 1 )
             self.assertEqual( p, (point - 10) // 20 )
+
+    def testInsertionPointNonNormalized( self ):
+        '''check insertion point for unnormalized segment lists.'''
+        ss = [ (x, x + 20 ) for x in range( 0, 100, 10) ]
+        s = gat.SegmentList( iter = ss,
+                             normalize = False )
+        
+        for point in xrange( 0, 100 ):
+            p = s.getInsertionPoint( point, point + 1 )
+            print point, p
+
 
     def testMergeAdjacent( self ):
         ss = [ (x, x + 100  ) for x in range( 0, 1000, 100) ]

@@ -7,6 +7,8 @@ import gat
 import numpy, math
 import matplotlib.pyplot as plt
 
+ANNOTATOR_CMD = '''java -Xmx8000M -cp /home/andreas/gat/annotator/lib/commons-cli-1.0.jar:/home/andreas/gat/annotator/lib/Annotator.jar app.Annotator -verbose 4'''
+
 def smooth(x,window_len=11,window='hanning'):
     """smooth the data using a window with requested size.
     
@@ -70,8 +72,6 @@ def getPlotFilename( s ):
 
 class GatTest( unittest.TestCase ):
     def shortDescription( self ): return None
-
-ANNOTATOR_CMD = '''/cpp-software/bin/java -Xmx8000M -cp /home/andreas/projects/annotator/lib/commons-cli-1.0.jar:/home/andreas/projects/annotator/lib/Annotator.jar app.Annotator -verbose 4'''
 
 def writeAnnotatorSegments( outfile, segmentlist, section ):
 
@@ -204,53 +204,41 @@ class TestSamplerLengthSlow( TestSamplerLength ):
 ##############################################################################        
 ##############################################################################        
 ##############################################################################        
-class TestSamplerPosition( GatTest ):
+class TestPositionSampling( GatTest ):
     '''test segment position sampling (fixed length).'''
 
-    ntests = 100000
+    ntests = 10000
+
+    def getSamples( self, workspace, sampler, sample_length ):
+        
+        samples = []
+        for x in range( self.ntests):
+            start, end, overlap = sampler.sample( sample_length )
+            samples.append( [ (start, end)] )
+            
+        return samples
 
     def getWorkspaceCounts( self, 
                             workspace, 
                             sampler, 
                             sample_length ):
 
-        l = workspace.max()
-        counts = numpy.zeros( l, numpy.int )
+        # +1 sample_length overhanging ends
+        nsegments = len(workspace)
+        workspace_size = workspace.sum() + (nsegments * (sample_length - 1))
 
-        for x in range( self.ntests):
-            start, end, overlap = sampler.sample( sample_length )
-            start = max(0, start)
-            end = min( end, l )
-            self.assert_( overlap > 0 )
-            counts[start:end] += 1
+        # segment_density = sample_length / workspace_size
 
-        counts_within_workspace = []
-        for start, end in workspace:
-            counts_within_workspace.extend( counts[start:end] )
+        expected = self.ntests * sample_length / workspace_size
+        segment_density = sample_length / workspace_size
 
-        if l > 10:
-            dx = 10
-        else:
-            dx = 1
-
-        counts_within_workspace = numpy.array( counts_within_workspace, dtype = numpy.int )
-        newy = smooth( counts_within_workspace, window_len = dx)
-
-        plt.figure()
-        plt.plot( xrange(len(counts_within_workspace)), counts_within_workspace, '.', label = "coverage" )
-
-        plt.plot( xrange(len(counts_within_workspace)), newy, '-', 
-                  label="smooth - window = %i" % dx )
-
-        plt.title( "%s" % str(self) ) #  = : nworkspaces=%i, sample_length=%i" % ( str(self), len(workspace), sample_length ) )
-        plt.xlabel( "position" )
-        plt.ylabel( "counts" )
-        plt.legend()
-        plt.savefig( "test_%s.png" % re.sub( "[ ()]", "", str(self) ))
-
-        # can be simplified
-        expected = self.ntests * sample_length / float( workspace.sum()) * \
-            float(workspace.sum()) / (workspace.sum() + sample_length  * len(workspace) )
+        samples = self.getSamples( workspace, sampler, sample_length )
+        
+        counts_within_workspace = getWorkspaceCounts( workspace,
+                                                      samples,
+                                                      filename = getPlotFilename( str(self) ),
+                                                      expected = expected,
+                                                      density = segment_density )
 
         d = abs(counts_within_workspace.mean() - expected) / float(expected)
         self.assert_( d < 0.1, "expected counts (%f) != sampled counts (%f" % (expected,
@@ -260,19 +248,40 @@ class TestSamplerPosition( GatTest ):
 
         return counts_within_workspace
 
-    def testPositionSamplingSingleWorkspace( self ):
+
+    def testSingleWorkspace( self ):
         '''test if we sample the exactly right amount of nucleoutides
         and bases are overlapped uniformly.
         '''
 
-        workspace = gat.SegmentList( iter = [ (0,10000) ],
+        workspace_size = 10000
+        sample_length = 4
+
+        workspace = gat.SegmentList( iter = [ (0,workspace_size) ],
                                      normalize = True )
 
         sampler = gat.SegmentListSampler( workspace )
         
-        counts_within_workspace = self.getWorkspaceCounts( workspace, sampler, 10 )
+        counts_within_workspace = self.getWorkspaceCounts( workspace, 
+                                                           sampler, 
+                                                           sample_length )
 
-    def testPositionSamplingSplitWorkspace( self ):
+    def testTinyWorkspace( self ):
+        '''test if we sample the exactly right amount of nucleoutides
+        and bases are overlapped uniformly.
+        '''
+
+        workspace_size = 12
+        sample_length = 4
+
+        workspace = gat.SegmentList( iter = [ (0,workspace_size) ],
+                                     normalize = True )
+
+        sampler = gat.SegmentListSampler( workspace )
+        
+        counts_within_workspace = self.getWorkspaceCounts( workspace, sampler, sample_length )
+
+    def testSplitWorkspace( self ):
         '''test if we sample the exactly right amount of nucleoutides
         and bases are overlapped uniformly.
         '''
@@ -284,7 +293,7 @@ class TestSamplerPosition( GatTest ):
         
         counts_within_workspace = self.getWorkspaceCounts( workspace, sampler, 10 )
 
-    def testPositionSamplingSplitWorkspace2( self ):
+    def testSplitWorkspace2( self ):
         '''
         test if we sample the exactly right amount of nucleoutides
         and bases are overlapped uniformly.
@@ -375,12 +384,15 @@ def getWorkspaceCounts( workspace,
     counts_within_workspace = numpy.array( counts_within_workspace, dtype = numpy.int )
     newy = smooth( counts_within_workspace, window_len = dx)
 
-    plt.figure()
+    plt.figure( figsize=(10, 6), dpi=80 )
+    plt.subplots_adjust( right = 0.7 )
+    # plt.axes( [0.1,0.1,0.51,0.5] )
+
     plt.subplot( "311" )
     plt.plot( xrange(len(counts_within_workspace)), counts_within_workspace, '.', label = "coverage" )
 
     plt.plot( xrange(len(counts_within_workspace)), newy, '-', 
-              label="smooth - window = %i" % dx )
+              label="smooth (%i)" % dx )
 
     plt.title( "%s : density = %6.4f" % ( filename, density ) )
     # : nworkspaces=%i, sample_length=%i" % ( filename, len(workspace), len(samples) ) )
@@ -394,7 +406,7 @@ def getWorkspaceCounts( workspace,
                   '--' )
         plt.plot( xrange(len(counts_within_workspace)), [expected+d] * len(counts_within_workspace), 
                   '--' )
-    plt.legend()
+    plt.legend( loc=(1.03,0.2) )
 
     plt.subplot( "312" )
     segment_sizes.sort()
@@ -404,14 +416,14 @@ def getWorkspaceCounts( workspace,
     plt.plot( segment_sizes[2], label="max" )
     plt.plot( segment_sizes[3], label="mean" )
     plt.plot( segment_sizes[4], label="median" )
-    plt.legend()
+    plt.legend( loc=(1.03,0.2) )
     plt.xlabel( "sample" )
     plt.ylabel( "segment size" )
 
     plt.subplot( "313" )
     plt.plot( starts, label="starts" )
     plt.plot( ends, label="ends" )
-    plt.legend()
+    plt.legend( loc=(1.03,0.2) )
     plt.xlabel( "position" )
     plt.ylabel( "counts" )
 
@@ -425,11 +437,11 @@ def getWorkspaceCounts( workspace,
 ##############################################################################        
 class TestSegmentSamplingGat( GatTest ):
 
-    ntests = 1000
-    # check if number of nucleotides returned
+    ntests = 10000
+
     # is as expected. Set to False for samplers
     # which do not return the exact number of nucleotides
-    check_nucleotides = True
+    check_nucleotides = False # True
 
     # check average coverage, set to false for samples
     check_average_coverage = True
@@ -718,6 +730,26 @@ class TestSegmentSamplingGat( GatTest ):
 
         self.checkSample( samples, segments, workspace )
 
+    def testTinyWorkspace( self ):
+        '''
+        test sampling within a single small continuous workspace.
+        
+        '''
+        nsegments = 1
+        segment_size = 4
+        offset = 1
+
+        workspace = gat.SegmentList( iter = [ (0, 12) ],
+                                     normalize = True )
+
+        segments = gat.SegmentList( iter = ( (x,  x + segment_size)   \
+                                                 for x in range( 0, offset * nsegments, offset) ),
+                                    normalize = True )
+        
+        samples = self.getSamples( segments, workspace )
+
+        self.checkSample( samples, segments, workspace )
+
     def testSmallWorkspaceManySegments( self ):
         '''
         test sampling within a single continuous workspace.
@@ -785,6 +817,15 @@ class TestSegmentSamplingSamplerSegments( TestSegmentSamplingGat ):
 
     def setUp(self):
         self.sampler = gat.SamplerSegments()
+
+class TestSegmentSamplingSamplerBruteForce( TestSegmentSamplingGat ):
+
+    check_nucleotides = True
+    check_average_coverage = True
+    check_uniform_coverage = True
+
+    def setUp(self):
+        self.sampler = gat.SamplerBruteForce()
 
 class TestSegmentSamplingSamplerUniform( TestSegmentSamplingGat ):
 

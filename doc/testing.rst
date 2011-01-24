@@ -16,6 +16,7 @@ The tests below sample from a segment list *10* segments with each segment of si
    testingSamplerGatSegments.rst
    testingSamplerGatAnnotator.rst
    testingSamplerGatUniform.rst
+   testingSamplerGatBruteForce.rst
    testingSamplerAnnotator.rst
    testingPosition.rst
 
