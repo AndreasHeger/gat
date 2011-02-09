@@ -250,6 +250,7 @@ cdef class SegmentList:
         new_size = other.nsegments + self.nsegments
         if new_size >= self.allocated:
             self.segments = <Segment*>realloc( <void *>self.segments, new_size * sizeof( Segment ) )
+            assert self.segments != NULL
             self.allocated = new_size
         memcpy( &self.segments[self.nsegments],
                  other.segments,
@@ -269,12 +270,14 @@ cdef class SegmentList:
             self.allocated *= 2
             self.segments = <Segment*>realloc( self.segments,
                                                self.allocated * sizeof( Segment ) )
+            assert self.segments != NULL
         self.segments[self.nsegments] = segment
         self.nsegments += 1
         self.is_normalized = 0
 
     cpdef add( self, long start, long end ):
         cdef Segment segment
+        assert start <= end, "attempting to add invalid segment %i-%i" % (start, end)
         segment = Segment( start, end)
         self._add( segment )
 
@@ -339,6 +342,7 @@ cdef class SegmentList:
             self.allocated *= 2
             self.segments = <Segment*>realloc( self.segments,
                                                self.allocated * sizeof( Segment ) )
+            assert self.segments != NULL
         memmove( &self.segments[idx+1],
                  &self.segments[idx],
                  sizeof( Segment ) * (self.nsegments - idx) )
@@ -435,6 +439,7 @@ cdef class SegmentList:
         max_end = self.segments[idx].end
         
         while idx < self.nsegments:
+
             # skip empty
             if self.segments[idx].start == self.segments[idx].end: 
                 idx += 1
@@ -443,6 +448,7 @@ cdef class SegmentList:
             if self.segments[idx].start >= max_end:
                 self.segments[insertion_idx].end = max_end
                 insertion_idx += 1
+                assert insertion_idx < self.nsegments
                 self.segments[insertion_idx].start = self.segments[idx].start
 
             max_end = lmax( self.segments[idx].end, max_end )
@@ -455,6 +461,7 @@ cdef class SegmentList:
         insertion_idx += 1
         self.nsegments = insertion_idx
         self.segments = <Segment*>realloc( self.segments, self.nsegments * sizeof( Segment ) )
+        assert self.segments != NULL
         self.allocated = self.nsegments
         self.is_normalized = 1
 
@@ -517,6 +524,7 @@ cdef class SegmentList:
         insertion_idx += 1
         self.nsegments = insertion_idx
         self.segments = <Segment*>realloc( self.segments, self.nsegments * sizeof( Segment ) )
+        assert self.segments != NULL
         self.allocated = self.nsegments
         self.is_normalized = 1
 
@@ -792,6 +800,7 @@ cdef class SegmentList:
         self.allocated = self.nsegments
 
         self.segments = <Segment*>realloc( new_segments, self.nsegments * sizeof(Segment ) )
+        assert self.segments != NULL
         return self
 
     cpdef SegmentList intersect( self, SegmentList other ):
@@ -849,6 +858,7 @@ cdef class SegmentList:
                 if working_idx >= allocated:
                     allocated *= 2
                     new_segments = <Segment*>realloc( new_segments, allocated * sizeof(Segment ) )
+                    assert new_segments != NULL
 
                 if this_segment.end < other_segment.end:
                     this_idx += 1
