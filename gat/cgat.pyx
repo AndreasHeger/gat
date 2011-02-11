@@ -275,6 +275,8 @@ cdef class SegmentList:
         self.nsegments += 1
         self.is_normalized = 0
 
+
+
     cpdef add( self, long start, long end ):
         cdef Segment segment
         assert start <= end, "attempting to add invalid segment %i-%i" % (start, end)
@@ -333,16 +335,26 @@ cdef class SegmentList:
 
         #print "at end=%i, removing %i" % (self.sum(), size)
 
+    cdef _resize( self, long nsegments ):
+        '''resize segment list to nsegments.'''
+        # do not free all if there are no segments
+        if nsegments == 0: nsegments = 1
+
+        assert nsegments >= self.nsegments, "resizing will loose segments"
+
+        self.segments = <Segment*>realloc( self.segments,
+                                           nsegments * sizeof( Segment ) )
+        assert self.segments != NULL
+        self.allocated = nsegments
+
     cdef insert( self, long idx, Segment seg ):
         '''insert Segment *seg* at position *idx*'''
         if idx < 0: raise ValueError( "only positive indices accepted (%i)" % idx )
         
         idx = max( idx, self.nsegments )
         if self.allocated == self.nsegments:
-            self.allocated *= 2
-            self.segments = <Segment*>realloc( self.segments,
-                                               self.allocated * sizeof( Segment ) )
-            assert self.segments != NULL
+            self._resize( self.allocated * 2)
+
         memmove( &self.segments[idx+1],
                  &self.segments[idx],
                  sizeof( Segment ) * (self.nsegments - idx) )
@@ -460,9 +472,7 @@ cdef class SegmentList:
         # truncate array
         insertion_idx += 1
         self.nsegments = insertion_idx
-        self.segments = <Segment*>realloc( self.segments, self.nsegments * sizeof( Segment ) )
-        assert self.segments != NULL
-        self.allocated = self.nsegments
+        self._resize( self.nsegments )
         self.is_normalized = 1
 
     cpdef merge( self, long distance = 0 ):
@@ -523,9 +533,7 @@ cdef class SegmentList:
         # truncate array
         insertion_idx += 1
         self.nsegments = insertion_idx
-        self.segments = <Segment*>realloc( self.segments, self.nsegments * sizeof( Segment ) )
-        assert self.segments != NULL
-        self.allocated = self.nsegments
+        self._resize( self.nsegments )
         self.is_normalized = 1
 
     cpdef check( self ):
@@ -797,10 +805,8 @@ cdef class SegmentList:
 
         free( self.segments )
         self.nsegments = working_idx
-        self.allocated = self.nsegments
-
-        self.segments = <Segment*>realloc( new_segments, self.nsegments * sizeof(Segment ) )
-        assert self.segments != NULL
+        self.segments = new_segments
+        self._resize( self.nsegments )
         return self
 
     cpdef SegmentList intersect( self, SegmentList other ):
@@ -1916,6 +1922,8 @@ cdef EnrichmentStatistics * makeEnrichmentStatistics( observed, samples ):
     cdef long offset, i, l
 
     l = len(samples)
+    if l == 0:
+        raise ValueError( "no samples - no stats in makeEnrichmentStatistics" )
 
     stats = <EnrichmentStatistics*>malloc( sizeof(EnrichmentStatistics) )
     stats.samples = <double*>calloc( l, sizeof(double))
