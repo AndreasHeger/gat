@@ -1808,16 +1808,96 @@ class TestEnrichmentGat( GatTest ):
                             exp,
                             d) )
 
+    def checkUniformSegments( self, annotation_sizes, 
+                              annotation_gap,
+                              workspace_size, 
+                              segment_size, 
+                              segment_spacing ):
+        '''helper function for creating uniformly distributed segments.
+
+        annotation_sizes - size of annotations
+        workspace - fully covers annotations up to workspace_size
+        '''
+
+        workspaces, segments, annotations = \
+            gat.IntervalCollection( "workspace" ), \
+            gat.IntervalCollection( "segment" ), \
+            gat.IntervalCollection( "annotation" )
+
+        x = 0
+        workspace = gat.SegmentList()
+        intervals = collections.defaultdict( list )
+        while x < workspace_size:
+            for i, y in enumerate( annotation_sizes ):
+                intervals[i].append( (x, x + y ) )
+                x += y + annotation_gap
+                workspace.add( x, x+y)
+                
+        workspace.normalize()
+        workspaces.add( "default", "chr1", workspace )
+
+        segments.add( "default", "chr1", 
+                      gat.SegmentList( iter = [(x,x+segment_size) for x in xrange(0, workspace_size, segment_spacing) ],
+                                       normalize = True ))
+        
+        for i, y in enumerate( annotation_sizes):
+            annotations.add( "anno-%i" % i, "chr1",
+                             gat.SegmentList( iter = intervals[i],
+                                              normalize = True ) ) 
+            
+        self.check( workspaces["default"], 
+                    annotations, 
+                    segments )
+
+    def testVariableSizedAnnotationsWithoutEnrichment( self ):
+        '''
+            workspace = annotations * 100
+            annotations = 100, 1000, 10000, 20000, 30000
+            segments = segments of size 100, every 1000 bases
+        '''
+
+        sizes = (100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000) #= 500000)
+        annotation_gap = 0
+        workspace_size = 100 * sum(sizes)
+        segment_size = 100
+        segment_spacing = 1000
+
+        self.checkUniformSegments( sizes, annotation_gap, workspace_size, segment_size, segment_spacing )
+
+    def testEqualSizedAnnotationsWithoutEnrichment( self ):
+        '''
+            workspace = continuous workspace of size 100000
+            annotations = 4 * size of 1000
+            segments = segments of size 100, every 1000 bases
+        '''
+
+        sizes = (1000, 1000, 1000, 1000)
+        workspace_size = 100 * sum(sizes)
+        annotation_gap = 0
+        segment_size = 1
+        segment_spacing = 1000
+
+        self.checkUniformSegments( sizes, annotation_gap, workspace_size, segment_size, segment_spacing )
+
+    def testEqualSizedAnnotationsWithGappedWorkspace( self ):
+
+        sizes = (1000, 1000, 1000, 1000)
+        annotation_gap = 1000
+        segment_size = 1
+        segment_spacing = 1000
+        workspace_size = 100 * sum(sizes)
+
+        self.checkUniformSegments( sizes, annotation_gap, workspace_size, segment_size, segment_spacing )
 
     def testEqualSizedAnnotationsWithEnrichment( self ):
         '''
-        input:
             workspace = continuous workspace of size 100000
             annotations = 4 * size of 1000
             segments = size 100, enrichment in annotations 0 and 2
         '''
 
         sizes = (1000, 1000, 1000, 1000)
+        annotation_gap = 0
         workspace_size = sum(sizes) * 100
         segment_size = 100
         segment_spacing = 1000
@@ -1853,77 +1933,144 @@ class TestEnrichmentGat( GatTest ):
                                               normalize = True ) ) 
             
         self.check( workspaces["default"], 
+                    workspace_size,
                     annotations, 
                     segments )
-
-
-    def checkUniformSegments( self, sizes, workspace_size, segment_size, segment_spacing ):
-        
-        workspaces, segments, annotations = \
-            gat.IntervalCollection( "workspace" ), \
-            gat.IntervalCollection( "segment" ), \
-            gat.IntervalCollection( "annotation" )
-
-        workspaces.add( "default", "chr1", 
-                        gat.SegmentList( iter = [(0, workspace_size)],
-                                         normalize = True ) )
-
-        segments.add( "default", "chr1", 
-                      gat.SegmentList( iter = [(x,x+segment_size) for x in xrange(0, workspace_size, segment_spacing) ],
-                                       normalize = True ))
-        
-
-        x = 0
-        intervals = collections.defaultdict( list )
-        while x < workspace_size:
-            for i, y in enumerate( sizes ):
-                intervals[i].append( (x, x + y ) )
-                x += y
-
-        for i, y in enumerate( sizes):
-            annotations.add( "anno-%i" % i, "chr1",
-                             gat.SegmentList( iter = intervals[i],
-                                              normalize = True ) ) 
-            
-        self.check( workspaces["default"], 
-                    annotations, 
-                    segments )
-
-    def testVariableSizedAnnotationsWithoutEnrichment( self ):
-        '''
-        input:
-            workspace = annotations * 100
-            annotations = 100, 1000, 10000, 20000, 30000
-            segments = segments of size 100, every 1000 bases
-        '''
-
-        sizes = (100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000) #= 500000)
-        workspace_size = sum(sizes) * 10
-        segment_size = 100
-        segment_spacing = 1000
-
-        self.checkUniformSegments( sizes, workspace_size, segment_size, segment_spacing )
-
-    def testEqualSizedAnnotationsWithoutEnrichment( self ):
-        '''
-        input:
-            workspace = continuous workspace of size 100000
-            annotations = 4 * size of 1000
-            segments = segments of size 100, every 1000 bases
-        '''
-
-        sizes = (1000, 1000, 1000, 1000)
-        workspace_size = sum(sizes) * 100
-        segment_size = 1
-        segment_spacing = 1000
-
-        self.checkUniformSegments( sizes, workspace_size, segment_size, segment_spacing )
 
 class TestEnrichmentGatNucleotideOverlap( TestEnrichmentGat ):
     counter = "NucleotideOverlap"
 
 class TestEnrichmentGatSegmentOverlap( TestEnrichmentGat ):
     counter = "SegmentOverlap"
+
+TestData = collections.namedtuple( "testdata", "segment_size, segment_spacing, annotation_size1, annotation_size2, annotation_gap_between, annotation_gap_within, annotation_mult" )
+
+class TestSpacing( GatTest ):
+    '''test relative sizes of segments versus annotations.
+
+    Workspace covers annotations.
+    '''
+
+    counter = "NucleotideOverlap"
+
+    # number of samples
+    nsamples = 10
+
+    # total size of workspace
+    workspace_size = 100
+
+    def build( self, p ):
+        '''build regular alternating annotations.'''
+
+        segments = gat.SegmentList( iter = [(x,x+p.segment_size) \
+                                                for x in xrange(0, self.workspace_size, p.segment_spacing) ],
+                                    normalize = True )
         
+
+        intervals = [ list() for x in range( 2 ) ]
+        nsizes = 2
+        sizes = [ p.annotation_size1, p.annotation_size2]
+        workspace = gat.SegmentList()
+        start = 0
+
+        while start < self.workspace_size:
+            for c, d in enumerate(sizes):
+                for i in range(p.annotation_mult):
+                    intervals[c].append( (start, start + d ) )
+                    workspace.add( start, start + d )
+                    start += d + p.annotation_gap_within
+                start -= p.annotation_gap_within 
+                start += p.annotation_gap_between
+
+        workspace.normalize()
+        
+        
+        annotations = {}
+
+        for c, y in enumerate( sizes):
+            annotations["anno-%i" % c] = gat.SegmentList( iter = intervals[c], 
+                                                          normalize = True )
+        print segments
+        print workspace        
+        print annotations["anno-0"]
+        print annotations["anno-1"]
+        return segments, workspace, annotations
+
+    def getSamples( self, 
+                    segments,
+                    annotations,
+                    workspace ):
+
+        workspace_size = workspace["chr1"].sum()
+
+        sampler = gat.SamplerAnnotator( bucket_size = 1, nbuckets = workspace_size )
+
+        if self.counter == "NucleotideOverlap":
+            counter = gat.CounterNucleotideOverlap()
+        elif self.counter == "SegmentOverlap":
+            counter = gat.CounterSegmentOverlap()
+
+        result = collections.defaultdict( list )
+        for x in xrange( self.nsamples ):
+            r = gat.run( segments,
+                         annotations,
+                         workspace,
+                         sampler,
+                         counter,
+                         num_samples = self.nsamples )
+
+            for anno, v in r["default"].iteritems():
+                result[anno].append( v )
+
+        return result
+
+    def runSampler( self, workspace, segments, annotations ):
+        
+        ss = gat.IntervalCollection( "segment" )
+        ss.add( "default", "chr1", segments )
+        aa = gat.IntervalCollection( "annotation" )
+        for key, x in annotations.iteritems():
+            aa.add( key, "chr1", x )
+
+        ww = gat.IntervalCollection( "workspace" )
+        ww.add( "default", "chr1", workspace )
+
+        samples = self.getSamples( ss, aa, ww["default"] )
+
+        return samples
+
+    def check( self, params ):
+        
+        workspace, segments, annotations = self.build( params )
+        
+        samples = self.runSampler( workspace, segments, annotations )
+
+        print str(params)
+        
+        for anno, rr in samples.iteritems():
+            exp = [ x.expected for x in rr ]
+            print anno, "observed=", rr[0].observed, "expected=", numpy.mean( exp )
+            
+    def testAnnotations( self ):
+        # segment_size, segment_spacing, 
+        segment_spacing = 10
+        
+        for segment_size in (1, 10, 100):
+            min_size = max(1, segment_size // 2 )
+            for annotation_size1 in ( min_size, segment_size, segment_size * 2 ):
+                for annotation_size2 in ( annotation_size1, annotation_size1 * 2 ):
+                    for annotation_gap_between in ( 0, min_size, segment_size, segment_size * 2):
+                        for annotation_gap_within in ( 0, segment_size // 2, segment_size, segment_size * 2 ):
+                            for annotation_mult in (1, 2, 3 ):
+                                params = TestData._make( (segment_size, 
+                                                          segment_spacing, 
+                                                          annotation_size1,
+                                                          annotation_size2, 
+                                                          annotation_gap_within,
+                                                          annotation_gap_between,
+                                                          annotation_mult,) )
+                                self.check( params )
+                                return
+                            
 if __name__ == '__main__':
     unittest.main()
