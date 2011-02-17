@@ -1291,6 +1291,7 @@ cdef class SamplerAnnotator(Sampler):
         cdef SegmentList unintersected_segments
         cdef SegmentList intersected_segments
         cdef SegmentList working_segments
+        cdef SegmentList tmp_segments
         cdef SegmentListSampler sls, temp_sampler
 
         assert segments.is_normalized, "segment list is not normalized"
@@ -1301,11 +1302,18 @@ cdef class SamplerAnnotator(Sampler):
 
         # collect all segments in workspace
         working_segments = SegmentList( clone = segments )
+
         # or: intersect?
         working_segments.filter( workspace )
 
         if len(working_segments) == 0:
             return intersected_segments
+
+        # get nucleotides that need to be sampled
+        # only count overlap within workspace
+        tmp_segments = SegmentList( clone = working_segments )
+        tmp_segments.intersect( workspace )
+        ltotal = tmp_segments.sum()        
 
         # create space for sampled segments, add additional 10%
         # safety margin to avoid realloc calls
@@ -1320,7 +1328,6 @@ cdef class SamplerAnnotator(Sampler):
         # get segment sampler
         sls = SegmentListSampler( workspace )
 
-        ltotal = working_segments.sum()
         remaining = ltotal
         true_remaining = remaining
         nunsuccessful_rounds = 0
@@ -1922,8 +1929,8 @@ cdef EnrichmentStatistics * makeEnrichmentStatistics( observed, samples ):
     cdef long offset, i, l
 
     l = len(samples)
-    if l == 0:
-        raise ValueError( "no samples - no stats in makeEnrichmentStatistics" )
+    if l < 1:
+        raise ValueError( "not enough samples - no stats in makeEnrichmentStatistics" )
 
     stats = <EnrichmentStatistics*>malloc( sizeof(EnrichmentStatistics) )
     stats.samples = <double*>calloc( l, sizeof(double))
@@ -1956,8 +1963,13 @@ cdef EnrichmentStatistics * makeEnrichmentStatistics( observed, samples ):
     stats.stddev = numpy.std(samples)
 
     offset = int(0.05 * l)
-    stats.lower95 = stats.samples[stats.sorted2sample[ lmin( offset, l-1) ]]
-    stats.upper95 = stats.samples[stats.sorted2sample[ lmax( l-offset, 0) ]]
+    
+    if offset > 0: 
+        stats.lower95 = stats.samples[stats.sorted2sample[ lmin( offset, l-1) ]]
+        stats.upper95 = stats.samples[stats.sorted2sample[ lmax( l-offset, 0) ]]
+    else:
+        stats.lower95 = stats.samples[stats.sorted2sample[ 0 ]]
+        stats.upper95 = stats.samples[stats.sorted2sample[ l-1 ]]
     
     stats.pvalue = getTwoSidedPValue( stats, stats.observed )
     stats.qvalue = 1.0

@@ -120,7 +120,6 @@ def run( segments,
                                      segments = segments,
                                      annotations = annotations,
                                      workspace = workspace )
-
     E.info( "collecting observed densities" )
 
     ##################################################
