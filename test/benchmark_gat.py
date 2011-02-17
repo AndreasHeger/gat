@@ -1900,7 +1900,6 @@ class TestEnrichmentGat( GatTest ):
             # bernoulli: E() = np
             expected_segment_overlap = min( nannotations, float(nannotations) * float(annotation_size) / total_size)
             avg = numpy.mean( [ r["default"][annotation].expected for r in annotator_results ] )
-            print nsegments, annotation_size, total_size, nannotations, expected_segment_overlap, avg
             
             if self.counter == "NucleotideOverlap":
                 scale = expected_nucleotide_overlap
@@ -1936,7 +1935,8 @@ class TestEnrichmentGat( GatTest ):
                             exp,
                             d) )
 
-    def checkUniformSegments( self, annotation_sizes, 
+    def checkUniformSegments( self, 
+                              annotation_sizes, 
                               annotation_gap,
                               workspace_size, 
                               segment_size, 
@@ -2061,7 +2061,6 @@ class TestEnrichmentGat( GatTest ):
                                               normalize = True ) ) 
             
         self.check( workspaces["default"], 
-                    workspace_size,
                     annotations, 
                     segments )
 
@@ -2073,7 +2072,7 @@ class TestEnrichmentGatSegmentOverlap( TestEnrichmentGat ):
 
 TestData = collections.namedtuple( "testdata", "segment_size, segment_spacing, annotation_size1, annotation_size2, annotation_gap_between, annotation_gap_within, annotation_mult" )
 
-class TestSpacing( GatTest ):
+class TestSpacingGat( GatTest ):
     '''test relative sizes of segments versus annotations.
 
     If the annotations cover the workspace completely, the enrichment in overlap
@@ -2090,6 +2089,9 @@ class TestSpacing( GatTest ):
 
     # number of samples calling sampler
     nsamples_sampler = 10
+
+    # number of times pvalue is checked
+    nsamples_pvalues = 100
 
     # number of samples of sampler
     nsamples = 10
@@ -2132,10 +2134,6 @@ class TestSpacing( GatTest ):
         for c, y in enumerate( sizes):
             annotations["anno-%i" % c] = gat.SegmentList( iter = intervals[c], 
                                                           normalize = True )
-        # print segments
-        # print workspace        
-        # print annotations["anno-0"]
-        # print annotations["anno-1"]
         return segments, workspace, annotations
 
     def getSamples( self, 
@@ -2180,7 +2178,7 @@ class TestSpacing( GatTest ):
 
         return samples
 
-    def check( self, params, outf ):
+    def checkCoverage( self, params, outf ):
         
         segments, workspace, annotations = self.build( params )
         
@@ -2226,6 +2224,16 @@ class TestSpacing( GatTest ):
                                                   observed, expected) )) + "\n" )
                 outf.flush()
                 break
+
+    def checkPValues( self, params, outf ):
+
+        segments, workspace, annotations = self.build( params )
+        
+        # get randomly placed segments
+        random_segments = self.runSampler( segments, workspace, annotations, 
+                                           self.nsamples_pvalues )
+        
+        print random_segments["anno-1"][0]
                 
     def testAnnotations( self ):
         # segment_size, segment_spacing, 
@@ -2259,26 +2267,28 @@ class TestSpacing( GatTest ):
                                                           annotation_gap_within,
                                                           annotation_gap_between,
                                                           annotation_mult,) )
-                                self.check( params, outf )
+                                # self.checkCoverage( params, outf )
+                                self.checkPValues( params, outf )
                                 
         outf.close()
 
-class TestSpacingTheAnnotator( TestSpacing ):
+# class TestSpacingTheAnnotator( TestSpacingGat ):
 
-    def getSamples( self, 
-                    segments,
-                    workspace,
-                    annotations,
-                    nsamples ):
+#     def getSamples( self, 
+#                     segments,
+#                     workspace,
+#                     annotations,
+#                     nsamples ):
 
-        result = collections.defaultdict( list )
-        for x in xrange( self.nsamples_sampler ):
-            r = getAnnotatorSamples( segments, annotations, workspace, nsamples )
+#         result = collections.defaultdict( list )
+#         for x in xrange( self.nsamples_sampler ):
+#             r = getAnnotatorSamples( segments, annotations, workspace, nsamples )
 
-            for anno, v in r["default"].iteritems():
-                result[anno].append( v )
+#             for anno, v in r["default"].iteritems():
+#                 result[anno].append( v )
 
-        return result
+#         return result
+
 
 if __name__ == '__main__':
     unittest.main()
