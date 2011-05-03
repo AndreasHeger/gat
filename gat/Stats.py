@@ -6,7 +6,11 @@ statistical functions
 '''
 
 import numpy
-import scipy.interpolate
+try:
+    import scipy.interpolate
+    HAS_SCIPY = True
+except ImportError:
+    HAS_SCIPY = False
 
 class FDRResult:
 
@@ -63,12 +67,15 @@ def computeQValues(pvalues,
 
             if pi0_method=="smoother":
                 if smooth_log_pi0: pi0 = numpy.log(pi0)
-                tck = scipy.interpolate.splrep( vlambda, pi0, k = smooth_df, s = 10000 )
-                pi0 = scipy.interpolate.splev( max(vlambda), tck )
+                if HAS_SCIPY:
+                    tck = scipy.interpolate.splrep( vlambda, pi0, k = smooth_df, s = 10000 )
+                    pi0 = scipy.interpolate.splev( max(vlambda), tck )
+                else:
+                    raise ImportError( "pi0_method smoother requires scipy" )
+
                 if smooth_log_pi0: pi0 = numpy.exp(pi0)
                 
             elif pi0_method=="bootstrap":
-                print "there"
                 minpi0 = min(pi0)
 
                 mse = numpy.zeros( len(vlambda), numpy.float )
