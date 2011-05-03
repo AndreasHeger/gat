@@ -65,9 +65,9 @@ Code
 import os, sys, re, optparse, collections, types, glob, time
 import numpy
 
-import Experiment as E
-import IOTools
 import gat
+import gat.Experiment as E
+import gat.IOTools as IOTools
 
 try:
     import matplotlib.pyplot as plt
