@@ -115,9 +115,12 @@ ctypedef numpy.float_t DTYPE_FLOAT_t
 #####################################################
 ## scipy import
 ## required for pvalues based on parametric distributions
-import scipy
-import scipy.stats
-
+try:
+    import scipy
+    import scipy.stats
+    HAS_SCIPY = True
+except:
+    HAS_SCIPY = False
 
 cdef struct Segment:
     long start
@@ -2089,7 +2092,10 @@ cdef class AnnotatorResult(object):
 def getNormedPValue( value, r ):
     '''return pvalue assuming that samples are normal distributed.'''
     absval = abs(value - r.expected)
-    pvalue = 1.0 - scipy.stats.norm.cdf( absval, 0, r.stddev )
+    if HAS_SCIPY:
+        pvalue = 1.0 - scipy.stats.norm.cdf( absval, 0, r.stddev )
+    else:
+        raise ImportError( "scipy required" )
     return pvalue
 
 def getEmpiricalPValue( value, r ):
