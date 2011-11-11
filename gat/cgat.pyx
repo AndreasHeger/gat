@@ -200,16 +200,33 @@ cdef class SegmentList:
     cdef size_t nsegments
     cdef size_t allocated
     cdef int is_normalized
+    cdef int chunk_size
 
-    def __init__(self, long allocate = 1000,
+    def __init__(self, 
+                 long allocate = 0,
                  SegmentList clone = None,
                  iter = None,
                  normalize = False ):
-        '''create empty list of segments.'''
+        '''create empty list of segments.
+
+        
+        Creating is a lazy operation, no memory is allocated unless
+        explitely given:
+
+        *allocate* - empty list, allocate slots
+        *clone* - copy an existing list
+        *iter* - initialize list from iterator
+
+        If *normalize* is set, the list will be normalized.
+        '''
         cdef long idx, nsegments
+
+        self.segments = NULL
         self.nsegments = 0
+        self.allocated = 0
         # an empty list is normalized
         self.is_normalized = 1
+        self.chunk_size = 10000
 
         if clone != None:
             self.nsegments = self.allocated = clone.nsegments
@@ -228,7 +245,7 @@ cdef class SegmentList:
                 self.segments[idx] = Segment( start, end )
                 idx += 1
             self.is_normalized = 0
-        else:
+        elif allocate:
             self.allocated = allocate
             self.segments = <Segment*>calloc( allocate, sizeof( Segment ) )
 
@@ -251,7 +268,11 @@ cdef class SegmentList:
         '''
         cdef size_t new_size
         new_size = other.nsegments + self.nsegments
-        if new_size >= self.allocated:
+        if self.allocated == 0:
+            self.segments = <Segment*>malloc( new_size * sizeof( Segment ) )
+            assert self.segments != NULL
+            self.allocated = new_size
+        elif new_size >= self.allocated:
             self.segments = <Segment*>realloc( <void *>self.segments, new_size * sizeof( Segment ) )
             assert self.segments != NULL
             self.allocated = new_size
@@ -269,16 +290,18 @@ cdef class SegmentList:
         :meth:`SegmentList.normalize`.
         '''
 
-        if self.nsegments == self.allocated:
+        if self.allocated == 0:
+            self.segments = <Segment*>malloc( self.chunk_size * sizeof( Segment ) )
+            self.allocated = self.chunk_size
+        elif self.nsegments == self.allocated:
             self.allocated *= 2
             self.segments = <Segment*>realloc( self.segments,
                                                self.allocated * sizeof( Segment ) )
-            assert self.segments != NULL
+        assert self.segments != NULL
+
         self.segments[self.nsegments] = segment
         self.nsegments += 1
         self.is_normalized = 0
-
-
 
     cpdef add( self, long start, long end ):
         cdef Segment segment
@@ -344,9 +367,12 @@ cdef class SegmentList:
         if nsegments == 0: nsegments = 1
 
         assert nsegments >= self.nsegments, "resizing will loose segments"
-
-        self.segments = <Segment*>realloc( self.segments,
-                                           nsegments * sizeof( Segment ) )
+        
+        if self.allocated == 0:
+            self.segments = <Segment*>malloc( nsegments * sizeof( Segment ) )
+        else:
+            self.segments = <Segment*>realloc( self.segments,
+                                               nsegments * sizeof( Segment ) )
         assert self.segments != NULL
         self.allocated = nsegments
 
@@ -463,7 +489,7 @@ cdef class SegmentList:
             if self.segments[idx].start >= max_end:
                 self.segments[insertion_idx].end = max_end
                 insertion_idx += 1
-                assert insertion_idx < self.nsegments
+                assert insertion_idx < self.nsegments, "insertion_idx out of range: %i >= %i" % (insertion_idx, self.nsegments)
                 self.segments[insertion_idx].start = self.segments[idx].start
 
             max_end = lmax( self.segments[idx].end, max_end )
@@ -521,7 +547,7 @@ cdef class SegmentList:
                 idx += 1
                 continue
             # no overlap - save segment
-            # note the change from > to >=
+            # note the cange from > to >=
             if self.segments[idx].start - distance > max_end:
                 self.segments[insertion_idx].end = max_end
                 insertion_idx += 1
@@ -745,8 +771,8 @@ cdef class SegmentList:
                 raise ValueError( "segment %i-%i too large: %i >= %i, increase nbuckets or bucket_size such that nbuckets * bucket_size > %i" %\
                                       ( self.segments[idx].start,
                                         self.segments[idx].end,
-                                        i, 
-                                        nbuckets,
+                                        l, 
+                                        nbuckets * bucket_size,
                                         l
                                         ) )
             histogram[i] += 1
@@ -760,6 +786,7 @@ cdef class SegmentList:
 
         # avoid self-self comparison
         if other.segments == self.segments: return self
+        if self.nsegments == 0: return self
 
         cdef Segment * new_segments
         cdef size_t allocated
@@ -830,6 +857,8 @@ cdef class SegmentList:
 
         # avoid self-self comparison
         if other.segments == self.segments: return self
+
+        if self.nsegments == 0: return self
 
         cdef Segment * new_segments
         cdef size_t allocated
@@ -1064,6 +1093,7 @@ cdef class SegmentListSamplerWithEdgeEffects:
         #     (start, end, offset, pos, rpos, rseg,
         #      segment_index, self.segment_list.nsegments,
         #      self.segment_list.segments[segment_index] )
+        overlap = 1
 
         assert overlap > 0, "sample %i-%i does not overlap with workspace: offset=%i, rpos=%i, rseg=%i, index=%i/%i, segment=%s" %\
             (start, end, offset, rpos, rseg,
@@ -1106,44 +1136,50 @@ cdef class SegmentListSampler:
             # -1, as searchsorted inserts on left
             self.cdf[i] = self.total_size -1
 
-    cpdef sample( self, long length ):
+    cpdef sample( self, long sample_length ):
         '''return a sample.'''
 
         # note: could be made quicker by
         # - creating a sample random integers once, see numpy.random_integers?
         # - avoiding the binary search?
-        cdef long rpos, rseg, offset, pos, overlap, start, end, lseg
+        cdef long overlap, start, end
         cdef size_t segment_index
-        cdef Segment s
+        cdef Segment chosen_segment
 
+        cdef long random_pos_in_workspace, random_pos_in_segment
+
+        # sample a position 
         # r = rand() / (RAND_MAX / total_size + 1)
-        rpos = numpy.random.randint( 0, self.total_size )
-
+        random_pos_in_workspace = numpy.random.randint( 0, self.total_size )
         segment_index = searchsorted( self.cdf,
                                       self.nsegments,
                                       sizeof(long),
-                                      &rpos,
+                                      &random_pos_in_workspace,
                                       &cmpLong,
                                       )
 
-        offset = rpos - self.cdf[segment_index]
+        assert 0 <= segment_index < self.nsegments, \
+            "range error for %i: %i >= %i" % (random_pos_in_workspace, segment_index, self.nsegments)
 
-        s = self.segment_list.segments[segment_index]
-        start = s.start - length + 1
-        lseg = segment_length( s )
+        chosen_segment = self.segment_list.segments[segment_index]
 
-        rseg = numpy.random.randint( 0, lseg + length - 1)
-        start += rseg
-        end = start + length
+        # resample start position within chosen segment
+        # permitting for partial overlap.
+        random_pos_in_segment = numpy.random.randint( lmax(0, chosen_segment.start - sample_length + 1),
+                                                      chosen_segment.end )
 
-        # print "sample %i-%i, offset=%i, pos=%i, rpos=%i, rseg=%i, index=%i/%i, segment=%s" %\
-        #     (start, end, offset, pos, rpos, rseg,
+        # adjust position by sampled amount
+        start = random_pos_in_segment
+        end = start + sample_length
+
+        # print "sample %i-%i, rand_pos_workspace=%i, rand_pos_segment=%i, index=%i/%i, segment=%s" %\
+        #     (start, end, random_pos_in_workspace, random_pos_in_segment, 
         #      segment_index, self.segment_list.nsegments,
         #      self.segment_list.segments[segment_index] )
-        overlap = range_overlap( s.start, s.end, start, end )
+        overlap = range_overlap( chosen_segment.start, chosen_segment.end, start, end )
 
-        assert overlap > 0, "sample %i-%i does not overlap with workspace: offset=%i, rpos=%i, rseg=%i, index=%i/%i, segment=%s" %\
-            (start, end, offset, rpos, rseg,
+        assert overlap > 0, "sample %i-%i does not overlap with workspace: rpos=%i, rseg=%i, index=%i/%i, segment=%s" %\
+            (start, end, random_pos_in_workspace, random_pos_in_segment,
              segment_index,
              self.segment_list.nsegments,
              self.segment_list.segments[segment_index])
@@ -1428,12 +1464,12 @@ cdef class SamplerAnnotator(Sampler):
         self.nunsuccessful_rounds = nunsuccessful_rounds
         
         intersected_segments = SegmentList( clone = unintersected_segments )
-        # print "final: unintersected", intersected_segments.sum(), intersected_segments.asList()
+        #print "final: unintersected", intersected_segments.sum(), intersected_segments.asList()
         intersected_segments.merge()
-        # print "final: merged", intersected_segments.sum(), intersected_segments.asList()
+        #print "final: merged", intersected_segments.sum(), intersected_segments.asList()
         intersected_segments.filter( workspace )
-        # print "final: filtered", intersected_segments.sum(), intersected_segments.asList()
-        # print "final:", intersected_segments.sum(), intersected_segments.asList()
+        #print "final: filtered", intersected_segments.sum(), intersected_segments.asList()
+        #print "final:", intersected_segments.sum(), intersected_segments.asList()
         
         assert intersected_segments.sum() > 0
         return intersected_segments
@@ -1731,7 +1767,7 @@ cdef class SamplerDummy(Sampler):
         '''return a sampled list of segments.'''
 
         cdef SegmentList sample
-        sample = SegmentList( clone = sample )
+        sample = SegmentList( clone = segments )
         return sample
 
 ############################################################
@@ -2177,20 +2213,15 @@ def computeCounts( counter,
         f = _set
 
     isochores = workspace.keys()
-    l = len(isochores)
-    # collect counts per isochore
+
+    # collect counts per isochore and aggregate these
     for track in segments.tracks:
         segs = segments[track]
+            
         for annotation in annotations.tracks:
             annos = annotations[annotation]
-            vals = [ counter( segs[isochore], annos[isochore], workspace[isochore] ) for isochore in workspace.keys() ]
-            # vals = numpy.array( [ counter( segs[isochore], annos[isochore], workspace[isochore] ) for isochore in workspace.keys() ],
-            #                     dtype = numpy.float )
-            # note: not truly iterator - generators currently not available in cython
-            # vals = numpy.fromiter( \
-            #     [ counter( segs[isochore], annos[isochore], workspace[isochore] ) for isochore in isochores ],
-            #     dtype = numpy.float,
-            #     count = l)
+
+            vals = [ counter(segs[isochore], annos[isochore], workspace[isochore] ) for isochore in isochores ]
             f(counts, track, annotation, aggregator(vals) )
 
     return counts
@@ -2529,7 +2560,8 @@ class IntervalCollection(object):
         '''
 
         for track, vv in self.intervals.iteritems():
-            for contig, segmentlist in vv.iteritems():
+            for contig in vv.keys():
+                segmentlist = vv[contig]
                 if len(segmentlist) == 0: 
                     del vv[contig]
                 else:
@@ -2561,15 +2593,22 @@ class IntervalCollection(object):
                  
                 
 
-    def merge( self ):
+    def merge( self, delete = False ):
         '''merge all tracks into a single segment list
-        creating a new track called 'merged'
+        creating a new track called 'merged'.
+
+        If *delete* == True, all tracks but the merged track
+        will be deleted.
         '''
         merged = collections.defaultdict( SegmentList )
         
-        for track, vv in self.intervals.iteritems():
+        for track in self.intervals.keys():
+            vv = self.intervals[track]
             for contig, segmentlist in vv.iteritems():
                 merged[contig].extend( segmentlist )
+            if delete:
+                del self.intervals[track]
+
         self.intervals["merged"] = merged
         self.normalize()
 
@@ -2670,6 +2709,8 @@ class IntervalCollection(object):
     def tracks(self): return self.intervals.keys()
 
     def __len__(self): return len(self.intervals)
+
+    def __delitem__(self,key): del self.intervals[key]
 
     def keys(self): return self.intervals.keys()
 

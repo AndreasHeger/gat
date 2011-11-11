@@ -6,7 +6,7 @@ import random, tempfile, shutil, os, re, gzip, sys, subprocess, collections
 import gat
 import numpy, math
 import matplotlib.pyplot as plt
-
+ 
 ANNOTATOR_DIR = "/ifs/devel/gat/annotator"
 ANNOTATOR_CMD = '''java -Xmx8000M -cp %s/lib/commons-cli-1.0.jar:%s/lib/Annotator.jar app.Annotator -verbose 4''' % (ANNOTATOR_DIR, ANNOTATOR_DIR)
 

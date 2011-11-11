@@ -4,6 +4,17 @@ Benchmarking
 
 This section contains quality control plots from the unit testing.
 
+Notes
+=====
+
+Coverage of bases by sampled segments is not uniform. For example,
+if a large segments overlaps a workspace at the end:
+
+
+    
+
+
+
 Sampling
 ========
 

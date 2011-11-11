@@ -342,6 +342,7 @@ class TestIntervalCollection( GatTest):
             for x in self.a[t].keys():
                 self.assertEqual( self.a[t][x], b[t][x] )
 
+        
 class TestSamples( GatTest ):
     
     nsamples = 1000

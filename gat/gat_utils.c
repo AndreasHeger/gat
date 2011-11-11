@@ -16,10 +16,10 @@ long searchsorted(void * base,
 
   size_t imin = 0;
   size_t imax = nmemb;
-  
+
   while (imin < imax) 
     {
-      size_t imid = imin + ((imax - imin) >> 2);
+      size_t imid = imin + ((imax - imin) >> 1);
       
       if (compar( &base[imid*size], target) < 0)
 	imin = imid + 1;
@@ -47,7 +47,7 @@ long searchargsorted(void * base,
   
   while (imin < imax) 
     {
-      size_t imid = imin + ((imax - imin) >> 2);
+      size_t imid = imin + ((imax - imin) >> 1);
 
       if (compar( &base[sorted[imid]*size], target) < 0)
 	imin = imid + 1;

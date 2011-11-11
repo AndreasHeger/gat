@@ -121,6 +121,13 @@ def fromSegments( options, args ):
 
     # read one or more segment files
     segments = readSegmentList( "segments", options.segment_files)
+    if options.ignore_segment_tracks:
+        segments.merge( delete = True)
+        E.info( "merged all segments into %i track" % len(segments))
+
+    if len(segments) > 1000: 
+        raise ValueError( "too many (%i) segment files - use track definitions or --ignore-segment-tracks" % len(segments) )
+    
     annotations = readSegmentList( "annotations", options.annotation_files)
     workspaces = readSegmentList( "workspaces", options.workspace_files)
 
@@ -347,6 +354,9 @@ def main( argv = None ):
                                   "overlap" ),
                       help="type of pvalue reported [default=%default]."  )
 
+    parser.add_option( "--ignore-segment-tracks", dest="ignore_segment_tracks", action="store_true", 
+                       help="ignore segment tracks - all segments belong to one track [default=%default]" )
+
     parser.set_defaults(
         annotation_files = [],
         segment_files = [],
@@ -369,6 +379,7 @@ def main( argv = None ):
         qvalue_lambda = None,
         qvalue_pi0_method = "smoother",
         sampler = "annotator",
+        ignore_segment_tracks = False,
         )
 
     ## add common options (-h/--help, ...) and parse command line 
