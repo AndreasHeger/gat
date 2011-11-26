@@ -296,6 +296,92 @@ class TestSamplerLengthSlow( TestSamplerLength ):
 
     sampler = gat.HistogramSamplerSlow
 
+##############################################################################        
+##############################################################################        
+##############################################################################        
+##############################################################################        
+class TestSegmentTrimming( GatTest ):
+    '''test for any biases in the trimming procedure.'''
+
+    ntests = 10000
+    
+    def trim( self, segment_list, amount ):
+        '''trim amount from segment list.'''
+
+        temp_sampler = gat.SegmentListSampler( segment_list )
+
+        # sample a position from current list of sampled segments
+        start, end, overlap = temp_sampler.sample( 1 )
+
+        segment_list.trim_ends( start, 
+                                amount,
+                                numpy.random.randint( 0,2) )
+
+        return start
+
+    def getSamples( self, segment_list, amount ):
+        
+        samples = []
+        starts = []
+        for x in range( self.ntests):
+            s = gat.SegmentList( clone = segment_list )
+            start = self.trim( s, amount )
+            samples.append( s )
+            starts.append( start )
+
+        return samples, starts
+
+    def getWorkspaceCounts( self, 
+                            segments,
+                            amount ):
+
+        workspace = gat.SegmentList( iter = [ (segments.min(), segments.max()), ], normalize = True )
+
+        nsegments = len(segments)
+        workspace_size = workspace.sum()
+
+        # segment_density = sample_length / workspace_size
+        sample_length = segments.sum()
+
+        expected = self.ntests * sample_length / workspace_size
+        segment_density = sample_length / workspace_size
+
+        samples, starts = self.getSamples( segments, amount )
+        
+        # print numpy.histogram( starts, bins = xrange( 0, workspace_size+1) )
+
+        counts_within_workspace = getWorkspaceCounts( workspace,
+                                                      samples,
+                                                      filename = getPlotFilename( str(self) ),
+                                                      expected = expected,
+                                                      density = segment_density )
+
+        d = abs(counts_within_workspace.mean() - expected) / float(expected)
+        self.assert_( d < 0.1, "expected counts (%f) != sampled counts (%f" % (expected,
+                                                                               counts_within_workspace.mean()))
+        
+        d = numpy.std( counts_within_workspace )
+
+
+        return counts_within_workspace
+
+    def testUniformDistance( self ):
+        '''test trimming with uniformly spaced segments
+        '''
+
+        segment_size = 10
+        space = 10
+        nsegments = 3
+        amount = 4
+
+        segments = gat.SegmentList( iter = [ (x, x + segment_size) for x in \
+                                                 xrange( 0, 
+                                                         nsegments * (segment_size + space),
+                                                         segment_size + space ) ],
+                                    normalize = True )
+
+        counts_within_workspace = self.getWorkspaceCounts( segments,
+                                                           amount )
 
 ##############################################################################        
 ##############################################################################        
@@ -532,7 +618,7 @@ def getWorkspaceCounts( workspace,
 ##############################################################################        
 ##############################################################################        
 ##############################################################################        
-class TestSegmentSamplingGat( GatTest ):
+class TestSegmentSamplingSamplerGat( GatTest ):
 
     ntests = 1000
 
@@ -937,7 +1023,7 @@ class TestSegmentSamplingGat( GatTest ):
     #                             10.0,
     #                             places = 0 )
 
-class TestSegmentSamplingSamplerSegments( TestSegmentSamplingGat ):
+class TestSegmentSamplingSamplerSegments( TestSegmentSamplingSamplerGat ):
 
     check_nucleotides = False
     check_average_coverage = False
@@ -946,7 +1032,7 @@ class TestSegmentSamplingSamplerSegments( TestSegmentSamplingGat ):
     def setUp(self):
         self.sampler = gat.SamplerSegments()
 
-class TestSegmentSamplingSamplerBruteForce( TestSegmentSamplingGat ):
+class TestSegmentSamplingSamplerBruteForce( TestSegmentSamplingSamplerGat ):
 
     check_nucleotides = True
     check_average_coverage = True
@@ -955,7 +1041,7 @@ class TestSegmentSamplingSamplerBruteForce( TestSegmentSamplingGat ):
     def setUp(self):
         self.sampler = gat.SamplerBruteForce()
 
-class TestSegmentSamplingSamplerUniform( TestSegmentSamplingGat ):
+class TestSegmentSamplingSamplerUniform( TestSegmentSamplingSamplerGat ):
 
     check_nucleotides = False
     check_average_coverage = False
@@ -964,7 +1050,7 @@ class TestSegmentSamplingSamplerUniform( TestSegmentSamplingGat ):
     def setUp(self):
         self.sampler = gat.SamplerUniform( increment = 1 )
 
-class TestSegmentSamplingTheAnnotator( TestSegmentSamplingGat ):
+class TestSegmentSamplingTheAnnotator( TestSegmentSamplingSamplerGat ):
     '''use annotator to sample segments.'''
 
     def getSamples( self, 
@@ -1784,7 +1870,7 @@ class TestStatsTheAnnotator( TestStatsGat ):
         return annotator_results
 
 class TestTrimming( GatTest ):
-
+    
     def testEndTrim( self ):
         '''test end trimming.
 
@@ -1823,9 +1909,9 @@ class TestTrimming( GatTest ):
                     self.assertEqual( min(f), max(f), "min=%i, npoints=%i, size=%i" % (min(f), npoints, size) )
                 total += t
                 
-            #plt.plot( xrange(len(total)), total )
+            plt.plot( xrange(len(total)), total )
 
-        # plt.show()
+        plt.show()
 
 class TestEnrichmentGat( GatTest ):
     '''

@@ -79,6 +79,10 @@ def run( segments,
          **kwargs ):
     '''run an enrichment analysis.
 
+    segments: an IntervalCollection
+    workspace: an IntervalCollection
+    annotations: an IntervalCollection
+
     kwargs recognized are:
 
     cache 
