@@ -197,6 +197,7 @@ def run( segments,
                     r = sampler.sample( segs[isochore], workspace[isochore] )
                     E.debug( "sample=%s, isochore=%s, segs=%i, sample=%i" % \
                                  (sample_id, isochore, segs[isochore].sum(), r.sum()) )
+
                 # compute counts for each annotation/isochore and save
                 for annotation in annotations.tracks:
                     annos = annotations[annotation]
