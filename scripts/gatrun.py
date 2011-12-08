@@ -147,7 +147,7 @@ def fromSegments( options, args ):
 
     # build isochores or intersect annotations/segments with workspace
     if options.isochore_files:
-
+        
         # read one or more isochore files
         isochores = gat.IntervalCollection( name = "isochores" )
         E.info( "%s: reading isochores from %i files" % ("isochores", len(options.isochore_files)))
@@ -164,6 +164,10 @@ def fromSegments( options, args ):
         isochores.normalize()
 
         # check that there are no overlapping segments between isochores
+
+        # truncate isochores to workspace
+        # crucial if isochores are larger than workspace.
+        isochores.intersect( workspaces["collapsed"] )
 
         # intersect isochores and workspaces, segments and annotations
         E.info( "adding isochores to workspace" )
@@ -190,7 +194,7 @@ def fromSegments( options, args ):
         # intersect workspace and segments/annotations
         annotations.filter( workspaces["collapsed"] )
         segments.filter( workspaces["collapsed"] )
-
+        
         dumpStats( annotations, "stats_annotations_pruned" )
         dumpStats( segments, "stats_segments_pruned" )
 

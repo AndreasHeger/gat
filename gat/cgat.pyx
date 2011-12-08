@@ -912,6 +912,19 @@ cdef class SegmentList:
         self.allocated = allocated
         return self
 
+    def shift( self, int offset ):
+        '''shift segments by a certain offset.
+        
+        raises ValueError if segment coordinates become negative.
+        '''
+        cdef long idx
+        cdef Segment s
+        for idx from 0 <= idx < self.nsegments:
+            s = self.segments[idx]
+            s.end += offset
+            s.start += offset
+            if s.start < 0: raise ValueError( "shift creates negative coordinates" )
+
     cpdef long sum( self ):
         '''return total length of all segments.'''
         cdef long total
@@ -1126,6 +1139,7 @@ cdef class SegmentListSampler:
     def __init__(self, SegmentList segment_list ):
         cdef long i, totsize
         assert len(segment_list) > 0, "sampling from empty segment list"
+        assert segment_list.is_normalized
 
         self.segment_list = segment_list
         self.nsegments = len(segment_list)
@@ -2544,11 +2558,19 @@ class IntervalCollection(object):
         self.intervals = readFromBed( filenames )
         self.normalize()
 
-    def save( self, outfile ):
-        '''save in bed format to *outfile*.'''
+    def save( self, outfile, prefix = "", **kwargs ):
+        '''save in bed format to *outfile*.
+        
+        Each interval set will be saved as a different track with optional
+        prefix *prefix*.
+
+        Additional *kwargs* will be added to the tracks line as key=value pairs.
+        '''
 
         for track, vv in self.intervals.iteritems():
-            outfile.write("track name=%s\n" % track )
+            outfile.write("track name=%s%s %s\n" % \
+                              (prefix, track,
+                               " ".join( ["%s=%s" % (x,y) for x,y in kwargs.iteritems() ] ) ) )
             for contig, segmentlist in vv.items():
                 for start, end in segmentlist:
                     outfile.write( "%s\t%i\t%i\n" % (contig, start, end))
@@ -2597,6 +2619,8 @@ class IntervalCollection(object):
         '''merge all tracks into a single segment list
         creating a new track called 'merged'.
 
+        Overlapping intervals will be merged.
+
         If *delete* == True, all tracks but the merged track
         will be deleted.
         '''
@@ -2614,7 +2638,10 @@ class IntervalCollection(object):
 
     def collapse( self ):
         '''collapse all tracks into a single segment list
-        creating a new track called 'collapsed'
+        creating a new track called 'collapsed'.
+
+        The collapsed track contains the intersection of
+        all segment lists.
         '''
         result = collections.defaultdict( SegmentList )
         
