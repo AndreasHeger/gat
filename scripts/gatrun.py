@@ -108,6 +108,12 @@ def fromSegments( options, args ):
                 len( [ x for x in options.output_stats if re.search( x, section ) ] ) > 0:
             coll.outputStats( E.openOutputFile( section ) )
 
+    def dumpBed( coll, section ):
+        if section in options.output_bed or \
+                "all" in options.output_bed or \
+                len( [ x for x in options.output_bed if re.search( x, section ) ] ) > 0:
+            coll.save( E.openOutputFile( section + ".bed" ) )
+
     def readSegmentList( label, filenames ):
         # read one or more segment files
         results = gat.IntervalCollection( name = label )
@@ -180,6 +186,10 @@ def fromSegments( options, args ):
         dumpStats( annotations, "stats_annotations_isochores" )
         dumpStats( segments, "stats_segments_isochores" )
     
+        dumpBed( workspaces, "workspaces_isochores" )
+        dumpBed( annotations, "annotations_isochores" )
+        dumpBed( segments, "segments_isochores" )
+
     else:
         # intersect workspace and segments/annotations
         annotations.filter( workspaces["collapsed"] )
@@ -356,7 +366,14 @@ def main( argv = None ):
                                   "annotations", "segments", 
                                   "workspaces", "isochores",
                                   "overlap" ),
-                      help="type of pvalue reported [default=%default]."  )
+                      help="output overlap summary stats [default=%default]."  )
+
+    parser.add_option( "--output-bed", dest="output_bed", type="choice", action="append",
+                      choices = ( "all", 
+                                  "annotations", "segments", 
+                                  "workspaces", "isochores",
+                                  "overlap" ),
+                      help="output bed files [default=%default]."  )
 
     parser.add_option( "--ignore-segment-tracks", dest="ignore_segment_tracks", action="store_true", 
                        help="ignore segment tracks - all segments belong to one track [default=%default]" )
@@ -371,6 +388,7 @@ def main( argv = None ):
         bucket_size = 1,
         counter = "nucleotide-overlap",
         output_stats = [],
+        output_bed = [],
         output_filename_counts = None,
         output_order = "fold",
         cache = None,
