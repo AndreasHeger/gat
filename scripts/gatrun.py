@@ -355,6 +355,11 @@ def main( argv = None ):
                        help="output pattern for samples. Samples are stored in bed format, one for "
                             " each segment [default=%default]" )
 
+    parser.add_option( "--descriptions", dest="input_filename_descriptions", type="string", 
+                       help="filename mapping annotation terms to descriptions. "
+                            " if given, the output table will contain additional columns "
+                            " [default=%default]" )
+
     parser.add_option( "--bucket-size", dest="bucket_size", type="int", 
                        help="size of a bin for histogram of segment lengths [default=%default]" )
 
@@ -402,10 +407,29 @@ def main( argv = None ):
         qvalue_pi0_method = "smoother",
         sampler = "annotator",
         ignore_segment_tracks = False,
+        input_filename_descriptions = None,
         )
 
     ## add common options (-h/--help, ...) and parse command line 
     (options, args) = E.Start( parser, argv = argv, add_output_options = True )
+
+    ##################################################
+    description_header, descriptions, description_width = [], {}, 0
+    if options.input_filename_descriptions:
+        with IOTools.openFile( options.input_filename_descriptions ) as inf:
+            first = True
+            for line in inf:
+                if line.startswith("#"): continue
+                data = line[:-1].split( "\t" )
+
+                if description_width: assert len(data) -1 == description_width
+                else: description_width = len(data) - 1
+
+                if first: 
+                    description_header = data[1:]
+                    first = False
+                else:
+                    descriptions[data[0]] = data[1:]
 
     ##################################################
     if options.input_filename_counts:
@@ -496,7 +520,7 @@ def main( argv = None ):
     ##################################################
     outfile = options.stdout
 
-    outfile.write("\t".join( gat.AnnotatorResult.headers ) + "\n" )
+    outfile.write( "\t".join( gat.AnnotatorResult.headers + description_header ) + "\n" )
 
     output = list( gat.iterator_results( annotator_results ) )
     if options.output_order == "track":
@@ -513,8 +537,14 @@ def main( argv = None ):
         raise ValueError("unknown sort order %s" % options.output_order )
 
     for result in output:
-        outfile.write( str(result) + "\n" )
-            
+        outfile.write( str(result) )
+        if descriptions:
+            try:
+                outfile.write( "\t" + "\t".join( descriptions[result.annotation] ) )
+            except KeyError:
+                outfile.write( "\t" + "\t".join( [""] * description_width ) )
+        outfile.write("\n")
+
     ## write footer and output benchmark information.
     E.Stop()
 
