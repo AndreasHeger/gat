@@ -186,8 +186,9 @@ def run( segments,
 
                 # skip empty isochores
                 if workspace[isochore].isEmpty or segs[isochore].isEmpty: 
-                    E.debug( "skipping empty isochore %s" % isochore )
                     counts.skipped += 1
+                    # too much information
+                    # E.debug( "skipping empty isochore %s" % isochore )
                     continue
 
                 # skip if read from cache
@@ -199,8 +200,9 @@ def run( segments,
                 else:
                     counts.sampled += 1
                     r = sampler.sample( segs[isochore], workspace[isochore] )
-                    E.debug( "sample=%s, isochore=%s, segs=%i, sample=%i" % \
-                                 (sample_id, isochore, segs[isochore].sum(), r.sum()) )
+                    # too much information
+                    # E.debug( "sample=%s, isochore=%s, segs=%i, sample=%i" % \
+                    #             (sample_id, isochore, segs[isochore].sum(), r.sum()) )
 
                 # compute counts for each annotation/isochore and save
                 for annotation in annotations.tracks:
@@ -246,7 +248,10 @@ def run( segments,
                 track = track,
                 annotation = annotation,
                 observed = observed,
-                samples = sampled_counts[track][annotation] )
+                samples = sampled_counts[track][annotation],
+                track_segments = segments[track],
+                annotation_segments = annotations[annotation],
+                workspace = workspace)
 
     ##################################################
     ##################################################

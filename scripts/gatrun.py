@@ -129,7 +129,7 @@ def fromSegments( options, args ):
     segments = readSegmentList( "segments", options.segment_files)
     if options.ignore_segment_tracks:
         segments.merge( delete = True)
-        E.info( "merged all segments into %i track" % len(segments))
+        E.info( "merged all segments into one track with %i segments" % len(segments))
 
     if len(segments) > 1000: 
         raise ValueError( "too many (%i) segment files - use track definitions or --ignore-segment-tracks" % len(segments) )
@@ -367,19 +367,19 @@ def main( argv = None ):
                        help="number of bins for histogram of segment lengths [default=%default]" )
 
     parser.add_option( "--output-stats", dest="output_stats", type="choice", action="append",
-                      choices = ( "all", 
-                                  "annotations", "segments", 
-                                  "workspaces", "isochores",
-                                  "overlap" ),
-                      help="output overlap summary stats [default=%default]."  )
+                       choices = ( "all", 
+                                   "annotations", "segments", 
+                                   "workspaces", "isochores",
+                                   "overlap" ),
+                       help="output overlap summary stats [default=%default]."  )
 
     parser.add_option( "--output-bed", dest="output_bed", type="choice", action="append",
-                      choices = ( "all", 
-                                  "annotations", "segments", 
-                                  "workspaces", "isochores",
-                                  "overlap" ),
-                      help="output bed files [default=%default]."  )
-
+                       choices = ( "all", 
+                                   "annotations", "segments", 
+                                   "workspaces", "isochores",
+                                   "overlap" ),
+                       help="output bed files [default=%default]."  )
+    
     parser.add_option( "--ignore-segment-tracks", dest="ignore_segment_tracks", action="store_true", 
                        help="ignore segment tracks - all segments belong to one track [default=%default]" )
 

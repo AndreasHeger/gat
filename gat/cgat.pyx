@@ -683,7 +683,9 @@ cdef class SegmentList:
         cdef long this_idx, other_idx, working_idx, last_this_idx, last_other_idx
         this_idx = other_idx = 0
         last_this_idx = last_other_idx = -1
-        cdef Segment this_segment, other_segment
+        cdef Segment this_segment = Segment(0,0)
+        cdef Segment other_segment = Segment(0,0)
+
         cdef long overlap
         overlap = 0
 
@@ -729,7 +731,9 @@ cdef class SegmentList:
         cdef long this_idx, other_idx, working_idx, last_this_idx, last_other_idx
         this_idx = other_idx = 0
         last_this_idx = last_other_idx = -1
-        cdef Segment this_segment, other_segment
+        cdef Segment this_segment = Segment(0,0)
+        cdef Segment other_segment = Segment(0,0)
+
         cdef long noverlap
         noverlap = 0
 
@@ -796,7 +800,8 @@ cdef class SegmentList:
         cdef long this_idx, other_idx, working_idx, last_this_idx, last_other_idx
         working_idx = this_idx = other_idx = 0
         last_this_idx = last_other_idx = -1
-        cdef Segment this_segment, other_segment
+        cdef Segment this_segment = Segment(0,0)
+        cdef Segment other_segment = Segment(0,0)
         # for negative segments, do not use -1
         cdef long last_start = self.segments[0].start - 1
 
@@ -869,7 +874,8 @@ cdef class SegmentList:
         cdef long this_idx, other_idx, working_idx, last_this_idx, last_other_idx
         working_idx = this_idx = other_idx = 0
         last_this_idx = last_other_idx = -1
-        cdef Segment this_segment, other_segment
+        cdef Segment this_segment = Segment(0,0)
+        cdef Segment other_segment = Segment(0,0)
 
         while this_idx < self.nsegments and other_idx < other.nsegments:
 
@@ -1914,7 +1920,7 @@ cdef double getTwoSidedPValue( EnrichmentStatistics * stats,
         while idx < l and stats.samples[stats.sorted2sample[idx]] == val: 
             idx += 1
         # no -1 because of 0-based indices
-
+            
     pval = float(idx) / l
 
     return dmax( min_pval, pval)
@@ -2041,33 +2047,72 @@ cdef class AnnotatorResult(object):
     format_expected = "%6.4f"
     format_fold = "%6.4f"
     format_pvalue = "%6.4e"
+    format_counts = "%i"
+    format_density = "%6.4e"
 
     headers = ["track", 
                "annotation",
-               "observed", 
+               "observed",
                "expected",
                "CI95low", 
                "CI95high",
                "stddev",
                "fold",
                "pvalue",
-               "qvalue" ]
+               "qvalue",
+               "track_nsegments",
+               "track_size",
+               "track_density",
+               "annotation_nsegments",
+               "annotation_size",
+               "annotation_density",
+               "overlap_nsegments",
+               "overlap_size",
+               "overlap_density",
+               "percent_overlap_nsegments_track",
+               "percent_overlap_size_track",
+               "percent_overlap_nsegments_annotation",
+               "percent_overlap_size_annotation",
+               ]
 
     cdef:
         EnrichmentStatistics * stats
         str track, annotation
+        long track_nsegments
+        long track_size
+        long annotation_nsegments
+        long annotation_size
+        long overlap_nsegments
+        long overlap_size
+        long workspace_size
 
     def __init__( self,
                   track,
                   annotation,
                   observed,
-                  samples ):
+                  samples,
+                  track_segments,
+                  annotation_segments,
+                  workspace ):
 
         self.track = track
         self.annotation = annotation
-        
         self.stats = makeEnrichmentStatistics( observed, samples )
 
+        self.track_nsegments = track_segments.sum()
+        self.track_size = track_segments.counts()
+
+        self.annotation_nsegments = annotation_segments.sum()
+        self.annotation_size = annotation_segments.counts()
+
+        overlap = track_segments.clone()
+        overlap.intersect( annotation_segments )
+
+        self.overlap_nsegments = overlap.sum()
+        self.overlap_size = overlap.counts()
+
+        self.workspace_size = workspace.sum()
+        
     def __str__(self):
 
         # if self.stats.nsamples < 10**6:
@@ -2085,6 +2130,19 @@ cdef class AnnotatorResult(object):
                            self.format_fold % self.stats.fold,
                            self.format_pvalue % self.stats.pvalue,
                            self.format_pvalue % self.stats.qvalue,
+                           self.format_counts % self.track_nsegments,
+                           self.format_counts % self.track_size,
+                           self.format_density % ( float(self.track_size) / self.workspace_size),
+                           self.format_counts % self.annotation_nsegments,
+                           self.format_counts % self.annotation_size,
+                           self.format_density % ( float(self.annotation_size) / self.workspace_size),
+                           self.format_counts % self.overlap_nsegments,
+                           self.format_counts % self.overlap_size,
+                           self.format_density % ( float(self.overlap_size) / self.workspace_size),
+                           self.format_fold % ( float( self.overlap_size / self.track_size) ),
+                           self.format_fold % ( float( self.overlap_nsegments / self.track_nsegments) ),
+                           self.format_fold % ( float( self.overlap_size / self.annotation_size) ),
+                           self.format_fold % ( float( self.overlap_nsegments / self.annotation_nsegments) ),
                            ) )
 
     def __dealloc__(self):
@@ -2202,7 +2260,7 @@ def updateQValues( annotator_results, method = "storey", **kwargs ):
 def _append( counts, x,y,z): counts[y].append(z)
 def _set( counts, x,y,z) : counts[x].__setitem__( y, z )
 def _defdictfloat(): return collections.defaultdict(float)
-
+        
 def computeCounts( counter, 
                    aggregator, 
                    segments, 
@@ -2218,7 +2276,7 @@ def computeCounts( counter,
 
     Otherwise, a nested dictionary is returned.
     '''
-
+        
     if append:
         counts = collections.defaultdict( list )
         f = _append
@@ -2459,7 +2517,7 @@ class tsv_iterator:
             # make sure that entry is complete
             if b[nbytes-1] != '\n':
                 raise ValueError( "incomplete line at %s" % line )
-
+        
             # chop off newline
             b[nbytes-1] = '\0'
 
@@ -2492,7 +2550,7 @@ class bed_iterator(tsv_iterator):
         return BedProxy( self.track )
 
 def _genie():
-    return collections.defaultdict(SegmentList)
+    return IntervalCollection(SegmentList)
 
 def readFromBed( filenames ):
     '''read Segment Lists from one or more bed files.
@@ -2508,7 +2566,7 @@ def readFromBed( filenames ):
     cdef BedProxy bed
     cdef long lineno
 
-    segment_lists = collections.defaultdict( _genie )
+    segment_lists = collections.defaultdict( IntervalDictionary )
 
     if type(filenames) == str:
         filenames = (filenames,)
@@ -2541,16 +2599,85 @@ def readFromBed( filenames ):
 #####################################################################
 #####################################################################
 #####################################################################
-## samples
+## 
+#####################################################################
+class IntervalDictionary( object ):
+    '''a collection of intervals.
+    
+    Intervals (objects of type :class:`SegmentList`) are organized
+    in hierarchical dictionary by isochore.
+    '''
+
+    def __init__(self ):
+        self.intervals = collections.defaultdict( SegmentList )
+
+    def sum( self ):
+        '''return sum of all segment lists.'''
+        s = 0
+        for contig, segmentlist in self.intervals.iteritems():
+            s += segmentlist.sum()
+        return s
+
+    def counts( self ):
+        '''return number of all segments in all segments lists.'''
+        s = 0
+        for contig, segmentlist in self.intervals.iteritems():
+            s += len(segmentlist)
+        return s
+
+    def intersect( self, other ):
+        '''intersect with intervals in other.'''
+        for contig, segmentlist in self.intervals.items():
+            if contig in other:
+                segmentlist.intersect( other[contig] )
+            else:
+                del self.intervals[contig]
+
+    def __len__(self): return len(self.intervals)
+
+    def __delitem__(self,key): del self.intervals[key]
+
+    def keys(self): return self.intervals.keys()
+
+    def add( self, contig, segmentlist ):
+        self.intervals[contig] = segmentlist
+
+    def items(self ):
+        return self.intervals.items()
+
+    def __getitem__(self, key ):
+        return self.intervals[key]
+
+    def __setitem__(self, key, val ):
+        self.intervals[key] = val
+
+    def __contains__(self, key ):
+        return key in self.intervals
+
+    def iteritems(self):
+        return self.intervals.iteritems()
+
+    def clone( self ):
+        '''return a copy of the data.'''
+        r = IntervalDictionary()
+        for contig, segmentlist in self.intervals.iteritems():
+            r[contig] = SegmentList( clone = segmentlist )
+        return r
+
+#####################################################################
+#####################################################################
+#####################################################################
+## 
 #####################################################################
 class IntervalCollection(object):
     '''a collection of intervals.
 
-    Intervals (objects of type :class:`SegmentList`) are collected by track and isochore.
+    Intervals (objects of type :class:`SegmentList`) are organized
+    in hierarchical dictionary by track and isochore.
     '''
 
     def __init__(self, name ):
-        self.intervals = collections.defaultdict( _genie )
+        self.intervals = collections.defaultdict( IntervalDictionary )
         self.name = name
 
     def load( self, filenames ):
@@ -2624,7 +2751,7 @@ class IntervalCollection(object):
         If *delete* == True, all tracks but the merged track
         will be deleted.
         '''
-        merged = collections.defaultdict( SegmentList )
+        merged = IntervalDictionary()
         
         for track in self.intervals.keys():
             vv = self.intervals[track]
@@ -2643,7 +2770,7 @@ class IntervalCollection(object):
         The collapsed track contains the intersection of
         all segment lists.
         '''
-        result = collections.defaultdict( SegmentList )
+        result = IntervalDictionary()
         
         for track, vv in self.intervals.iteritems():
             for contig, segmentlist in vv.iteritems():
