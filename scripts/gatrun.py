@@ -114,11 +114,11 @@ def fromSegments( options, args ):
                 len( [ x for x in options.output_bed if re.search( x, section ) ] ) > 0:
             coll.save( E.openOutputFile( section + ".bed" ) )
 
-    def readSegmentList( label, filenames ):
+    def readSegmentList( label, filenames, enable_split_tracks = False ):
         # read one or more segment files
         results = gat.IntervalCollection( name = label )
         E.info( "%s: reading tracks from %i files" % (label, len(filenames)))
-        results.load( filenames )
+        results.load( filenames, split_tracks = enable_split_tracks )
         E.info( "%s: read %i tracks from %i files" % (label, len(results), len(filenames)))
         dumpStats( results, "stats_%s_raw" % label )
         results.normalize()
@@ -134,11 +134,12 @@ def fromSegments( options, args ):
     if len(segments) > 1000: 
         raise ValueError( "too many (%i) segment files - use track definitions or --ignore-segment-tracks" % len(segments) )
     
-    annotations = readSegmentList( "annotations", options.annotation_files)
-    workspaces = readSegmentList( "workspaces", options.workspace_files)
+    annotations = readSegmentList( "annotations", options.annotation_files, options.enable_split_tracks )
+    workspaces = readSegmentList( "workspaces", options.workspace_files, options.enable_split_tracks )
 
     # intersect workspaces to build a single workspace
     E.info( "collapsing workspaces" )
+    dumpStats( workspaces, "stats_workspaces_input" )
     workspaces.collapse()
     dumpStats( workspaces, "stats_workspaces_collapsed" )
 
@@ -200,6 +201,21 @@ def fromSegments( options, args ):
 
     workspace = workspaces["collapsed"] 
 
+    if options.restrict_workspace:
+        E.info( "restricting workspace" )
+        # this is very cumbersome - refactor merge and collapse
+        # to return an IntervalDictionary instead of adding it
+        # to the list of tracks
+        for x in (segments, annotations):
+            if "merged" in segments:
+                workspace.filter( segments["merged"] )
+            else:
+                segments.merge()
+                workspace.filter( segments["merged"] )
+                del segments[merged]
+
+        dumpStats( workspaces, "stats_workspaces_restricted" )
+        
     # segments.dump( open("segments_dump.bed", "w" ) )
     # workspaces.dump( open("workspaces_dump.bed", "w" ) )
 
@@ -228,6 +244,9 @@ def fromSegments( options, args ):
         sampler = gat.SamplerAnnotator(
             bucket_size = options.bucket_size,
             nbuckets = options.nbuckets )
+    elif options.sampler == "shift":
+        sampler = gat.SamplerShift( 
+            radius = options.shift_expansion )
     elif options.sampler == "segments":
         sampler = gat.SamplerSegments()
         
@@ -247,6 +266,23 @@ def fromSegments( options, args ):
     ##################################################
     ##################################################
     ##################################################
+    ## initialize workspace generator
+    if options.conditional == "unconditional":
+        workspace_generator = gat.UnconditionalWorkspace()
+    elif options.conditional == "cooccurance":
+        workspace_generator = gat.ConditionalWorkspaceCooccurance()
+    elif options.conditional == "annotation-centered":
+        workspace_generator = gat.ConditionalWorkspaceAnnotationCentered( options.conditional_extension,
+                                                                          options.conditional_expansion )
+    elif options.conditional == "segment-centered":
+        workspace_generator = gat.ConditionalWorkspaceSegmentCentered( options.conditional_extension,
+                                                                       options.conditional_expansion )
+    else:
+        raise ValueError("unknown conditional workspace '%s'" % options.conditional )
+        
+    ##################################################
+    ##################################################
+    ##################################################
     ## compute
     ##################################################
     annotator_results = gat.run( segments, 
@@ -254,11 +290,14 @@ def fromSegments( options, args ):
                                  workspace,
                                  sampler, 
                                  counter,
+                                 workspace_generator = workspace_generator,
                                  num_samples = options.num_samples,
                                  cache = options.cache,
                                  output_counts = options.output_filename_counts,
                                  output_samples_pattern = options.output_samples_pattern,
-                                 sample_files = options.sample_files )
+                                 sample_files = options.sample_files,
+                                 conditional = options.conditional,
+                                 conditional_extension = options.conditional_extension )
 
     return annotator_results
 
@@ -311,7 +350,8 @@ def main( argv = None ):
 
     parser.add_option("-m", "--sampler", dest="sampler", type="choice",
                       choices=("annotator", 
-                               "segments" ),
+                               "segments",
+                               "shift" ),
                       help="quantity to test [default=%default]."  )
 
     parser.add_option("-n", "--num-samples", dest="num_samples", type="int", 
@@ -383,6 +423,31 @@ def main( argv = None ):
     parser.add_option( "--ignore-segment-tracks", dest="ignore_segment_tracks", action="store_true", 
                        help="ignore segment tracks - all segments belong to one track [default=%default]" )
 
+    parser.add_option( "--enable-split-tracks", dest="enable_split_tracks", action="store_true", 
+                       help="permit the same track to be in multiple files [default=%default]" )
+
+    parser.add_option( "--conditional", dest="conditional", type="choice",
+                       choices = ( "unconditional", "annotation-centered", "segment-centered", "cooccurance" ),
+                       help="conditional workspace creation [default=%default]"
+                       " cooccurance - compute enrichment only within workspace segments that contain both segments "
+                       " and annotations"
+                       " annotation-centered - workspace centered around annotations. See --conditional-extension"
+                       " segment-centered - workspace centered around segments. See --conditional-extension" )
+
+    parser.add_option( "--conditional-extension", dest="conditional_extension", type="int",
+                      help="if workspace is created conditional, extend by this amount (in bp) [default=%default]."  )
+
+    parser.add_option( "--conditional-expansion", dest="conditional_expansion", type="float",
+                      help="if workspace is created conditional, expand by this amount (ratio) [default=%default]."  )
+
+    parser.add_option( "--restrict-workspace", dest="restrict_workspace", action="store_true", 
+                       help="restrict workspace to those segments that contain both track"
+                       " and annotations [default=%default]" )
+
+    parser.add_option( "--shift-expansion", dest="shift_expansion", type="float",
+                      help="if the sampling method is 'shift', multiply each segment by # "
+                           " to determine the size of the region for shifthing [default=%default]."  )
+
     parser.set_defaults(
         annotation_files = [],
         segment_files = [],
@@ -408,6 +473,12 @@ def main( argv = None ):
         sampler = "annotator",
         ignore_segment_tracks = False,
         input_filename_descriptions = None,
+        conditional = "unconditional",
+        conditional_extension = None,
+        conditional_expansion = None,
+        restrict_workspace = False,
+        enable_split_tracks = False,
+        shift_expansion = 2.0,
         )
 
     ## add common options (-h/--help, ...) and parse command line 
@@ -473,16 +544,22 @@ def main( argv = None ):
             key = "%s-%s" % (r.track, r.annotation)
             s = r.samples
             hist, bins = numpy.histogram( s,
-                                          normed = True,
                                           bins = 100 )
-            # bins = numpy.arange( s.min(), s.max() + 1, 1.0) )
+            
+            # convert to density
+            hist = numpy.array( hist, dtype = numpy.float )
+            hist /= sum(hist)
+
+            # plot bars
             plt.bar( bins[:-1], hist, width=1.0, label = key )
+            
+            # plot estimated 
             sigma = r.stddev
             mu = r.expected
             plt.plot(bins, 
                      1.0/(sigma * numpy.sqrt(2 * numpy.pi)) *
                      numpy.exp( - (bins - mu)**2 / (2 * sigma**2) ),
-                     label = "fit",
+                     label = "std distribution",
                      linewidth=2, 
                      color='r' )
 

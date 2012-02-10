@@ -1,7 +1,7 @@
 # cython: embedsignature=True
 # cython: profile=False
 
-import types, collections, re, os
+import types, collections, re, os, math
 import gat.IOTools as IOTools
 import gat.Experiment as E
 import gat.Stats
@@ -68,6 +68,9 @@ cdef extern from "stdio.h":
     int fgetpos(FILE *stream, fpos_t *pos)
     int fsetpos(FILE *stream, fpos_t *pos)
     int printf(char *format, ...)
+
+cdef extern from "math.h":
+    double floor(double x)
 
 cdef extern from "Python.h":
     ctypedef struct FILE
@@ -297,7 +300,7 @@ cdef class SegmentList:
             self.allocated *= 2
             self.segments = <Segment*>realloc( self.segments,
                                                self.allocated * sizeof( Segment ) )
-        assert self.segments != NULL
+        assert self.segments != NULL, "memory error"
 
         self.segments[self.nsegments] = segment
         self.nsegments += 1
@@ -918,15 +921,58 @@ cdef class SegmentList:
         self.allocated = allocated
         return self
 
+    cpdef extend_segments( self, int extension ):
+        '''extend all intervals by a certain amount.
+
+        If the extension causes an interval to extend beyond the chromosome
+        start, the interval is truncated.
+
+        The segment list will not be normalized afterwards.'''
+
+        cdef long idx
+        cdef Segment * s
+        for idx from 0 <= idx < self.nsegments:
+            s = &self.segments[idx]
+            s.start -= extension
+            if s.start < 0: s.start = 0
+            s.end += extension
+        self.is_normalized = False
+
+    cpdef expand_segments( self, double expansion ):
+        '''expand all intervals by a certain amount.
+
+        The interval length is multiplied by *expansion* and 
+        extended around the mid-point.
+
+        If the expansion causes an interval to extend beyond the chromosome
+        start, the interval is truncated.
+
+        The segment list will not be normalized afterwards.'''
+
+        cdef long idx, l, extension
+        cdef Segment * s
+        cdef double e_1 = (expansion - 1.0) / 2.0
+        
+        if expansion <= 0: raise ValueError( "invalid expansion: %f <= 0" % expansion)
+
+        for idx from 0 <= idx < self.nsegments:
+            s = &self.segments[idx]
+            l = s.end - s.start 
+            extension = <long>floor(l * e_1 )
+            s.start -= extension
+            if s.start < 0: s.start = 0
+            s.end += extension
+        self.is_normalized = False
+
     def shift( self, int offset ):
         '''shift segments by a certain offset.
         
         raises ValueError if segment coordinates become negative.
         '''
         cdef long idx
-        cdef Segment s
+        cdef Segment * s
         for idx from 0 <= idx < self.nsegments:
-            s = self.segments[idx]
+            s = &self.segments[idx]
             s.end += offset
             s.start += offset
             if s.start < 0: raise ValueError( "shift creates negative coordinates" )
@@ -1774,6 +1820,65 @@ cdef class SamplerUniform(Sampler):
 ########################################################
 ########################################################
 ########################################################
+cdef class SamplerShift(Sampler):
+
+    cdef double radius
+
+    def __init__( self, 
+                  radius = 2 ):
+        '''
+        Sample segments by shifting them by a random amount within *radius*
+        in a random direction.
+
+        *radius* determines the size of the region that is accessible 
+        for randomly shifting a segment. It is expressed as a fraction 
+        of the size of a segment.
+        
+        It is the midpoint of a segment that is shifted.
+
+        '''
+
+        self.radius = radius
+
+    cpdef SegmentList sample( self,
+                              SegmentList segments,
+                              SegmentList workspace ):
+        '''return a sampled list of segments.'''
+        assert workspace.is_normalized, "workspace is not normalized"
+
+        cdef Segment segment
+        cdef SegmentList sample, working_segments
+        cdef long length, direction, extended_length
+        cdef long x, shift
+        cdef double half_radius = self.radius / 2
+        cdef Segment * _working_segments
+
+        # collect all segments in workspace
+        working_segments = SegmentList( clone = segments )
+        working_segments.filter( workspace )
+        _working_segments = working_segments.segments
+
+        # allocate sample large enough
+        sample = SegmentList( len(working_segments) )
+
+        if len(working_segments) == 0:
+            return sample
+        
+        for x from 0 <= x < len(working_segments):
+            segment = _working_segments[x]
+            length = segment.end - segment.start
+            shift_area = <long>floor(length * half_radius)
+            shift = numpy.random.randint( -shift_area, shift_area  )
+            segment.start += shift
+            segment.end += shift
+            sample._add( segment )
+
+        sample.normalize()
+        return sample
+
+########################################################
+########################################################
+########################################################
 cdef class SamplerDummy(Sampler):
 
     def __init__( self ):
@@ -2058,6 +2163,7 @@ cdef class AnnotatorResult(object):
                "CI95high",
                "stddev",
                "fold",
+               "l2fold",
                "pvalue",
                "qvalue",
                "track_nsegments",
@@ -2099,17 +2205,17 @@ cdef class AnnotatorResult(object):
         self.annotation = annotation
         self.stats = makeEnrichmentStatistics( observed, samples )
 
-        self.track_nsegments = track_segments.sum()
-        self.track_size = track_segments.counts()
+        self.track_nsegments = track_segments.counts()
+        self.track_size = track_segments.sum()
 
-        self.annotation_nsegments = annotation_segments.sum()
-        self.annotation_size = annotation_segments.counts()
+        self.annotation_nsegments = annotation_segments.counts()
+        self.annotation_size = annotation_segments.sum()
 
         overlap = track_segments.clone()
         overlap.intersect( annotation_segments )
 
-        self.overlap_nsegments = overlap.sum()
-        self.overlap_size = overlap.counts()
+        self.overlap_nsegments = overlap.counts()
+        self.overlap_size = overlap.sum()
 
         self.workspace_size = workspace.sum()
         
@@ -2120,6 +2226,11 @@ cdef class AnnotatorResult(object):
         # else:
         #     format_pvalue = "%7.6e"
 
+        if self.stats.fold > 0:
+            logfold = self.format_fold % math.log( self.stats.fold, 2 )
+        else:
+            logfold = "-inf"
+
         return "\t".join( (self.track,
                            self.annotation,
                            self.format_observed % self.stats.observed,
@@ -2128,6 +2239,7 @@ cdef class AnnotatorResult(object):
                            self.format_expected % self.stats.upper95,
                            self.format_expected % self.stats.stddev,
                            self.format_fold % self.stats.fold,
+                           logfold,
                            self.format_pvalue % self.stats.pvalue,
                            self.format_pvalue % self.stats.qvalue,
                            self.format_counts % self.track_nsegments,
@@ -2139,10 +2251,10 @@ cdef class AnnotatorResult(object):
                            self.format_counts % self.overlap_nsegments,
                            self.format_counts % self.overlap_size,
                            self.format_density % ( float(self.overlap_size) / self.workspace_size),
-                           self.format_fold % ( float( self.overlap_size / self.track_size) ),
-                           self.format_fold % ( float( self.overlap_nsegments / self.track_nsegments) ),
-                           self.format_fold % ( float( self.overlap_size / self.annotation_size) ),
-                           self.format_fold % ( float( self.overlap_nsegments / self.annotation_nsegments) ),
+                           self.format_fold % ( 100.0 * float( self.overlap_size) / self.track_size ),
+                           self.format_fold % ( 100.0 * float( self.overlap_nsegments) / self.track_nsegments ),
+                           self.format_fold % ( 100.0 * float( self.overlap_size) / self.annotation_size ),
+                           self.format_fold % ( 100.0 * float( self.overlap_nsegments) / self.annotation_nsegments ),
                            ) )
 
     def __dealloc__(self):
@@ -2255,26 +2367,125 @@ def updateQValues( annotator_results, method = "storey", **kwargs ):
 ############################################################
 ############################################################
 ############################################################
+## Workspace generators
+############################################################
+class UnconditionalWorkspace:
+    '''compute a conditional workspace.
+
+    the default workspace is not conditional.'''
+
+    is_conditional = False
+
+    def __call__(self, segments, annotations, workspace):
+        return segments, annotations, workspace
+
+    def filter( self, segments, annotations, workspace ):
+        '''restrict annotations and segments to workspace.
+
+        This speeds up computations.
+        
+        returns filtered segments, filtered annotations, workspace
+        '''
+
+        if annotations:
+            temp_annotations = annotations.clone()
+            temp_annotations.filter( workspace )
+        else:
+            temp_annotations = None
+        
+        if segments:
+            temp_segments = segments.clone()
+            temp_segments.filter( workspace )
+        else:
+            temp_segments = None
+
+        return temp_segments, temp_annotations, workspace
+
+class ConditionalWorkspaceCooccurance( UnconditionalWorkspace):
+    '''compute conditional workspace.
+
+    use only those parts of the workspace that contain both a segment
+    and an annotation.
+    '''
+
+    is_conditional = True
+
+    def __call__( self, segments, annotations, workspace ):
+        
+        # restrict workspace to those segments that contain both annotations and segments
+        temp_workspace = workspace.clone()
+        temp_workspace.filter( annotations )
+        temp_workspace.filter( segments )
+
+        return self.filter( segments, annotations, temp_workspace )
+
+class ConditionalWorkspaceCentered( UnconditionalWorkspace ):
+    '''a workspace centered around segments/annotations.'''
+
+    is_conditional = True
+
+    def __init__( self, extension = None, expansion = None ):
+        self.extension = extension
+        self.expansion = expansion
+        if self.extension == self.expansion == None:
+            raise ValueError( "need to specify either expansion or extension" )
+
+    def __call__( self, segments, annotations, workspace ):
+        
+        # build workspace from annotations
+        temp_workspace = self.getCenter( segments, annotations ).clone()
+        if self.extension != None:
+            temp_workspace.extend( self.extension )
+        else:
+            temp_workspace.expand( self.expansion )
+        temp_workspace.normalize()
+
+        # intersect with global workspace
+        temp_workspace.intersect( workspace )
+
+        return self.filter( segments, annotations, temp_workspace )
+
+class ConditionalWorkspaceAnnotationCentered( ConditionalWorkspaceCentered ):
+    '''compute conditional workspace.
+
+    workspace is derived from the locations of the annotations.
+    '''
+    def getCenter( self, segments, annotations):
+        return annotations
+
+class ConditionalWorkspaceSegmentCentered( ConditionalWorkspaceCentered ):
+    '''compute conditional workspace.
+
+    workspace is derived from the locations of the segments
+    '''
+    # workspace needs to be computed on a per-segment basis
+    is_conditional = False
+    def getCenter( self, segments, annotations):
+        return segments
+
+############################################################
+############################################################
+############################################################
 ## compute counts
 ############################################################
 def _append( counts, x,y,z): counts[y].append(z)
 def _set( counts, x,y,z) : counts[x].__setitem__( y, z )
 def _defdictfloat(): return collections.defaultdict(float)
-        
+
 def computeCounts( counter, 
                    aggregator, 
                    segments, 
                    annotations, 
                    workspace,
-                   append = False ):
+                   workspace_generator,
+                   append = False):
     '''collect counts from *counter* between all combinations of *segments* and *annotations*.
 
     *aggregator* determines how values are combined across isochores.
 
     If *append* is set, values for each track in *segments* are appended to a list for
-    each track in *annotations*. This is useful for samples.
+    each track in *annotations*. This is useful for samples.  Otherwise, a nested dictionary is returned.
 
-    Otherwise, a nested dictionary is returned.
     '''
         
     if append:
@@ -2293,7 +2504,8 @@ def computeCounts( counter,
         for annotation in annotations.tracks:
             annos = annotations[annotation]
 
-            vals = [ counter(segs[isochore], annos[isochore], workspace[isochore] ) for isochore in isochores ]
+            temp_segs, temp_annos, temp_workspace = workspace_generator( segs, annos, workspace )
+            vals = [ counter( segs[isochore], annos[isochore], workspace[isochore] ) for isochore in isochores ]
             f(counts, track, annotation, aggregator(vals) )
 
     return counts
@@ -2552,7 +2764,7 @@ class bed_iterator(tsv_iterator):
 def _genie():
     return IntervalCollection(SegmentList)
 
-def readFromBed( filenames ):
+def readFromBed( filenames, allow_multiple = False ):
     '''read Segment Lists from one or more bed files.
 
     Segment lists are grouped by *contig* and *track*.
@@ -2560,6 +2772,9 @@ def readFromBed( filenames ):
     If no *track* is given, the *name* attribute is taken
     instead. If that is not present (BED3 format), the
     *track* is called ``default``.
+
+    If a *track* appears in multiple files, an error is raised
+    unless *allow_multiple* is ``True``.
     
     '''
     cdef SegmentList l
@@ -2568,10 +2783,13 @@ def readFromBed( filenames ):
 
     segment_lists = collections.defaultdict( IntervalDictionary )
 
+    tracks = {}
+
     if type(filenames) == str:
         filenames = (filenames,)
     for filename in filenames:
         infile = IOTools.openFile( filename, "r")
+        default_name = os.path.basename( filename )
         lineno = 0
         try:
             for bed in bed_iterator( infile ):
@@ -2583,8 +2801,18 @@ def readFromBed( filenames ):
                 elif bed.name: 
                     name = bed.name
                 else:
-                    name = "default"
+                    name = default_name
 
+                if name in tracks:
+                    if tracks[name] != filename: 
+                        if allow_multiple:
+                            E.warn( "track '%s' in multiple filenames: %s and %s" % (name, tracks[name], filename))
+                        else:
+                            raise ValueError( "track '%s' in multiple filenames: %s and %s" % (name, tracks[name], filename) )
+                        tracks[name] = filename
+                else:
+                    tracks[name] = filename
+                    
                 l = segment_lists[name][bed.contig]
                 l.add( atol(bed.fields[1]), atol(bed.fields[2]) )
                 lineno += 1
@@ -2633,6 +2861,21 @@ class IntervalDictionary( object ):
             else:
                 del self.intervals[contig]
 
+    def extend( self, extension ):
+        '''extend each interval by a certain amount.'''
+        for contig, segmentlist in self.intervals.items():
+            segmentlist.extend_segments( extension )
+
+    def expand( self, expansion ):
+        '''expand each interval by a certain amount.'''
+        for contig, segmentlist in self.intervals.items():
+            segmentlist.expand_segments( expansion )
+
+    def normalize( self ):
+        '''normalize all segment lists.'''
+        for contig, segmentlist in self.intervals.items():
+            segmentlist.normalize()
+
     def __len__(self): return len(self.intervals)
 
     def __delitem__(self,key): del self.intervals[key]
@@ -2664,6 +2907,14 @@ class IntervalDictionary( object ):
             r[contig] = SegmentList( clone = segmentlist )
         return r
 
+    def filter( self, other ):
+        '''remove all intervals not overlapping with intervals in other.'''
+        for contig, segmentlist in self.intervals.items():
+            if contig in other:
+                segmentlist.filter( other[contig] )
+            else:
+                del self.intervals[contig]
+
 #####################################################################
 #####################################################################
 #####################################################################
@@ -2680,9 +2931,9 @@ class IntervalCollection(object):
         self.intervals = collections.defaultdict( IntervalDictionary )
         self.name = name
 
-    def load( self, filenames ):
+    def load( self, filenames, split_tracks = False ):
         '''load segments from filenames and pre-process them.'''
-        self.intervals = readFromBed( filenames )
+        self.intervals = readFromBed( filenames, split_tracks )
         self.normalize()
 
     def save( self, outfile, prefix = "", **kwargs ):
@@ -2741,7 +2992,6 @@ class IntervalCollection(object):
                          "%i" % total_length ) ) + "\n" )
                  
                 
-
     def merge( self, delete = False ):
         '''merge all tracks into a single segment list
         creating a new track called 'merged'.
@@ -2772,8 +3022,18 @@ class IntervalCollection(object):
         '''
         result = IntervalDictionary()
         
+        # get list of contigs present in all data sets
+        contigs = collections.defaultdict( int )
+        for track, vv in self.intervals.iteritems():
+            for contig in vv.keys():
+                contigs[contig] += 1
+
+        ntracks = len( self.intervals )
+        shared_contigs = set( [ x for x,y in contigs.iteritems() if y == ntracks ] )
+        
         for track, vv in self.intervals.iteritems():
             for contig, segmentlist in vv.iteritems():
+                if contig not in shared_contigs: continue
                 if contig not in result:
                     result[contig] = SegmentList( clone = segmentlist )
                 else:

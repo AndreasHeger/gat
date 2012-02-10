@@ -216,6 +216,13 @@ class TestSegmentList( GatTest ):
                     self.assertEqual( len(s), 1 )
                     self.assertEqual( s.sum(), 1000 - y )
 
+    def testExpand( self ):
+        ss = [ (x, x + 10 ) for x in range( 0, 1000, 100) ]
+        s = gat.SegmentList( iter = ss, normalize = True )
+        s.expand_segments( 2.0 )
+        self.assertEqual( s.sum(), 195)
+        self.assertEqual( len(s), 10 )
+
 class TestSegmentListOverlap( GatTest ):
     
     def setUp( self ):
@@ -249,6 +256,7 @@ class TestSegmentListOverlap( GatTest ):
                                       "no overlap failure at %i: %i" % (x+y, self.a.overlapWithRange( x+y,x+y+1)))
             for y in range( 10, 100 ):
                 self.assertEqual( self.a.overlapWithRange( x+y,x+y+1), 0, "overlap failure at %i" % (x+y) )
+
 
 class TestSegmentListIntersection( GatTest):
 

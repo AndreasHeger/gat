@@ -70,12 +70,162 @@ class DummyAnnotatorResult:
                            self.format_pvalue % self.pvalue,
                            self.format_pvalue % self.qvalue ) )
 
+###################################################################################
+###################################################################################
+###################################################################################
+def sampleUnconditionally( track, counts, 
+                           num_samples, samples, samples_outfile,
+                           sampler,
+                           workspace_generator,
+                           counter, segs, annotations, workspace):
+    '''unconditional sampling - sample over complete workspace.
+
+    return dictionary with counts per annotation
+    '''
+
+    E.info( "performing unconditional sampling" )
+
+    counts_per_track = collections.defaultdict( list )
+
+    E.info( "workspace without conditioning: %i segments, %i nucleotides" % \
+                (workspace.counts(),
+                 workspace.sum() ) )
+
+    temp_segs, _, temp_workspace = workspace_generator( segs, None, workspace )
+
+    E.info( "workspace after conditioning: %i segments, %i nucleotides" % \
+                 (workspace.counts(),
+                  workspace.sum() ) )
+
+    # compute samples unconditionally
+    for x in xrange( num_samples ):
+        # use textual sample ids to avoid parsing from dumped samples
+        sample_id = str(x)
+        E.debug( "progress: %s: %i/%i %i isochores" % (track, x+1, num_samples, len(segs.keys())))
+        counts_per_isochore = collections.defaultdict( list )
+
+        if samples_outfile: 
+            samples_outfile.write("track name=%s\n" % sample_id)
+
+        for isochore in segs.keys():
+            counts.pairs += 1
+
+            # skip empty isochores
+            if temp_workspace[isochore].isEmpty or temp_segs[isochore].isEmpty: 
+                counts.skipped += 1
+                # too much information
+                # E.debug( "skipping empty isochore %s" % isochore )
+                continue
+
+            # skip if read from cache
+            if samples.hasSample( track, sample_id, isochore ): 
+                counts.loaded += 1
+                samples.load( track, sample_id, isochore )
+                r = samples[track][sample_id][isochore]
+                del samples[track][sample_id][isochore]
+            else:
+                counts.sampled += 1
+                r = sampler.sample( temp_segs[isochore], temp_workspace[isochore] )
+                # too much information
+                # E.debug( "sample=%s, isochore=%s, segs=%i, sample=%i" % \
+                #             (sample_id, isochore, segs[isochore].sum(), r.sum()) )
+
+            # compute counts for each annotation/isochore and save
+            for annotation in annotations.tracks:
+                annos = annotations[annotation]
+                counts_per_isochore[annotation].append( counter( r, annos[isochore], temp_workspace[isochore] ) )
+
+            # save sample
+            if samples_outfile: 
+                for start, end in r:
+                    samples_outfile.write( "%s\t%i\t%i\n" % (isochore, start, end))
+
+        # TODO: choose aggregator
+        for annotation in annotations.tracks:
+            counts_per_track[annotation].append( sum( counts_per_isochore[annotation] ) )
+            
+    return counts_per_track
+
+
+###################################################################################
+###################################################################################
+###################################################################################
+def sampleConditionally( track, counts, 
+                         num_samples, samples, samples_outfile,
+                         sampler,
+                         workspace_generator,
+                         counter, segs, annotations, workspace):
+    '''conditional sampling - sample using only those 
+    segments that contain both a segment and an annotation.
+
+    return dictionary with counts per track
+    '''
+
+    E.info( "performing conditional sampling" )
+
+    counts_per_annotation = collections.defaultdict( list )
+
+    E.info( "workspace without conditioning: %i segments, %i nucleotides" % \
+                 (workspace.counts(),
+                  workspace.sum() ) )
+ 
+    # compute samples conditionally
+    for annoid, annotation in enumerate(annotations.tracks):
+
+        annos = annotations[annotation]
+
+        temp_segs, temp_annotations, temp_workspace = workspace_generator( segs, annos, workspace )
+
+        E.info( "workspace for annotation %s: %i segments, %i nucleotides" % \
+                    (annotation,
+                     temp_workspace.counts(),
+                     temp_workspace.sum() ) )
+
+        for x in xrange( num_samples ):
+            # use textual sample ids to avoid parsing from dumped samples
+            sample_id = str(x)
+            E.debug( "progress: %s: %i/%i %i/%i %i isochores" % (track, annoid+1, 
+                                                                 len(annotations.tracks),
+                                                                 x+1, num_samples, len(temp_segs.keys())))
+
+            counts_per_isochore = []
+
+            if samples_outfile: 
+                samples_outfile.write("track name=%s-%s\n" % (annotation, sample_id))
+
+            for isochore in temp_segs.keys():
+                counts.pairs += 1
+
+                # skip empty isochores
+                if temp_workspace[isochore].isEmpty or temp_segs[isochore].isEmpty: 
+                    counts.skipped += 1
+                    continue
+
+                counts.sampled += 1
+                r = sampler.sample( temp_segs[isochore], temp_workspace[isochore] )
+                counts_per_isochore.append( counter( r, 
+                                                     temp_annotations[isochore], 
+                                                     temp_workspace[isochore] ) )
+
+
+                # save sample
+                if samples_outfile: 
+                    for start, end in r:
+                        samples_outfile.write( "%s\t%i\t%i\n" % (isochore, start, end))
+            
+            # add sample to counts
+            # TODO: choose aggregator
+            sample_counts = sum( counts_per_isochore )
+            counts_per_annotation[annotation].append( sample_counts )
+
+    return counts_per_annotation
 
 def run( segments, 
          annotations, 
          workspace, 
          sampler, 
          counter,
+         workspace_generator,
          **kwargs ):
     '''run an enrichment analysis.
 
@@ -110,6 +260,7 @@ def run( segments,
     output_counts = kwargs.get( "output_counts", None )
     sample_files = kwargs.get( "sample_files", [] )
     output_samples_pattern = kwargs.get( "output_samples_pattern", None )
+
     if output_samples_pattern != None: 
         if "%s" not in output_samples_pattern:
             raise ValueError( "output_samples_pattern should contain at least one '%s'")
@@ -123,7 +274,8 @@ def run( segments,
                                      aggregator = sum,
                                      segments = segments,
                                      annotations = annotations,
-                                     workspace = workspace )
+                                     workspace = workspace,
+                                     workspace_generator = workspace_generator )
     E.info( "collecting observed densities" )
 
     ##################################################
@@ -154,8 +306,6 @@ def run( segments,
 
     for ntrack, track in enumerate(segments.tracks):
 
-        counts_per_track = collections.defaultdict( list )
-        
         segs = segments[track]
 
         E.info( "sampling: %s: %i/%i" % (track, ntrack+1, ntracks))
@@ -172,51 +322,20 @@ def run( segments,
         else:
             samples_outfile = None
 
-        for x in xrange( num_samples ):
-            # use textual sample ids to avoid parsing from dumped samples
-            sample_id = str(x)
-            E.debug( "progress: %s: %i/%i %i isochores" % (track, x+1, num_samples, len(segs.keys())))
-            counts_per_isochore = collections.defaultdict( list )
-
-            if samples_outfile: 
-                samples_outfile.write("track name=%s\n" % sample_id)
-
-            for isochore in segs.keys():
-                counts.pairs += 1
-
-                # skip empty isochores
-                if workspace[isochore].isEmpty or segs[isochore].isEmpty: 
-                    counts.skipped += 1
-                    # too much information
-                    # E.debug( "skipping empty isochore %s" % isochore )
-                    continue
-
-                # skip if read from cache
-                if samples.hasSample( track, sample_id, isochore ): 
-                    counts.loaded += 1
-                    samples.load( track, sample_id, isochore )
-                    r = samples[track][sample_id][isochore]
-                    del samples[track][sample_id][isochore]
-                else:
-                    counts.sampled += 1
-                    r = sampler.sample( segs[isochore], workspace[isochore] )
-                    # too much information
-                    # E.debug( "sample=%s, isochore=%s, segs=%i, sample=%i" % \
-                    #             (sample_id, isochore, segs[isochore].sum(), r.sum()) )
-
-                # compute counts for each annotation/isochore and save
-                for annotation in annotations.tracks:
-                    annos = annotations[annotation]
-                    counts_per_isochore[annotation].append( counter( r, annos[isochore], workspace[isochore] ) )
-
-                # save sample
-                if samples_outfile: 
-                    for start, end in r:
-                        samples_outfile.write( "%s\t%i\t%i\n" % (isochore, start, end))
-
-            # TODO: choose aggregator
-            for annotation in annotations.tracks:
-                counts_per_track[annotation].append( sum( counts_per_isochore[annotation] ) )
+        if workspace_generator.is_conditional:
+            counts_per_track = sampleConditionally( track, counts, 
+                                                    num_samples, samples, samples_outfile, 
+                                                    sampler,
+                                                    workspace_generator,
+                                                    counter, segs, annotations, workspace )
+        else:
+            # sampling more efficient in unconditional workspace as samples can be shared
+            # across annotations.
+            counts_per_track = sampleUnconditionally( track, counts, 
+                                                      num_samples, samples, samples_outfile, 
+                                                      sampler,
+                                                      workspace_generator,
+                                                      counter, segs, annotations, workspace )
 
         if samples_outfile: samples_outfile.close()
 
@@ -229,11 +348,10 @@ def run( segments,
                 E.warn( "no samples for track %s" % track )
                 continue
 
-
             # clean up samples
             del samples[track]
 
-    E.info( "sampling finished" )
+    E.info( "sampling finished: %s" % str(counts) )
 
     ##################################################
     ##################################################
@@ -244,14 +362,18 @@ def run( segments,
     annotator_results = collections.defaultdict( dict )
     for track, r in observed_counts.iteritems():
         for annotation, observed in r.iteritems():
+            temp_segs, temp_annos, temp_workspace = workspace_generator( segments[track], 
+                                                                         annotations[annotation], 
+                                                                         workspace )
+
             annotator_results[track][annotation] = AnnotatorResult( \
                 track = track,
                 annotation = annotation,
                 observed = observed,
                 samples = sampled_counts[track][annotation],
-                track_segments = segments[track],
-                annotation_segments = annotations[annotation],
-                workspace = workspace)
+                track_segments = temp_segs,
+                annotation_segments = temp_annos,
+                workspace = temp_workspace)
 
     ##################################################
     ##################################################
