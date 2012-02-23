@@ -125,46 +125,57 @@ try:
 except:
     HAS_SCIPY = False
 
+# type for positions
+ctypedef unsigned int Position
+# type for position difference - can be negative
+ctypedef int PositionDifference
+
 cdef struct Segment:
-    long start
-    long end
+    Position start
+    Position end
+
+def getSegmentSize():
+    '''return size of coordinate and size of a segment.'''
+    return sizeof(Segment) // 2, sizeof(Segment)
 
 # min/max are not optimized, so declare them as C functions
+# declare as signed comparisons as a Position might be negative
 @cython.profile(False)
-cdef inline long lmin( long a, long b):
+cdef inline PositionDifference lmin( PositionDifference a, PositionDifference b):
     if a < b: return a
     return b
+@cython.profile(False)
+cdef inline PositionDifference lmax( PositionDifference a, PositionDifference b):
+    if a > b: return a
+    return b
+
 @cython.profile(False)
 cdef inline double dmin( double a, double b):
     if a < b: return a
     return b
 
-# min/max are not optimized, so declare them as C functions
-@cython.profile(False)
-cdef inline long lmax( long a, long b):
-    if a > b: return a
-    return b
 @cython.profile(False)
 cdef inline double dmax( double a, double b):
     if a > b: return a
     return b
 
 @cython.profile(False)
-cdef inline long segment_overlap(  Segment a, Segment b ):
-    return lmax(0, lmin( a.end, b.end) - lmax(a.start, b.start))
+cdef inline PositionDifference segment_overlap( Segment a, Segment b ):
+    return lmax(0, <PositionDifference>lmin( a.end, b.end) - <PositionDifference>lmax(a.start, b.start))
 
 @cython.profile(False)
-cdef inline long range_overlap( long astart, long aend, long bstart, long bend ):
-    return lmax(0, lmin( aend, bend) - lmax(astart, bstart))
+cdef inline PositionDifference range_overlap( Position astart, Position aend, Position bstart, Position bend ):
+    return lmax(0, 
+                <PositionDifference>lmin( aend, bend) - 
+                <PositionDifference>lmax(astart, bstart))
 
 @cython.profile(False)
-cdef inline long segment_overlap_raw(  Segment a, Segment b ):
-    return lmin(a.end, b.end) - lmax(a.start, b.start)
+cdef inline PositionDifference segment_overlap_raw(  Segment a, Segment b ):
+    return <PositionDifference>lmin(a.end, b.end) - <PositionDifference>lmax(a.start, b.start)
 
 @cython.profile(False)
-cdef inline long segment_length(  Segment a ):
-    return a.end - a.start
-
+cdef inline PositionDifference segment_length(  Segment a ):
+    return <PositionDifference>a.end - <PositionDifference>a.start
 
 # trick to permit const void * in function definitions
 cdef extern from *:
@@ -172,18 +183,18 @@ cdef extern from *:
 
 @cython.profile(False)
 cdef int cmpSegments( const_void_ptr s1, const_void_ptr s2 ):
-    return (<Segment *>s1).start - (<Segment *>s2).start
+    return <PositionDifference>(<Segment *>s1).start - <PositionDifference>(<Segment *>s2).start
 
 @cython.profile(False)
 cdef int cmpSegmentsStartAndEnd( const_void_ptr s1, const_void_ptr s2 ):
     cdef int x
-    x = (<Segment *>s1).start - (<Segment *>s2).start
+    x = <PositionDifference>(<Segment *>s1).start - <PositionDifference>(<Segment *>s2).start
     if x != 0: return x
-    return (<Segment *>s1).end - (<Segment *>s2).end
+    return <PositionDifference>(<Segment *>s1).end - <PositionDifference>(<Segment *>s2).end
 
 @cython.profile(False)
-cdef int cmpLong( const_void_ptr s1, const_void_ptr s2 ):
-    return (<long*>s1)[0] - (<long*>s2)[0]
+cdef int cmpPosition( const_void_ptr s1, const_void_ptr s2 ):
+    return (<Position*>s1)[0] - (<Position*>s2)[0]
 
 @cython.profile(False)
 cdef int cmpDouble( const_void_ptr s1, const_void_ptr s2 ):
@@ -206,7 +217,7 @@ cdef class SegmentList:
     cdef int chunk_size
 
     def __init__(self, 
-                 long allocate = 0,
+                 int allocate = 0,
                  SegmentList clone = None,
                  iter = None,
                  normalize = False ):
@@ -306,13 +317,13 @@ cdef class SegmentList:
         self.nsegments += 1
         self.is_normalized = 0
 
-    cpdef add( self, long start, long end ):
+    cpdef add( self, Position start, Position end ):
         cdef Segment segment
         assert start <= end, "attempting to add invalid segment %i-%i" % (start, end)
         segment = Segment( start, end)
         self._add( segment )
 
-    cpdef trim_ends( self, long pos, long size, int forward = 1 ):
+    cpdef trim_ends( self, Position pos, Position size, int forward = 1 ):
         '''trim segment list by removing *size* nucleotides from
         the segment that includes *pos*.
 
@@ -322,11 +333,13 @@ cdef class SegmentList:
 
         assert self.is_normalized, "trimming in non-normalized list"
 
-        cdef long idx, l
+        cdef int idx
+        cdef Position l
+        cdef PositionDifference s = size
         cdef Segment other, seg
 
-        assert self.sum() > size, "trimming more than the total length (%i < %i)" % (self.sum(), size)
-        #print "at start=%i, removing %i" % (self.sum(), size)
+        assert self.sum() > s, "trimming more than the total length (%i < %i)" % (self.sum(), s)
+        #print "at start=%i, removing %i" % (self.sum(), s)
 
         other = Segment( pos, pos + 1)
         idx = self._getInsertionPoint( other )
@@ -336,35 +349,35 @@ cdef class SegmentList:
         if idx < 0: idx = self.nsegments - 1
 
         if forward:
-            while size > 0:
+            while s > 0:
                 seg = self.segments[idx]
                 l = segment_length( seg )
-                if segment_length( seg ) < size:
+                if segment_length( seg ) < s:
                     self.segments[idx] = Segment(0,0)
-                    size -= l
+                    s -= l
                 else:
-                    self.segments[idx] = Segment( seg.start + size, seg.end )
-                    size = 0
+                    self.segments[idx] = Segment( seg.start + s, seg.end )
+                    s = 0
 
                 idx += 1
                 if idx == self.nsegments: idx = 0
         else:
-            while size > 0:
+            while s > 0:
                 seg = self.segments[idx]
                 l = segment_length( seg )
-                if segment_length( seg ) < size:
+                if segment_length( seg ) < s:
                     self.segments[idx] = Segment(0,0)
-                    size -= l
+                    s -= l
                 else:
-                    self.segments[idx] = Segment( seg.start, seg.end - size )
-                    size = 0
+                    self.segments[idx] = Segment( seg.start, <PositionDifference>seg.end - s )
+                    s = 0
 
                 idx -= 1
                 if idx < 0: idx = self.nsegments - 1
 
-        #print "at end=%i, removing %i" % (self.sum(), size)
+        #print "at end=%i, removing %i" % (self.sum(), s)
 
-    cdef _resize( self, long nsegments ):
+    cdef _resize( self, int nsegments ):
         '''resize segment list to nsegments.'''
         # do not free all if there are no segments
         if nsegments == 0: nsegments = 1
@@ -379,7 +392,7 @@ cdef class SegmentList:
         assert self.segments != NULL
         self.allocated = nsegments
 
-    cdef insert( self, long idx, Segment seg ):
+    cdef insert( self, int idx, Segment seg ):
         '''insert Segment *seg* at position *idx*'''
         if idx < 0: raise ValueError( "only positive indices accepted (%i)" % idx )
         
@@ -394,7 +407,7 @@ cdef class SegmentList:
         self.nsegments += 1
         self.segments[idx] = seg
 
-    cpdef trim( self, long pos, long size ):
+    cpdef trim( self, Position pos, Position size ):
         '''trim segment list by removing *size* nucleotides
         starting at pos.
 
@@ -406,50 +419,53 @@ cdef class SegmentList:
 
         assert self.is_normalized, "trimming in non-normalized list"
 
-        cdef long idx, l
+        cdef int idx
+        cdef PositionDifference l
+        cdef PositionDifference s = size
+        cdef PositionDifference p = pos
         cdef Segment other, seg
 
-        assert self.sum() > size, "trimming more than the total length (%i < %i)" % (self.sum(), size)
+        assert self.sum() > s, "trimming more than the total length (%i < %i)" % (self.sum(), s)
 
-        pos = lmax( pos, self.segments[0].start )
-        pos = lmin( pos, self.segments[self.nsegments-1].end )
+        p = lmax( p, self.segments[0].start )
+        p = lmin( p, self.segments[self.nsegments-1].end )
 
-        other = Segment( pos, pos + 1)
+        other = Segment( p, p + 1)
         idx = self._getInsertionPoint( other )
         # wrap around
         if idx == self.nsegments:
             idx = 0
-            pos = self.segments[0].start
+            p = self.segments[0].start
         
-        #assert pos >= self.segments[idx].start, "pos=%i, %i, %s, %s" % (pos, idx, str(self.segments[idx]), str(self.asList()))
-        #assert pos < self.segments[idx].end, "pos=%i, %i, %s, %s" % (pos, idx, str(self.segments[idx]), str(self.asList()))
+        #assert p >= self.segments[idx].start, "pos=%i, %i, %s, %s" % (p, idx, str(self.segments[idx]), str(self.asList()))
+        #assert p < self.segments[idx].end, "pos=%i, %i, %s, %s" % (p, idx, str(self.segments[idx]), str(self.asList()))
 
-        while size > 0:
+        while s > 0:
             seg = self.segments[idx]
             
-            l = self.segments[idx].end - pos
+            l = <PositionDifference>self.segments[idx].end - p
 
-            if size < l: 
-                if pos == self.segments[idx].start:
+            if s < l: 
+                if p == self.segments[idx].start:
                     # truncate from left and stop
-                    self.segments[idx].start = pos + size
+                    self.segments[idx].start = p + s
                     break
                 else:
                     # remove from middle and stop
-                    self.insert( idx + 1, Segment( pos + size, self.segments[idx].end) )
-                    self.segments[idx].end = pos
+                    self.insert( idx + 1, Segment( p + s, self.segments[idx].end) )
+                    self.segments[idx].end = p
                     break
             else:
-                self.segments[idx].end = pos
-                size -= l
+                self.segments[idx].end = p
+                s -= l
 
             idx += 1
 
             # wrap around
             if idx == self.nsegments: idx = 0
-            pos = self.segments[idx].start
+            p = self.segments[idx].start
 
-        #print "at end=%i, removing %i" % (self.sum(), size)
+        #print "at end=%i, removing %i" % (self.sum(), s)
 
     cpdef normalize( self ):
         '''merge all overlapping segments and remove empty segments.
@@ -459,7 +475,8 @@ cdef class SegmentList:
         This function works in-place.
         '''
 
-        cdef long idx, max_end, insertion_idx
+        cdef int idx, insertion_idx
+        cdef Position max_end
         if self.nsegments == 0:
             self.is_normalized = 1
             return
@@ -507,7 +524,7 @@ cdef class SegmentList:
         self._resize( self.nsegments )
         self.is_normalized = 1
 
-    cpdef merge( self, long distance = 0 ):
+    cpdef merge( self, PositionDifference distance = 0 ):
         '''merge all overlapping segments and remove empty segments.
 
         This function is a generalization of the merge method and
@@ -521,7 +538,8 @@ cdef class SegmentList:
         This function works in-place.
         '''
 
-        cdef long idx, max_end, insertion_idx
+        cdef PositionDifference max_end
+        cdef int idx, insertion_idx
         if self.nsegments == 0:
             self.is_normalized = 1
             return
@@ -551,7 +569,7 @@ cdef class SegmentList:
                 continue
             # no overlap - save segment
             # note the cange from > to >=
-            if self.segments[idx].start - distance > max_end:
+            if <PositionDifference>self.segments[idx].start - distance > max_end:
                 self.segments[insertion_idx].end = max_end
                 insertion_idx += 1
                 self.segments[insertion_idx].start = self.segments[idx].start
@@ -581,7 +599,7 @@ cdef class SegmentList:
 
         self.is_normalized = 0
 
-        cdef long idx
+        cdef int idx
         cdef Segment segment
 
         segment = self.segments[0]
@@ -603,7 +621,7 @@ cdef class SegmentList:
 
         return self.is_normalized
 
-    cdef long _getInsertionPoint( self, Segment other ):
+    cdef int _getInsertionPoint( self, Segment other ):
         '''return insertion point for other.
 
         The insertion point denotes the element at which
@@ -614,7 +632,7 @@ cdef class SegmentList:
         is before the first or after the last element, respectively.
 
         '''
-        cdef long idx
+        cdef int idx
         assert self.is_normalized, "searching in non-normalized list"
         if self.nsegments == 0: return -1
 
@@ -646,11 +664,11 @@ cdef class SegmentList:
     property isEmpty:
         def __get__(self): return self.nsegments == 0
 
-    cdef long overlap( self, Segment other ):
+    cdef Position overlap( self, Segment other ):
         '''return the size of intersection between
            segment list and Segment other'''
 
-        cdef long idx
+        cdef int idx
         idx = self._getInsertionPoint( other )
 
         # deal with border cases
@@ -658,7 +676,7 @@ cdef class SegmentList:
         if idx == self.nsegments: idx -=1
         elif idx == -1: idx=0
 
-        cdef long count
+        cdef Position count
         count = 0
 
         while idx < self.nsegments and self.segments[idx].start <= other.end:
@@ -666,7 +684,7 @@ cdef class SegmentList:
             idx += 1
         return count
 
-    cpdef long overlapWithRange( self, long start, long end ):
+    cpdef Position overlapWithRange( self, Position start, Position end ):
         '''return the size of intersection between
            segment list and Segment other'''
 
@@ -674,7 +692,7 @@ cdef class SegmentList:
         s = Segment( start, end )
         return self.overlap( s )
 
-    cpdef long overlapWithSegments( self, SegmentList other ):
+    cpdef Position overlapWithSegments( self, SegmentList other ):
         '''return the number of nucleotides overlapping between this and *other*.'''
 
         assert self.is_normalized, "intersection from non-normalized list"
@@ -683,13 +701,13 @@ cdef class SegmentList:
         # avoid self-self comparison
         if other.segments == self.segments: return self.sum()
 
-        cdef long this_idx, other_idx, working_idx, last_this_idx, last_other_idx
+        cdef int this_idx, other_idx, working_idx, last_this_idx, last_other_idx
         this_idx = other_idx = 0
         last_this_idx = last_other_idx = -1
         cdef Segment this_segment = Segment(0,0)
         cdef Segment other_segment = Segment(0,0)
 
-        cdef long overlap
+        cdef Position overlap
         overlap = 0
 
         while this_idx < self.nsegments and other_idx < other.nsegments:
@@ -722,7 +740,7 @@ cdef class SegmentList:
 
         return overlap
 
-    cpdef long intersectionWithSegments( self, SegmentList other ):
+    cpdef Position intersectionWithSegments( self, SegmentList other ):
         '''return the number of segments overlapping with *other*.'''
 
         assert self.is_normalized, "intersection from non-normalized list"
@@ -731,13 +749,13 @@ cdef class SegmentList:
         # avoid self-self comparison
         if other.segments == self.segments: return self.sum()
 
-        cdef long this_idx, other_idx, working_idx, last_this_idx, last_other_idx
+        cdef int this_idx, other_idx, working_idx, last_this_idx, last_other_idx
         this_idx = other_idx = 0
         last_this_idx = last_other_idx = -1
         cdef Segment this_segment = Segment(0,0)
         cdef Segment other_segment = Segment(0,0)
 
-        cdef long noverlap
+        cdef Position noverlap
         noverlap = 0
 
         while this_idx < self.nsegments and other_idx < other.nsegments:
@@ -766,14 +784,14 @@ cdef class SegmentList:
     def getLengthDistribution( self, bucket_size, nbuckets ):
         '''build histogram of segments lengths.'''
 
-        cdef long idx
-        cdef long l, i
+        cdef int idx, i
+        cdef Position l
         cdef Segment s
         cdef numpy.ndarray[DTYPE_INT_t, ndim=1] histogram
         histogram = numpy.zeros( nbuckets, dtype=numpy.int )
         for idx from 0 <= idx < self.nsegments:
             l = segment_length(self.segments[idx])
-            i = (int)((l+bucket_size-1)/bucket_size)
+            i = <int>((l+bucket_size-1)/bucket_size)
             if i >= nbuckets:
                 raise ValueError( "segment %i-%i too large: %i >= %i, increase nbuckets or bucket_size such that nbuckets * bucket_size > %i" %\
                                       ( self.segments[idx].start,
@@ -800,13 +818,13 @@ cdef class SegmentList:
         # create new list
         new_segments =<Segment*>malloc( self.nsegments * sizeof( Segment ) )
 
-        cdef long this_idx, other_idx, working_idx, last_this_idx, last_other_idx
+        cdef int this_idx, other_idx, working_idx, last_this_idx, last_other_idx
         working_idx = this_idx = other_idx = 0
         last_this_idx = last_other_idx = -1
         cdef Segment this_segment = Segment(0,0)
         cdef Segment other_segment = Segment(0,0)
         # for negative segments, do not use -1
-        cdef long last_start = self.segments[0].start - 1
+        cdef Position last_start = self.segments[0].start - 1
 
         while this_idx < self.nsegments and other_idx < other.nsegments:
 
@@ -874,7 +892,7 @@ cdef class SegmentList:
         allocated = int(lmax( self.nsegments, other.nsegments) * 1.1)
         new_segments =<Segment*>malloc( allocated * sizeof( Segment ) )
 
-        cdef long this_idx, other_idx, working_idx, last_this_idx, last_other_idx
+        cdef int this_idx, other_idx, working_idx, last_this_idx, last_other_idx
         working_idx = this_idx = other_idx = 0
         last_this_idx = last_other_idx = -1
         cdef Segment this_segment = Segment(0,0)
@@ -929,12 +947,11 @@ cdef class SegmentList:
 
         The segment list will not be normalized afterwards.'''
 
-        cdef long idx
+        cdef int idx
         cdef Segment * s
         for idx from 0 <= idx < self.nsegments:
             s = &self.segments[idx]
-            s.start -= extension
-            if s.start < 0: s.start = 0
+            s.start -= lmin( extension, s.start)
             s.end += extension
         self.is_normalized = False
 
@@ -949,7 +966,8 @@ cdef class SegmentList:
 
         The segment list will not be normalized afterwards.'''
 
-        cdef long idx, l, extension
+        cdef int idx, 
+        cdef PositionDifference l, extension
         cdef Segment * s
         cdef double e_1 = (expansion - 1.0) / 2.0
         
@@ -958,18 +976,17 @@ cdef class SegmentList:
         for idx from 0 <= idx < self.nsegments:
             s = &self.segments[idx]
             l = s.end - s.start 
-            extension = <long>floor(l * e_1 )
-            s.start -= extension
-            if s.start < 0: s.start = 0
+            extension = <PositionDifference>floor(l * e_1 )
+            s.start -= lmin( extension, s.start)
             s.end += extension
         self.is_normalized = False
 
-    def shift( self, int offset ):
+    def shift( self, PositionDifference offset ):
         '''shift segments by a certain offset.
         
         raises ValueError if segment coordinates become negative.
         '''
-        cdef long idx
+        cdef int idx
         cdef Segment * s
         for idx from 0 <= idx < self.nsegments:
             s = &self.segments[idx]
@@ -977,10 +994,10 @@ cdef class SegmentList:
             s.start += offset
             if s.start < 0: raise ValueError( "shift creates negative coordinates" )
 
-    cpdef long sum( self ):
+    cpdef Position sum( self ):
         '''return total length of all segments.'''
-        cdef long total
-        cdef long idx
+        cdef Position total
+        cdef int idx
         cdef Segment s
         total = 0
         for idx from 0 <= idx < self.nsegments:
@@ -988,13 +1005,13 @@ cdef class SegmentList:
             total += s.end - s.start
         return total
 
-    cpdef long max( self ):
+    cpdef Position max( self ):
         '''return maximum coordinate.'''
         assert self.is_normalized, "maximum from non-normalized list"
         if self.nsegments == 0: return 0
         return self.segments[self.nsegments - 1].end
 
-    cpdef long min( self ):
+    cpdef Position min( self ):
         '''return minimum coordinate.'''
         assert self.is_normalized, "minimum from non-normalized list"
         if self.nsegments == 0: return 0
@@ -1020,10 +1037,17 @@ cdef class SegmentList:
 
     def asList( self ):
 
-        cdef long idx
+        cdef int idx
         result = []
         for idx from 0 <= idx < self.nsegments:
             result.append( (self.segments[idx].start, self.segments[idx].end) )
+        return result
+
+    def asLengths( self ):
+        cdef int idx
+        result = []
+        for idx from 0 <= idx < self.nsegments:
+            result.append( self.segments[idx].end - self.segments[idx].start)
         return result
 
     def __iter__( self ):
@@ -1035,7 +1059,7 @@ cdef class SegmentList:
         return self.segments[key].start, self.segments[key].end
 
     def __cmp__(self, SegmentList other ):
-        cdef long idx
+        cdef int idx
         x = self.__len__().__cmp__(len(other))
         if x != 0: return x
         for idx from 0 <= idx < self.nsegments:
@@ -1048,7 +1072,7 @@ cdef class SegmentList:
 cdef class SegmentListIterator:
 
     cdef SegmentList segment_list
-    cdef long idx
+    cdef Position idx
 
     def __init__(self, SegmentList container ):
         self.idx = 0
@@ -1057,7 +1081,7 @@ cdef class SegmentListIterator:
     def __iter__(self): return self
 
     def __next__(self):
-        cdef long t
+        cdef Position t
         cdef Segment v
         if self.idx >= self.segment_list.nsegments:
             raise StopIteration
@@ -1069,7 +1093,7 @@ cdef class SegmentListSamplerSlow:
 
     cdef SegmentList segment_list
     cdef numpy.ndarray  cdf
-    cdef long total_size
+    cdef Position total_size
 
     def __init__(self, SegmentList segment_list ):
 
@@ -1079,13 +1103,14 @@ cdef class SegmentListSamplerSlow:
         self.cdf = numpy.cumsum( [x[1] - x[0] for x in self.segment_list ] )
         self.total_size = self.cdf[-1]
 
-    cpdef sample( self, long length ):
+    cpdef sample( self, Position length ):
         '''return a new position within segment list.'''
 
         # note: could be made quicker by
         # - creating a sample random integers once, see numpy.random_integers?
         # - avoiding the binary search?
-        cdef long r, offset, pos, overlap
+        cdef Position r, offset, pos
+        cdef PositionDifference overlap
         cdef size_t segment_index
 
         r = numpy.random.randint( 0, self.total_size )
@@ -1106,23 +1131,23 @@ cdef class SegmentListSamplerSlow:
 cdef class SegmentListSamplerWithEdgeEffects:
 
     cdef SegmentList segment_list
-    cdef long * cdf
-    cdef long total_size
-    cdef long nsegments
+    cdef Position * cdf
+    cdef Position total_size
+    cdef Position nsegments
 
     def __init__(self, SegmentList segment_list ):
-        cdef long i, totsize
+        cdef Position i, totsize
         assert len(segment_list) > 0, "sampling from empty segment list"
 
         self.segment_list = segment_list
         self.nsegments = len(segment_list)
-        self.cdf = <long*>malloc( sizeof(long) * self.nsegments )
+        self.cdf = <Position*>malloc( sizeof(Position) * self.nsegments )
         self.total_size = 0
         for i from 0 <= i < len(segment_list):
             self.total_size += segment_length( segment_list.segments[i] )
             self.cdf[i] = self.total_size
 
-    cpdef sample( self, long length ):
+    cpdef sample( self, Position length ):
         '''return a new position within segment list.
 
         This method both samples a position within the workspace
@@ -1132,16 +1157,17 @@ cdef class SegmentListSamplerWithEdgeEffects:
         # note: could be made quicker by
         # - creating a sample random integers once, see numpy.random_integers?
         # - avoiding the binary search?
-        cdef long rpos, rseg, offset, pos, overlap, start, end
+        cdef Position rpos, rseg, offset, pos, start, end
+        cdef PositionDifference overlap
         cdef size_t segment_index
 
         # r = rand() / (RAND_MAX / total_size + 1)
         rpos = numpy.random.randint( 0, self.total_size )
         segment_index = searchsorted( self.cdf,
                                       self.nsegments,
-                                      sizeof(long),
+                                      sizeof(Position),
                                       &rpos,
-                                      &cmpLong,
+                                      &cmpPosition,
                                       )
 
         offset = rpos - self.cdf[segment_index]
@@ -1184,44 +1210,45 @@ cdef class SegmentListSampler:
     '''
 
     cdef SegmentList segment_list
-    cdef long * cdf
-    cdef long total_size
-    cdef long nsegments
+    cdef Position * cdf
+    cdef Position total_size
+    cdef int nsegments
 
     def __init__(self, SegmentList segment_list ):
-        cdef long i, totsize
+        cdef Position i, totsize
         assert len(segment_list) > 0, "sampling from empty segment list"
         assert segment_list.is_normalized
 
         self.segment_list = segment_list
         self.nsegments = len(segment_list)
-        self.cdf = <long*>malloc( sizeof(long) * self.nsegments )
+        self.cdf = <Position*>malloc( sizeof(Position) * self.nsegments )
         self.total_size = 0
         for i from 0 <= i < len(segment_list):
             self.total_size += segment_length( segment_list.segments[i] )
             # -1, as searchsorted inserts on left
             self.cdf[i] = self.total_size -1
 
-    cpdef sample( self, long sample_length ):
+    cpdef sample( self, Position sample_length ):
         '''return a sample.'''
 
         # note: could be made quicker by
         # - creating a sample random integers once, see numpy.random_integers?
         # - avoiding the binary search?
-        cdef long overlap, start, end
+        cdef Position start, end
+        cdef PositionDifference overlap
         cdef size_t segment_index
         cdef Segment chosen_segment
 
-        cdef long random_pos_in_workspace, random_pos_in_segment
+        cdef Position random_pos_in_workspace, random_pos_in_segment
 
         # sample a position 
         # r = rand() / (RAND_MAX / total_size + 1)
         random_pos_in_workspace = numpy.random.randint( 0, self.total_size )
         segment_index = searchsorted( self.cdf,
                                       self.nsegments,
-                                      sizeof(long),
+                                      sizeof(Position),
                                       &random_pos_in_workspace,
-                                      &cmpLong,
+                                      &cmpPosition,
                                       )
 
         assert 0 <= segment_index < self.nsegments, \
@@ -1260,11 +1287,11 @@ cdef class SegmentListSampler:
 cdef class HistogramSamplerSlow:
 
     cdef numpy.ndarray cdf
-    cdef long bucket_size
+    cdef Position bucket_size
 
     def __init__(self,
                  numpy.ndarray histogram,
-                 long bucket_size ):
+                 Position bucket_size ):
 
         assert len(histogram) > 0, "sampling from empty histogram"
 
@@ -1272,12 +1299,12 @@ cdef class HistogramSamplerSlow:
         self.cdf /= self.cdf[-1]
         self.bucket_size = bucket_size
 
-    cpdef long sample( self ):
+    cpdef Position sample( self ):
         '''return a new position within segment list.'''
 
-        cdef long base, ip
+        cdef Position base, ip
         cdef double r
-        cdef long bucket_size
+        cdef Position bucket_size
         bucket_size = self.bucket_size
         # note: could be made quicker by
         # - creating a sample random doubles once, see numpy.random_integers?
@@ -1291,22 +1318,22 @@ cdef class HistogramSamplerSlow:
 
 cdef class HistogramSampler:
 
-    cdef long * cdf
-    cdef long bucket_size
-    cdef long nbuckets
-    cdef long total_size
+    cdef Position * cdf
+    cdef Position bucket_size
+    cdef Position nbuckets
+    cdef Position total_size
 
     @cython.boundscheck(False)
     def __init__(self,
                  numpy.ndarray[DTYPE_INT_t, ndim=1] histogram,
-                 long bucket_size ):
-        cdef long i
+                 Position bucket_size ):
+        cdef Position i
         self.cdf = NULL
 
         self.nbuckets = len(histogram)
         assert self.nbuckets > 0, "sampling from empty histogram"
 
-        self.cdf = <long*>malloc( sizeof(long) * self.nbuckets )
+        self.cdf = <Position*>malloc( sizeof(Position) * self.nbuckets )
         self.total_size = 0
         for i from 0 <= i < self.nbuckets:
             self.total_size += histogram[i]
@@ -1314,10 +1341,10 @@ cdef class HistogramSampler:
 
         self.bucket_size = bucket_size
 
-    cpdef long sample( self ):
+    cpdef Position sample( self ):
         '''return a new position within segment list.'''
 
-        cdef long base, index, r
+        cdef Position base, index, r
 
         # 1 to avoid 0 length
         if self.total_size > 1:
@@ -1327,9 +1354,9 @@ cdef class HistogramSampler:
 
         index = searchsorted( self.cdf,
                               self.nbuckets,
-                              sizeof(long),
+                              sizeof(Position),
                               &r,
-                              &cmpLong,
+                              &cmpPosition,
                               )
         base = index * self.bucket_size
 
@@ -1348,9 +1375,9 @@ cdef class Sampler:
 
 cdef class SamplerAnnotator(Sampler):
 
-    cdef long bucket_size
-    cdef long nbuckets
-    cdef long nunsuccessful_rounds
+    cdef Position bucket_size
+    cdef int nbuckets
+    cdef int nunsuccessful_rounds
 
     def __init__( self, bucket_size = 1, nbuckets = 100000 ):
         '''sampler of the TheAnnotator.
@@ -1385,12 +1412,13 @@ cdef class SamplerAnnotator(Sampler):
                               SegmentList workspace ):
         '''return a sampled list of segments.'''
 
-        cdef long remaining
-        cdef long true_remaining
+        cdef PositionDifference remaining
+        cdef PositionDifference true_remaining
+        cdef PositionDifference overlap, ltotal, length
+
         cdef int nunsuccessful_rounds
         cdef int max_unsuccessful_rounds
-        cdef long length
-        cdef long start, end, overlap
+        cdef Position start, end
         cdef Segment segment, sampled_segment
         cdef SegmentList sampled_segments
         cdef SegmentList unintersected_segments
@@ -1439,7 +1467,6 @@ cdef class SamplerAnnotator(Sampler):
         max_unsuccessful_rounds = 20
 
         while true_remaining > 0 and nunsuccessful_rounds < max_unsuccessful_rounds:
-
             # print "------------------------------------"
             # print "true_remanining", true_remaining, "remaining", remaining, "ltotal", ltotal
             # print "sampled_segments", sampled_segments.sum(), len(sampled_segments)
@@ -1472,7 +1499,7 @@ cdef class SamplerAnnotator(Sampler):
                 #   print "\n".join( [str(x) for x in intersected_segments ] ) + "\n"
                 #assert intersected_segments.sum() <= ltotal, \
                 #    "length of segments exceeds ltotal: %i > %i" % (intersected_segments.sum(), ltotal)
-                remaining = ltotal - intersected_segments.sum()
+                remaining = ltotal - <PositionDifference>intersected_segments.sum()
                 if true_remaining == remaining:
                     nunsuccessful_rounds += 1
                 else:
@@ -1545,8 +1572,8 @@ cdef class SamplerAnnotator(Sampler):
 ########################################################
 cdef class SamplerSegments(Sampler):
 
-    cdef long bucket_size
-    cdef long nbuckets
+    cdef Position bucket_size
+    cdef Position nbuckets
 
     def __init__( self, bucket_size = 1, nbuckets = 100000 ):
         '''sample *n* segments from length distribution.
@@ -1571,7 +1598,7 @@ cdef class SamplerSegments(Sampler):
                               SegmentList workspace ):
         '''return a sampled list of segments.'''
 
-        cdef long length
+        cdef Position length
         cdef SegmentListSampler sls
         cdef SegmentList sample
 
@@ -1612,10 +1639,10 @@ cdef class SamplerSegments(Sampler):
 ########################################################
 cdef class SamplerBruteForce(Sampler):
 
-    cdef long bucket_size
-    cdef long nbuckets
-    cdef long ntries_inner
-    cdef long ntries_outer
+    cdef Position bucket_size
+    cdef Position nbuckets
+    cdef int ntries_inner
+    cdef int ntries_outer
 
     def __init__( self, 
                   bucket_size = 1, 
@@ -1644,10 +1671,10 @@ cdef class SamplerBruteForce(Sampler):
                               SegmentList workspace ):
         '''return a sampled list of segments.'''
 
-        cdef long length
+        cdef Position start, end, length
         cdef SegmentListSampler sls
         cdef SegmentList sample
-
+    
         assert workspace.is_normalized, "workspace is not normalized"
 
         sample = SegmentList( allocate = len(segments) )
@@ -1667,11 +1694,10 @@ cdef class SamplerBruteForce(Sampler):
         # create segment sampler
         sls = SegmentListSampler( workspace )
 
-        cdef long ntries_outer = self.ntries_outer
-        cdef long remaining
-        cdef long ntries_inner
+        cdef int ntries_outer = self.ntries_outer
+        cdef int ntries_inner
+        cdef PositionDifference remaining, overlap
 
-        
         while ntries_outer > 0:
 
             sample.clear()
@@ -1724,12 +1750,12 @@ cdef class SamplerBruteForce(Sampler):
 ########################################################
 cdef class SamplerUniform(Sampler):
 
-    cdef long bucket_size
-    cdef long nbuckets
-    cdef long increment
-    cdef long start_at
-    cdef long current_workspace
-    cdef long current_position
+    cdef Position bucket_size
+    cdef Position nbuckets
+    cdef Position increment
+    cdef Position start_at
+    cdef Position current_workspace
+    cdef Position current_position
     cdef int current_orientation
 
     def __init__( self, 
@@ -1761,9 +1787,9 @@ cdef class SamplerUniform(Sampler):
 
         cdef SegmentList sample
         cdef SegmentListSampler sls
-        cdef long increment = self.increment
-        cdef long start, end, x, length, i, added, nsegments, nworkspaces
-        cdef long current_offset, current_workspace
+        cdef Position increment = self.increment
+        cdef Position start, end, x, length, i, added, nsegments, nworkspaces
+        cdef Position current_offset, current_workspace
 
         # collect all segments in workspace
         working_segments = SegmentList( clone = segments )
@@ -1834,8 +1860,6 @@ cdef class SamplerShift(Sampler):
         for randomly shifting a segment. It is expressed as a fraction 
         of the size of a segment.
         
-        It is the midpoint of a segment that is shifted.
-
         '''
 
         self.radius = radius
@@ -1848,8 +1872,9 @@ cdef class SamplerShift(Sampler):
 
         cdef Segment segment
         cdef SegmentList sample, working_segments
-        cdef long length, direction, extended_length
-        cdef long x, shift
+        cdef Position length, direction, extended_length
+        cdef Position x 
+        cdef PositionDifference shift, start, end
         cdef double half_radius = self.radius / 2
         cdef Segment * _working_segments
 
@@ -1859,7 +1884,7 @@ cdef class SamplerShift(Sampler):
         _working_segments = working_segments.segments
 
         # allocate sample large enough
-        sample = SegmentList( len(working_segments) )
+        sample = SegmentList( len(working_segments) * 2 )
 
         if len(working_segments) == 0:
             return sample
@@ -1867,11 +1892,11 @@ cdef class SamplerShift(Sampler):
         for x from 0 <= x < len(working_segments):
             segment = _working_segments[x]
             length = segment.end - segment.start
-            shift_area = <long>floor(length * half_radius)
+            shift_area = <Position>floor(length * half_radius)
             shift = numpy.random.randint( -shift_area, shift_area  )
-            segment.start += shift
-            segment.end += shift
-            sample._add( segment )
+            start = lmax(0, segment.start + shift )
+            end = lmax( 0, segment.end + shift )
+            sample._add( Segment(start, end) )
 
         sample.normalize()
         return sample
@@ -1917,12 +1942,18 @@ cdef class CounterNucleotideDensity(Counter):
         '''return number of nucleotides overlapping between segments and annotations.
         divided by the size of the workspace
         '''
-        cdef long l
+        cdef Position l
         l = len(workspace)
         if l == 0: return 0
         return float(annotations.overlapWithSegments( segments )) / l
 
 cdef class CounterSegmentOverlap(Counter):
+
+    def __call__(self, segments, annotations, workspace = None ):
+        '''return number of segments overlapping with annotations.'''
+        return segments.intersectionWithSegments( annotations )
+
+cdef class CounterAnnotationOverlap(Counter):
 
     def __call__(self, segments, annotations, workspace = None ):
         '''return number of segments overlapping with annotations.'''
@@ -1961,7 +1992,7 @@ def getNPTwoSidedPValueFast( numpy.ndarray[DTYPE_FLOAT_t, ndim=1] ar,
 
     Fast if val is small or large.
     '''
-    cdef long l, x
+    cdef Position l, x
     cdef double min_pval, pval
 
     l = len(ar)
@@ -1990,7 +2021,7 @@ ctypedef struct EnrichmentStatistics:
     double lower95
     double upper95
     double fold
-    long nsamples
+    Position nsamples
     double * samples
     int * sorted2sample
     int * sample2sorted
@@ -2035,7 +2066,7 @@ cdef void compressSampleIndex( EnrichmentStatistics * stats ):
 
     cdef int x, refidx, observed_idx
     cdef double lastval, thisval
-    cdef long l
+    cdef Position l
     l = stats.nsamples
 
     # normalize - equal values will get the same index
@@ -2090,7 +2121,7 @@ cdef void compressSampleIndex( EnrichmentStatistics * stats ):
 cdef EnrichmentStatistics * makeEnrichmentStatistics( observed, samples ):
 
     cdef EnrichmentStatistics * stats 
-    cdef long offset, i, l
+    cdef Position offset, i, l
 
     l = len(samples)
     if l < 1:
@@ -2184,13 +2215,13 @@ cdef class AnnotatorResult(object):
     cdef:
         EnrichmentStatistics * stats
         str track, annotation
-        long track_nsegments
-        long track_size
-        long annotation_nsegments
-        long annotation_size
-        long overlap_nsegments
-        long overlap_size
-        long workspace_size
+        Position track_nsegments
+        Position track_size
+        Position annotation_nsegments
+        Position annotation_size
+        Position overlap_nsegments
+        Position overlap_size
+        Position workspace_size
 
     def __init__( self,
                   track,
@@ -2251,10 +2282,10 @@ cdef class AnnotatorResult(object):
                            self.format_counts % self.overlap_nsegments,
                            self.format_counts % self.overlap_size,
                            self.format_density % ( float(self.overlap_size) / self.workspace_size),
-                           self.format_fold % ( 100.0 * float( self.overlap_size) / self.track_size ),
                            self.format_fold % ( 100.0 * float( self.overlap_nsegments) / self.track_nsegments ),
-                           self.format_fold % ( 100.0 * float( self.overlap_size) / self.annotation_size ),
+                           self.format_fold % ( 100.0 * float( self.overlap_size) / self.track_size ),
                            self.format_fold % ( 100.0 * float( self.overlap_nsegments) / self.annotation_nsegments ),
+                           self.format_fold % ( 100.0 * float( self.overlap_size) / self.annotation_size ),
                            ) )
 
     def __dealloc__(self):
@@ -2294,7 +2325,7 @@ cdef class AnnotatorResult(object):
 
     property samples:
         def __get__(self): 
-            cdef long x
+            cdef Position x
             r = numpy.zeros( self.nsamples, dtype = numpy.float )
             for x from 0 <= x < self.stats.nsamples:
                 r[x] = self.stats.samples[x]
@@ -2541,6 +2572,9 @@ cdef class TupleProxy:
 
         Take ownership of the pointer.
         '''
+        if self.data != NULL:
+            free(self.data)
+            
         self.data = buffer
         self.update( buffer, nbytes )
 
@@ -2549,6 +2583,10 @@ cdef class TupleProxy:
 
         Do not take ownership of the pointer.
         '''
+        if self.data != NULL:
+            free(self.data)
+            self.data = NULL
+
         self.update( buffer, nbytes )
 
     cdef copy( self, char * buffer, size_t nbytes ):
@@ -2556,6 +2594,9 @@ cdef class TupleProxy:
 
         Take a copy of buffer.
         '''
+        if self.data != NULL:
+            free(self.data)
+
         cdef int s
         s = sizeof(char) * nbytes
         self.data = <char*>malloc( s )
@@ -2619,7 +2660,8 @@ cdef class TupleProxy:
     def __dealloc__(self):
         if self.data != NULL:
             free(self.data)
-            self.data = NULL
+        if self.fields != NULL:
+            free(self.fields)
 
     def __iter__(self):
         self.index = 0
@@ -2702,7 +2744,7 @@ class tsv_iterator:
 
     def next(self):
 
-        cdef char * b, * cpy
+        cdef char * b
 
         cdef TupleProxy r
         cdef size_t nbytes
@@ -2714,7 +2756,9 @@ class tsv_iterator:
             line = self.infile.readline()
             if not line: break
 
+            # string conversion - b references internal string in python object
             b = line
+
             # nbytes includes new line but not \0
             nbytes = len( line )
 
@@ -2734,11 +2778,8 @@ class tsv_iterator:
             b[nbytes-1] = '\0'
 
             # create a copy
-            cpy = <char*>malloc( nbytes )
-            memcpy( cpy, b, nbytes )
-
             r = self.create()
-            r.take( cpy, nbytes )
+            r.copy( b, nbytes )
             return r
 
         raise StopIteration
@@ -2779,7 +2820,7 @@ def readFromBed( filenames, allow_multiple = False ):
     '''
     cdef SegmentList l
     cdef BedProxy bed
-    cdef long lineno
+    cdef Position lineno
 
     segment_lists = collections.defaultdict( IntervalDictionary )
 
@@ -2812,7 +2853,7 @@ def readFromBed( filenames, allow_multiple = False ):
                         tracks[name] = filename
                 else:
                     tracks[name] = filename
-                    
+                 
                 l = segment_lists[name][bed.contig]
                 l.add( atol(bed.fields[1]), atol(bed.fields[2]) )
                 lineno += 1
@@ -2972,9 +3013,9 @@ class IntervalCollection(object):
 
         outfile.write( "section\ttrack\tcontig\tnsegments\tlength\n" )
 
-        cdef long total_length = 0
-        cdef long total_segments = 0
-        cdef long length, segments
+        cdef Position total_length = 0
+        cdef Position total_segments = 0
+        cdef Position length, segments
         for track, vv in self.intervals.iteritems():
             total_length, total_segments = 0, 0
             for contig, segmentlist in vv.iteritems():
@@ -3302,7 +3343,7 @@ cdef class SamplesCached( Samples ):
 
         # cache structure is:
         # 1 * sizeof(unsigned char) - key length (max 255 chars)
-        # 1 * sizeof(long) - number of segments (nsegments)
+        # 1 * sizeof(Position) - number of segments (nsegments)
         # nsegments * sizeof(Segment) - the segment list
         tempkey = self.toKey( track, sample_id, isochore )
         assert len(tempkey) <= 255
@@ -3311,7 +3352,7 @@ cdef class SamplesCached( Samples ):
 
         self.index[ key ] = pos
 
-        fwrite( &seglist.nsegments, sizeof( long ), 1, self.fcache )
+        fwrite( &seglist.nsegments, sizeof( Position ), 1, self.fcache )
         toCompressedFile( <unsigned char *>seglist.segments,
                           sizeof( Segment) * seglist.nsegments,
                           self.fcache )
@@ -3336,12 +3377,12 @@ cdef class SamplesCached( Samples ):
         '''load data into memory'''
         cdef off_t pos
         cdef SegmentList seglist
-        cdef long nsegments
+        cdef Position nsegments
 
         tempkey = self.toKey( track, sample_id, isochore )
         pos = self.index[tempkey]
         fseeko( self.fcache, pos, SEEK_SET )
-        fread( &nsegments, sizeof(long), 1, self.fcache )
+        fread( &nsegments, sizeof(Position), 1, self.fcache )
         seglist = SegmentList( allocate = nsegments )
         seglist.nsegments = nsegments
         fromCompressedFile( <unsigned char*> seglist.segments,
@@ -3356,14 +3397,14 @@ cdef class SamplesCached( Samples ):
 ## FDR computation - obsolete
 ############################################################
 cdef double computeFalsePositiveRate( EnrichmentStatistics ** allstats,
-                                      long nresults,
-                                      long nsamples,
+                                      Position nresults,
+                                      Position nsamples,
                                       double pvalue ):
     '''return the number of expected number of false positives
     for less than or equal to *pvalue*.
     '''
 
-    cdef long y, nsample, nfp, total_nfp
+    cdef Position y, nsample, nfp, total_nfp
     cdef double efp
 
     total_nfp = 0
@@ -3401,12 +3442,12 @@ cpdef computeFDR( annotator_results ):
     '''
     fdr_cache = {}
 
-    cdef long nresults
+    cdef Position nresults
     cdef AnnotatorResult r
     cdef EnrichmentStatistics * r1
     cdef EnrichmentStatistics ** allstats
-    cdef long nsample, nfp, R, x,y, total_nfp
-    cdef long * nfps
+    cdef Position nsample, nfp, R, x,y, total_nfp
+    cdef Position * nfps
 
     cdef double pvalue, efp
 
@@ -3453,7 +3494,7 @@ cpdef computeFDR( annotator_results ):
 
 @cython.profile(False)
 cdef inline int isSampleSignificantAtPvalue( EnrichmentStatistics * stats, 
-                                             long sample_id, 
+                                             Position sample_id, 
                                              double pvalue ):
     '''return True, if sample sample_id would be called
     significant at threshold *pvalue*
@@ -3466,7 +3507,7 @@ cdef inline int isSampleSignificantAtPvalue( EnrichmentStatistics * stats,
     value of samples[sample_id].
     '''
     cdef double pval, min_pval, val
-    cdef long l
+    cdef Position l
 
     l = stats.nsamples
     min_pval = 1.0 / l
@@ -3490,7 +3531,7 @@ cdef inline int isSampleSignificantAtPvalue( EnrichmentStatistics * stats,
     # print "val=", val, "idx=", idx, "sample_id=", sample_id, "pval=", pval, "refpval=", pvalue, "true=", pval <= pvalue
     return dmax( min_pval, pval ) <= pvalue
 
-        
+
 # import tables
 # import warnings
 # warnings.filterwarnings('ignore', category=tables.NaturalNameWarning)

@@ -538,8 +538,11 @@ def getWorkspaceCounts( workspace,
     segment_sizes = []
     starts = numpy.zeros( l+1, numpy.int )
     ends = numpy.zeros( l+1, numpy.int )
-    
+
     for sample_id, s in enumerate(samples):
+
+        if len(s) == 0: continue
+
         for start, end in s:
             start = max(0, start)
             end = min( end, l )
@@ -672,6 +675,13 @@ class TestSegmentSamplingSamplerGat( GatTest ):
                               "segment length distribution in sample %i: expected %s (%f) != observed %s (%f)" %\
                                   ( i, val, inp, val, samp ) )
 
+    def checkSanity( self, samples, segments, workspace ):
+        '''sanity check on segments.'''
+        
+        for i, sample in enumerate( samples ):
+            s = gat.SegmentList( clone = sample )
+            s.filter( workspace )
+            self.assertEqual( len(s), len(sample), "sample %i contains segments outside of workspace %s: %s" % (i, workspace, sample))
 
     def checkSample( self, samples, segments, workspace ):
         '''check if sample corresponds to expectation.
@@ -682,6 +692,8 @@ class TestSegmentSamplingSamplerGat( GatTest ):
         filename = getPlotFilename( str(self) )
 
         self.assertEqual( self.ntests, len(samples) )
+
+        self.checkSanity( samples, segments, workspace )
         
         if self.check_length:
             self.checkLength( samples, segments, workspace )
@@ -891,12 +903,31 @@ class TestSegmentSamplingSamplerGat( GatTest ):
         test sampling within a single continuous workspace.'''
         nsegments = 10
         segment_size = 100
+        workspace_size = 10000
 
-        workspace = gat.SegmentList( iter = [ (0, 10000) ],
+        workspace = gat.SegmentList( iter = [ (0, workspace_size) ],
                                      normalize = True )
 
         segments = gat.SegmentList( iter = ( (x,  x + segment_size)   \
                                                  for x in range( 0, 1000 * nsegments, 1000) ),
+                                    normalize = True )
+        
+        samples = self.getSamples( segments, workspace )
+
+        self.checkSample( samples, segments, workspace )
+
+    def testSingleWorkspaceSingleSegment( self ):
+        '''
+        test sampling within a single continuous workspace.'''
+        nsegments = 1
+        segment_size = 1000
+        workspace_size = 10000
+
+        workspace = gat.SegmentList( iter = [ (0, workspace_size) ],
+                                     normalize = True )
+
+        segments = gat.SegmentList( iter = [ (workspace_size // 2 - segment_size // 2, 
+                                              workspace_size // 2  + segment_size // 2)],
                                     normalize = True )
         
         samples = self.getSamples( segments, workspace )
@@ -1049,6 +1080,15 @@ class TestSegmentSamplingSamplerUniform( TestSegmentSamplingSamplerGat ):
 
     def setUp(self):
         self.sampler = gat.SamplerUniform( increment = 1 )
+
+class TestSegmentSamplingSamplerShift( TestSegmentSamplingSamplerGat ):
+
+    check_nucleotides = False
+    check_average_coverage = False
+    check_uniform_coverage = False
+
+    def setUp(self):
+        self.sampler = gat.SamplerShift( radius = 5 )
 
 class TestSegmentSamplingTheAnnotator( TestSegmentSamplingSamplerGat ):
     '''use annotator to sample segments.'''

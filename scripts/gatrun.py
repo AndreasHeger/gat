@@ -279,7 +279,20 @@ def fromSegments( options, args ):
                                                                        options.conditional_expansion )
     else:
         raise ValueError("unknown conditional workspace '%s'" % options.conditional )
-        
+
+
+    ##################################################
+    ##################################################
+    ##################################################
+    ## open sample stats outfile
+    ##################################################
+    if "sample" in options.output_stats or \
+            "all" in options.output_stats or \
+                len( [ x for x in options.output_stats if re.search( x, "sample" ) ] ) > 0:
+        outfile_sample_stats = E.openOutputFile( "sample_stats" )
+    else:
+        outfile_sample_stats = None
+
     ##################################################
     ##################################################
     ##################################################
@@ -293,6 +306,7 @@ def fromSegments( options, args ):
                                  workspace_generator = workspace_generator,
                                  num_samples = options.num_samples,
                                  cache = options.cache,
+                                 outfile_sample_stats = outfile_sample_stats,
                                  output_counts = options.output_filename_counts,
                                  output_samples_pattern = options.output_samples_pattern,
                                  sample_files = options.sample_files,
@@ -487,6 +501,8 @@ def main( argv = None ):
     ##################################################
     description_header, descriptions, description_width = [], {}, 0
     if options.input_filename_descriptions:
+        E.info( "reading descriptions from %s" % options.input_filename_descriptions )
+
         with IOTools.openFile( options.input_filename_descriptions ) as inf:
             first = True
             for line in inf:
@@ -501,6 +517,9 @@ def main( argv = None ):
                     first = False
                 else:
                     descriptions[data[0]] = data[1:]
+
+    size_pos, size_segment = gat.getSegmentSize()
+    E.debug( "sizes: pos=%i segment=%i, max_coord=%i" % (size_pos, size_segment, 2**(8 * size_pos )))
 
     ##################################################
     if options.input_filename_counts:
@@ -525,6 +544,37 @@ def main( argv = None ):
                        method = options.qvalue_method,
                        vlambda = options.qvalue_lambda,
                        pi0_method = options.qvalue_pi0_method )
+
+    ##################################################
+    ##################################################
+    ## output
+    ##################################################
+    outfile = options.stdout
+
+    outfile.write( "\t".join( gat.AnnotatorResult.headers + description_header ) + "\n" )
+
+    output = list( gat.iterator_results( annotator_results ) )
+    if options.output_order == "track":
+        output.sort( key = lambda x: (x.track, x.annotation) )
+    elif options.output_order == "annotation":
+        output.sort( key = lambda x: (x.annotation, x.track) )
+    elif options.output_order == "fold":
+        output.sort( key = lambda x: x.fold )
+    elif options.output_order == "pvalue":
+        output.sort( key = lambda x: x.pvalue )
+    elif options.output_order == "qvalue":
+        output.sort( key = lambda x: x.qvalue )
+    else:
+        raise ValueError("unknown sort order %s" % options.output_order )
+
+    for result in output:
+        outfile.write( str(result) )
+        if descriptions:
+            try:
+                outfile.write( "\t" + "\t".join( descriptions[result.annotation] ) )
+            except KeyError:
+                outfile.write( "\t" + "\t".join( [""] * description_width ) )
+        outfile.write("\n")
     
     ##################################################
     # plot histograms
@@ -591,36 +641,6 @@ def main( argv = None ):
         filename = buildPlotFilename( options, key )
         plt.savefig( filename )
 
-    ##################################################
-    ##################################################
-    ## output
-    ##################################################
-    outfile = options.stdout
-
-    outfile.write( "\t".join( gat.AnnotatorResult.headers + description_header ) + "\n" )
-
-    output = list( gat.iterator_results( annotator_results ) )
-    if options.output_order == "track":
-        output.sort( key = lambda x: (x.track, x.annotation) )
-    elif options.output_order == "annotation":
-        output.sort( key = lambda x: (x.annotation, x.track) )
-    elif options.output_order == "fold":
-        output.sort( key = lambda x: x.fold )
-    elif options.output_order == "pvalue":
-        output.sort( key = lambda x: x.pvalue )
-    elif options.output_order == "qvalue":
-        output.sort( key = lambda x: x.qvalue )
-    else:
-        raise ValueError("unknown sort order %s" % options.output_order )
-
-    for result in output:
-        outfile.write( str(result) )
-        if descriptions:
-            try:
-                outfile.write( "\t" + "\t".join( descriptions[result.annotation] ) )
-            except KeyError:
-                outfile.write( "\t" + "\t".join( [""] * description_width ) )
-        outfile.write("\n")
 
     ## write footer and output benchmark information.
     E.Stop()

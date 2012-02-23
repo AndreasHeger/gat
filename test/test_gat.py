@@ -201,7 +201,7 @@ class TestSegmentList( GatTest ):
         self.assertEqual( len(s), 1 )
         self.assertEqual( s.sum(), 1000 )
 
-    def testMergeNeigbours( self ):
+    def testMergeNeighbours( self ):
   
         for y in range( 0,5 ):
             ss = [ (x, x + 100 - y ) for x in range( 0, 1000, 100) ]
