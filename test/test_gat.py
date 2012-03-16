@@ -223,6 +223,61 @@ class TestSegmentList( GatTest ):
         self.assertEqual( s.sum(), 195)
         self.assertEqual( len(s), 10 )
 
+    def testGetFilledSegmentsFromStart( self ):
+        ss = [ (x, x + 10 ) for x in range( 0, 120, 20) ]
+        s = gat.SegmentList( iter = ss, normalize = True )
+        for x in range( 0, 120, 5 ):
+            f = s.getFilledSegmentsFromStart( x, 20 )
+            self.assertEqual( f.sum(), 20 )
+            if x >= 110:
+                self.assertEqual( f.min(), s.min() )
+                self.assertEqual( f.max(), 30 )
+            elif x > 80: 
+                self.assertEqual( f.min(), s.min() )
+                self.assertEqual( f.max(), s.max() )
+            else:
+                if x in (0,20,40,60,80):
+                    self.assertEqual( f.min(), x )
+                    self.assertEqual( f.max(), x + 30 )
+                elif x in (10,30,50,70):
+                    self.assertEqual( f.min(), x + 10)
+                    self.assertEqual( f.max(), x + 40 )
+                elif x in (5,25,45,65):
+                    self.assertEqual( f.min(), x )
+                    self.assertEqual( f.max(), x + 40 )
+                elif x in (15,35,55,75):
+                    self.assertEqual( f.min(), x + 5 )
+                    self.assertEqual( f.max(), x + 35 )
+            self.assertEqual( s.sum(), s.getFilledSegmentsFromStart(x, 100 ).sum() )
+
+    def testGetFilledSegmentsFromEnd( self ):
+        ss = [ (x, x + 10 ) for x in range( 0, 120, 20) ]
+        s = gat.SegmentList( iter = ss, normalize = True )
+        for x in range( 0, 120, 5 ):
+            f = s.getFilledSegmentsFromEnd( x, 20 )
+            self.assertEqual( f.sum(), 20 )
+            if x == 0:
+                self.assertEqual( f.max(), s.max() )
+                self.assertEqual( f.min(), 80 )
+            elif x < 30: 
+                self.assertEqual( f.max(), s.max() )
+                self.assertEqual( f.min(), s.min() )
+            else:
+                if x in (40,60,80,100):
+                    self.assertEqual( f.min(), x - 40 )
+                    self.assertEqual( f.max(), x - 10 )
+                elif x in (30,50,70,90):
+                    self.assertEqual( f.min(), x - 30 )
+                    self.assertEqual( f.max(), x )
+                elif x in (45,65,85):
+                    self.assertEqual( f.min(), x - 40)
+                    self.assertEqual( f.max(), x  )
+                elif x in (35,55,75,95):
+                    self.assertEqual( f.min(), x - 35 )
+                    self.assertEqual( f.max(), x - 5 )
+                    
+            self.assertEqual( s.sum(), s.getFilledSegmentsFromEnd(x, 100 ).sum() )
+
 class TestSegmentListOverlap( GatTest ):
     
     def setUp( self ):

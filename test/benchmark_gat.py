@@ -929,9 +929,8 @@ class TestSegmentSamplingSamplerGat( GatTest ):
         segments = gat.SegmentList( iter = [ (workspace_size // 2 - segment_size // 2, 
                                               workspace_size // 2  + segment_size // 2)],
                                     normalize = True )
-        
-        samples = self.getSamples( segments, workspace )
 
+        samples = self.getSamples( segments, workspace )
         self.checkSample( samples, segments, workspace )
 
     def testFullWorkspace( self ):
@@ -992,7 +991,6 @@ class TestSegmentSamplingSamplerGat( GatTest ):
                                     normalize = True )
         
         samples = self.getSamples( segments, workspace )
-
         self.checkSample( samples, segments, workspace )
 
     def testSmallWorkspaceManySegments( self ):

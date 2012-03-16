@@ -664,6 +664,23 @@ cdef class SegmentList:
     property isEmpty:
         def __get__(self): return self.nsegments == 0
 
+    cpdef Position getRandomPosition( self ):
+        '''return a random position within the workspace.
+
+        Not efficient, see the specialized samplers instead if
+        you want to sample repeatedly from the same workspace.
+        '''
+        cdef Position pos = numpy.random.randint( 0, self.sum() )
+        cdef idx
+        cdef Position l
+        for idx from 0 <= idx < self.nsegments:
+            l = self.segments[idx].end - self.segments[idx].start
+            if pos > l:
+                pos -= l
+            else:
+                return self.segments[idx].start + pos
+        assert False
+
     cdef Position overlap( self, Segment other ):
         '''return the size of intersection between
            segment list and Segment other'''
@@ -684,6 +701,27 @@ cdef class SegmentList:
             idx += 1
         return count
 
+    cdef SegmentList getOverlappingSegments( self, Segment other ):
+        '''return the segments overlapping
+           segment list and Segment other'''
+
+        cdef int idx
+        idx = self._getInsertionPoint( other )
+
+        # deal with border cases
+        # permit partial overlap
+        if idx == self.nsegments: idx -=1
+        elif idx == -1: idx=0
+
+        count = 0
+        cdef SegmentList result = SegmentList()
+        
+        while idx < self.nsegments and self.segments[idx].start <= other.end:
+            result._add( self.segments[idx] )
+            idx += 1
+        result.normalize()
+        return result
+
     cpdef Position overlapWithRange( self, Position start, Position end ):
         '''return the size of intersection between
            segment list and Segment other'''
@@ -691,6 +729,12 @@ cdef class SegmentList:
         cdef Segment s
         s = Segment( start, end )
         return self.overlap( s )
+
+    cpdef SegmentList getOverlappingSegmentsWithRange( self, Position start, Position end ):
+        '''return a list with segments overlapping range.'''
+        cdef Segment s
+        s = Segment( start, end )
+        return self.getOverlappingSegments( s )
 
     cpdef Position overlapWithSegments( self, SegmentList other ):
         '''return the number of nucleotides overlapping between this and *other*.'''
@@ -802,6 +846,111 @@ cdef class SegmentList:
                                         ) )
             histogram[i] += 1
         return histogram
+
+    cdef SegmentList truncate( self, Segment other ):
+        '''truncate Segment list to range given by segment.'''
+        
+        cdef int idx
+        cdef Segment * s
+        cdef Position start = other.start
+        cdef Position end = other.end
+
+        for idx from 0 <= idx < self.nsegments:
+            s = & self.segments[idx] 
+            if s.end < start: s.start = s.end = 0
+            elif s.start > end: s.start = s.end = 0
+            else:
+                if s.start < start: s.start = start
+                if s.end > end: s.end = end
+
+        self.normalize()
+        return self
+
+    cpdef SegmentList getFilledSegmentsFromStart( self, Position start, PositionDifference remainder ):
+        '''start filling segment from *start* until *remainder*
+           bases have been covered. 
+
+           This method wraps around at the ends if remainder can not
+           be filled. If *remainder* is larger than the segment list,
+           the segment list itself will be returned.
+
+           return a segment list 
+           '''
+
+        if remainder > self.sum():
+            return SegmentList( clone = self )
+
+        cdef SegmentList result = SegmentList()
+
+        cdef int idx
+        idx = self.getInsertionPoint( start, start + 1 )
+        cdef Position end
+        
+        # deal with border cases
+        # permit partial overlap
+        if idx == self.nsegments: idx -=1
+        elif idx == -1: idx=0
+
+        # add from start until complete
+        while remainder > 0:
+            if self.segments[idx].end < start: 
+                pass
+            else:
+                start = lmax( self.segments[idx].start, start )
+                end = lmin( self.segments[idx].end, start + remainder )
+                remainder -= end - start
+                result._add( Segment( start, end ) )
+                
+            idx += 1
+            if idx == self.nsegments:
+                idx = 0
+                start = self.segments[idx].start
+
+        result.normalize()
+        return result
+
+    cpdef SegmentList getFilledSegmentsFromEnd( self, Position end, PositionDifference remainder ):
+        '''start filling segment from *end* until *remainder*
+           bases have been covered. Fill in reverse order.
+
+           This method wraps around at the ends if remainder can not
+           be filled. If *remainder* is larger than the segment list,
+           the segment list itself will be returned.
+
+           return a segment list 
+           '''
+
+        if remainder > self.sum():
+            return SegmentList( clone = self )
+
+        cdef SegmentList result = SegmentList()
+
+        cdef int idx
+        idx = self.getInsertionPoint( end, end + 1 )
+        cdef Position start
+        
+        # deal with border cases
+        # permit partial overlap
+        if idx == self.nsegments: idx -=1
+        elif idx == -1: idx=0
+
+        # add from start until complete
+        while remainder > 0:
+            if self.segments[idx].start > end: 
+                pass
+            else:
+                end = lmin( self.segments[idx].end, end )
+                start = lmax( self.segments[idx].start, end - remainder )
+                remainder -= end - start
+                result._add( Segment( start, end ) )
+                
+            idx -= 1
+            if idx < 0:
+                idx = self.nsegments - 1
+                end = self.segments[idx].end
+
+        result.normalize()
+        return result
 
     cpdef SegmentList filter( self, SegmentList other ):
         '''remove all segments that are not in *other*
@@ -1849,9 +1998,11 @@ cdef class SamplerUniform(Sampler):
 cdef class SamplerShift(Sampler):
 
     cdef double radius
+    cdef int extension 
 
     def __init__( self, 
-                  radius = 2 ):
+                  radius = 2,
+                  extension = 0):
         '''
         Sample segments by shifting them by a random amount within *radius*
         in a random direction.
@@ -1860,9 +2011,14 @@ cdef class SamplerShift(Sampler):
         for randomly shifting a segment. It is expressed as a fraction 
         of the size of a segment.
         
+        In the sampling procedure, the start of the segment is shifted
+        within radius. It is then wrapped around any discontinuities in the workspace. If
+        the segment extends beyond the radius, the remaining nucleotides will
+        be wrapped around.
         '''
 
         self.radius = radius
+        self.extension = extension
 
     cpdef SegmentList sample( self,
                               SegmentList segments,
@@ -1873,10 +2029,13 @@ cdef class SamplerShift(Sampler):
         cdef Segment segment
         cdef SegmentList sample, working_segments
         cdef Position length, direction, extended_length
-        cdef Position x 
-        cdef PositionDifference shift, start, end
+        cdef Position x, midpoint
+        cdef PositionDifference shift, start, end, ws_start, ws_end, shift_area
+        cdef PositionDifference remainder, remainder_left, remainder_right
         cdef double half_radius = self.radius / 2
+        cdef PositionDifference half_extension = self.extension // 2
         cdef Segment * _working_segments
+        cdef SegmentList ws
 
         # collect all segments in workspace
         working_segments = SegmentList( clone = segments )
@@ -1892,11 +2051,41 @@ cdef class SamplerShift(Sampler):
         for x from 0 <= x < len(working_segments):
             segment = _working_segments[x]
             length = segment.end - segment.start
-            shift_area = <Position>floor(length * half_radius)
-            shift = numpy.random.randint( -shift_area, shift_area  )
-            start = lmax(0, segment.start + shift )
-            end = lmax( 0, segment.end + shift )
-            sample._add( Segment(start, end) )
+            midpoint = segment.start + length // 2
+            if self.extension:
+                shift_area = half_extension
+            else:
+                shift_area = <Position>floor(length * half_radius)
+
+            # get workspace around segment
+            ws_start = lmax(0, midpoint - shift_area)
+            ws_end = lmax(0, midpoint + shift_area) 
+            ws = workspace.getOverlappingSegmentsWithRange( ws_start, ws_end )
+            ws.truncate( Segment( ws_start, ws_end ) )
+
+            start = ws.getRandomPosition()
+            if numpy.random.randint( 0,2 ):
+                end = start + length
+            else:
+                end = start
+                start = end - length
+
+            # ws_start is now the intersection of workspace and sampling space
+            ws_start, ws_end = ws.min(), ws.max()
+
+            remainder = length
+            if start < ws_start:
+                # start might be further than length outside of range
+                remainder = lmin(ws_start - start, length)
+                sample.extend( ws.getFilledSegmentsFromStart( start, length - remainder ) )
+                sample.extend( ws.getFilledSegmentsFromEnd( ws_end, remainder ) )
+            elif end > ws_end:
+                # end might be further than length outside of range
+                remainder = lmin(end - ws_end, length)
+                sample.extend( ws.getFilledSegmentsFromEnd( end, length - remainder ) )
+                sample.extend( ws.getFilledSegmentsFromStart( ws_start, remainder ) )
+            else:
+                sample.extend( ws.getFilledSegmentsFromStart( start, length ) )
 
         sample.normalize()
         return sample

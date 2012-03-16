@@ -246,7 +246,8 @@ def fromSegments( options, args ):
             nbuckets = options.nbuckets )
     elif options.sampler == "shift":
         sampler = gat.SamplerShift( 
-            radius = options.shift_expansion )
+            radius = options.shift_expansion,
+            extension = options.shift_extension )
     elif options.sampler == "segments":
         sampler = gat.SamplerSegments()
         
@@ -458,6 +459,10 @@ def main( argv = None ):
                        help="restrict workspace to those segments that contain both track"
                        " and annotations [default=%default]" )
 
+    parser.add_option( "--shift-extension", dest="shift_extension", type="float",
+                      help="if the sampling method is 'shift', create a segment of size # anound the segment"
+                       " to determine the size of the region for shifthing [default=%default]."  )
+
     parser.add_option( "--shift-expansion", dest="shift_expansion", type="float",
                       help="if the sampling method is 'shift', multiply each segment by # "
                            " to determine the size of the region for shifthing [default=%default]."  )
@@ -493,6 +498,7 @@ def main( argv = None ):
         restrict_workspace = False,
         enable_split_tracks = False,
         shift_expansion = 2.0,
+        shift_extension = 0,
         )
 
     ## add common options (-h/--help, ...) and parse command line 

@@ -527,7 +527,7 @@ def run( segments,
             samples_outfile = None
 
         if workspace_generator.is_conditional:
-            sampler = ConditionalSampler( num_samples, 
+            outer_sampler = ConditionalSampler( num_samples, 
                                           samples, 
                                           samples_outfile, 
                                           outfile_sample_stats,
@@ -535,7 +535,7 @@ def run( segments,
                                           workspace_generator, 
                                           counter )
         else:
-            sampler = UnconditionalSampler( num_samples, 
+            outer_sampler = UnconditionalSampler( num_samples, 
                                             samples, 
                                             samples_outfile, 
                                             outfile_sample_stats,
@@ -544,7 +544,7 @@ def run( segments,
                                             counter )
 
 
-        counts_per_track = sampler.sample( track, counts, counter, segs, annotations, workspace )
+        counts_per_track = outer_sampler.sample( track, counts, counter, segs, annotations, workspace )
 
         if samples_outfile: samples_outfile.close()
 
