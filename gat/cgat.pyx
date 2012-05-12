@@ -1,7 +1,7 @@
 # cython: embedsignature=True
 # cython: profile=False
 
-import types, collections, re, os, math
+import types, collections, re, os, math, random
 import gat.IOTools as IOTools
 import gat.Experiment as E
 import gat.Stats
@@ -2088,6 +2088,71 @@ cdef class SamplerShift(Sampler):
                 sample.extend( ws.getFilledSegmentsFromStart( start, length ) )
 
         sample.normalize()
+        return sample
+
+########################################################
+########################################################
+########################################################
+cdef class SamplerPermutation(Sampler):
+
+    def __init__( self ):
+        '''
+        Sample segments by permuting interval gaps and order.
+        '''
+
+    cpdef SegmentList sample( self,
+                              SegmentList segments,
+                              SegmentList workspace ):
+        """return simulated fragments."""
+
+        assert workspace.is_normalized, "workspace is not normalized"
+
+        cdef Segment segment
+        cdef SegmentList working_segments
+        cdef PositionDifference work_start, work_end, start, end, last
+        cdef PositionDifference total_length, free_length
+        cdef Segment * _working_segments
+
+        cdef SegmentList sample = SegmentList()
+        
+        for work_start, work_end in workspace:
+
+            # collect all segments in this workspace segment
+            working_segments = segments.getOverlappingSegments( Segment( work_start, work_end) )
+            if len(working_segments) == 0: continue
+            _working_segments = working_segments.segments
+            
+            lengths = [ x[1] - x[0] for x in working_segments ]
+            total_length = sum( lengths )
+            
+            # modify workspace to deal with overhanging segments
+            # extend workspace
+            work_start = lmin( working_segments.min(), work_start )
+            work_end = lmax( working_segments.max(), work_end )
+            free_length = work_end - work_start - total_length
+            
+            # 1. permutate order of segments
+            random.shuffle( lengths )
+        
+            # 2. determine size of space between samples
+            points = []
+            for x in range(len(lengths) + 1 ):
+                points.append( random.randint( 0, free_length ) )
+            points.sort()
+
+            # 3. move segments to appropriate place
+            start = work_start
+            last = 0
+            for x in range(len(lengths)):
+                start += points[x] - last
+                sample._add( Segment(start, start + lengths[x]) )
+                start += lengths[x]
+                last = points[x]
+                
+            assert start + (points[-1] - last) <= work_end, "start=%i, points[-1]=%i, work_end=%i" % \
+                (start, points[-1] -last, work_end)
+        
+            sample.normalize()
         return sample
 
 ########################################################

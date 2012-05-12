@@ -250,6 +250,8 @@ def fromSegments( options, args ):
             extension = options.shift_extension )
     elif options.sampler == "segments":
         sampler = gat.SamplerSegments()
+    elif options.sampler == "permutation":
+        sampler = gat.SamplerPermutation()
         
     ##################################################
     ##################################################
@@ -366,7 +368,8 @@ def main( argv = None ):
     parser.add_option("-m", "--sampler", dest="sampler", type="choice",
                       choices=("annotator", 
                                "segments",
-                               "shift" ),
+                               "shift",
+                               "permutation" ),
                       help="quantity to test [default=%default]."  )
 
     parser.add_option("-n", "--num-samples", dest="num_samples", type="int", 
