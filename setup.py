@@ -10,8 +10,24 @@ Genomic annotation tool
 
 import os
 import sys
+import glob
+
+#from ez_setup import use_setuptools
+#use_setuptools()
+
+#from setuptools import Extension, setup
+
 from distutils.core import setup, Extension
 from Cython.Distutils import build_ext
+
+
+## note that for automatic cythoning, 
+## both pyrex and cython need to be installed.
+## see http://mail.python.org/pipermail/distutils-sig/2007-September/008204.html
+#try:
+#    from Cython.Distutils import build_ext
+#except:
+#    from setuptools.command.build_ext import build_ext
 
 name = "gat"
 version = "0.1.2"
@@ -29,14 +45,24 @@ Topic :: Scientific/Engineering
 Topic :: Scientific/Engineering :: Bioinformatics
 """
 
-cgat = Extension(
-    "cgat",                   # name of extension
-    [ "gat/cgat.pyx", "gat/gat_utils.c" ],
-      libraries=[ "z" ],
-      include_dirs=["/usr/lib64/python2.6/site-packages/numpy/core/include",],
-      language="c",
+segmentlist = Extension(
+    "csegmentlist",                   # name of extension
+    [ "segmentlist/csegmentlist.pyx", "utils/gat_utils.c" ],
+    libraries=[ "z", ],
+    library_dirs = [],
+    include_dirs=['./utils', "/usr/lib64/python2.6/site-packages/numpy/core/include", '.'],
+    language="c",
     )
 
+cgat = Extension(
+    "cgat",                   # name of extension
+    [ "engine/cgat.pyx", "utils/gat_utils.c" ],
+    libraries=[ "z" ],
+    library_dirs = [],
+    include_dirs=["./utils", "/usr/lib64/python2.6/site-packages/numpy/core/include", 
+                  'segmentlist', '.'],
+    language="c",
+    )
 
 metadata = {
     'name': name,
@@ -48,11 +74,14 @@ metadata = {
     'license': "GPL",
     'platforms': "ALL",
     'url': "",
-    'py_modules': [
-      "gat/__init__", "gat/Stats", "gat/IOTools", "gat/Experiment", "gat/Bed" ],
-    'ext_modules': [cgat],
-    'cmdclass' : {'build_ext': build_ext},
+    'py_modules': [ x[:-3] for x in glob.glob( 'gat/*.py') ],
+    'requires' : ['cython (>=0.12)'],
+    'ext_modules': [ segmentlist, cgat ],
+    'cmdclass' : {'build_ext': build_ext },
     'scripts' : ['scripts/gatrun.py' ],
+    # do not pack in order to permit linking to csamtools.so
+    'zip_safe' :False,
+
    }
 
 if __name__=='__main__':
