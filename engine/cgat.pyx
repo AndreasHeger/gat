@@ -1456,6 +1456,9 @@ cdef class AnnotatorResult(object):
     def getEmpiricalPValue( self, value ):
         return getTwoSidedPValue( self.stats, value )
 
+############################################################
+############################################################
+############################################################
 def getNormedPValue( value, r ):
     '''return pvalue assuming that samples are normal distributed.'''
     absval = abs(value - r.expected)
@@ -1465,9 +1468,15 @@ def getNormedPValue( value, r ):
         raise ImportError( "scipy required" )
     return pvalue
 
+############################################################
+############################################################
+############################################################
 def getEmpiricalPValue( value, r ):
     return r.getEmpiricalPValue( value )
 
+############################################################
+############################################################
+############################################################
 def updatePValues( annotator_results, method = "empirical" ):
     '''update pvalues.
 
@@ -1489,6 +1498,28 @@ def updatePValues( annotator_results, method = "empirical" ):
     for r in annotator_results:
         r.pvalue = methodf( r.observed, r )
 
+############################################################
+############################################################
+############################################################
+def getQValues( pvalues, method = "storey", **kwargs ):
+    '''return a list of qvalues for a list of pvalues.'''
+    
+    if method == "storey":
+        try:
+            fdr = gat.Stats.computeQValues( pvalues, 
+                                            vlambda = kwargs.get( "vlambda", numpy.arange( 0,0.95,0.05) ),
+                                            pi0_method = kwargs.get( "pi0_method", "smoother") )
+        except ValueError, msg:
+            E.warn( "qvalue computation failed: %s" % msg )
+            return [1.0] * len(pvalues)
+        
+        return fdr.qvalues
+    else:
+        return gat.Stats.adjustPValues( pvalues, method = method )
+
+############################################################
+############################################################
+############################################################
 def updateQValues( annotator_results, method = "storey", **kwargs ):
     '''update qvalues in annotator results
 
@@ -1499,17 +1530,8 @@ def updateQValues( annotator_results, method = "storey", **kwargs ):
 
     pvalues = [ r.pvalue for r in annotator_results ]
 
-    if method == "storey":
-        try:
-            fdr = gat.Stats.computeQValues( pvalues, 
-                                            vlambda = kwargs.get( "vlambda", numpy.arange( 0,0.95,0.05) ),
-                                            pi0_method = kwargs.get( "pi0_method", "smoother") )
-        except ValueError, msg:
-            E.warn( "qvalue computation failed: %s" % msg )
-            return
-
-        for r, qvalue in zip(annotator_results, fdr.qvalues):
-            r.qvalue = qvalue
+    for r, qvalue in zip( annotator_results, getQValues( pvalues, method, **kwargs )):
+        r.qvalue = qvalue
 
 ############################################################
 ############################################################

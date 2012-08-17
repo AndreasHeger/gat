@@ -78,7 +78,7 @@ metadata = {
     'requires' : ['cython (>=0.12)'],
     'ext_modules': [ segmentlist, cgat ],
     'cmdclass' : {'build_ext': build_ext },
-    'scripts' : ['scripts/gatrun.py' ],
+    'scripts' : ['scripts/gatrun.py', 'scripts/great.py' ],
     # do not pack in order to permit linking to csamtools.so
     'zip_safe' :False,
 

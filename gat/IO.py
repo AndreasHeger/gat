@@ -4,6 +4,37 @@ import gat
 import gat.IOTools as IOTools
 import gat.Experiment as E
 
+
+##################################################
+##################################################
+##################################################
+# process input
+def dumpStats( coll, section, options ):
+    if section in options.output_stats or \
+            "all" in options.output_stats or \
+            len( [ x for x in options.output_stats if re.search( x, section ) ] ) > 0:
+        coll.outputStats( E.openOutputFile( section ) )
+
+def dumpBed( coll, section, options  ):
+    if section in options.output_bed or \
+            "all" in options.output_bed or \
+            len( [ x for x in options.output_bed if re.search( x, section ) ] ) > 0:
+        coll.save( E.openOutputFile( section + ".bed" ) )
+
+def readSegmentList( label, filenames, options, enable_split_tracks = False ):
+    # read one or more segment files
+    results = gat.IntervalCollection( name = label )
+    E.info( "%s: reading tracks from %i files" % (label, len(filenames)))
+    results.load( filenames, split_tracks = enable_split_tracks )
+    E.info( "%s: read %i tracks from %i files" % (label, len(results), len(filenames)))
+    dumpStats( results, "stats_%s_raw" % label, options )
+    results.normalize()
+    dumpStats( results, "stats_%s_normed" % label, options )
+    return results
+
+def expandGlobs( infiles ):
+    return IOTools.flatten( [ glob.glob( x ) for x in infiles ] )
+
 def buildSegments( options ):
     '''load segments, annotations and workspace from parameters
     defined in *options*.
@@ -13,8 +44,6 @@ def buildSegments( options ):
     returns segments, annotations and workspace.
     '''
 
-    def expandGlobs( infiles ):
-        return IOTools.flatten( [ glob.glob( x ) for x in infiles ] )
         
     options.segment_files = expandGlobs( options.segment_files )
     options.annotation_files = expandGlobs( options.annotation_files )
@@ -30,35 +59,9 @@ def buildSegments( options ):
     if not options.workspace_files:
         raise ValueError("please specify at least one workspace file" )
 
-    ##################################################
-    ##################################################
-    ##################################################
-    # process input
-    def dumpStats( coll, section ):
-        if section in options.output_stats or \
-                "all" in options.output_stats or \
-                len( [ x for x in options.output_stats if re.search( x, section ) ] ) > 0:
-            coll.outputStats( E.openOutputFile( section ) )
-
-    def dumpBed( coll, section ):
-        if section in options.output_bed or \
-                "all" in options.output_bed or \
-                len( [ x for x in options.output_bed if re.search( x, section ) ] ) > 0:
-            coll.save( E.openOutputFile( section + ".bed" ) )
-
-    def readSegmentList( label, filenames, enable_split_tracks = False ):
-        # read one or more segment files
-        results = gat.IntervalCollection( name = label )
-        E.info( "%s: reading tracks from %i files" % (label, len(filenames)))
-        results.load( filenames, split_tracks = enable_split_tracks )
-        E.info( "%s: read %i tracks from %i files" % (label, len(results), len(filenames)))
-        dumpStats( results, "stats_%s_raw" % label )
-        results.normalize()
-        dumpStats( results, "stats_%s_normed" % label )
-        return results
 
     # read one or more segment files
-    segments = readSegmentList( "segments", options.segment_files)
+    segments = readSegmentList( "segments", options.segment_files, options)
     if options.ignore_segment_tracks:
         segments.merge( delete = True)
         E.info( "merged all segments into one track with %i segments" % len(segments))
@@ -66,14 +69,14 @@ def buildSegments( options ):
     if len(segments) > 1000: 
         raise ValueError( "too many (%i) segment files - use track definitions or --ignore-segment-tracks" % len(segments) )
     
-    annotations = readSegmentList( "annotations", options.annotation_files, options.enable_split_tracks )
-    workspaces = readSegmentList( "workspaces", options.workspace_files, options.enable_split_tracks )
+    annotations = readSegmentList( "annotations", options.annotation_files, options, options.enable_split_tracks )
+    workspaces = readSegmentList( "workspaces", options.workspace_files, options, options.enable_split_tracks )
 
     # intersect workspaces to build a single workspace
     E.info( "collapsing workspaces" )
-    dumpStats( workspaces, "stats_workspaces_input" )
+    dumpStats( workspaces, "stats_workspaces_input", options )
     workspaces.collapse()
-    dumpStats( workspaces, "stats_workspaces_collapsed" )
+    dumpStats( workspaces, "stats_workspaces_collapsed", options )
 
     # use merged workspace only, discard others
     workspaces.restrict("collapsed")
@@ -85,7 +88,7 @@ def buildSegments( options ):
         isochores = gat.IntervalCollection( name = "isochores" )
         E.info( "%s: reading isochores from %i files" % ("isochores", len(options.isochore_files)))
         isochores.load( options.isochore_files )
-        dumpStats( isochores, "stats_isochores_raw" )
+        dumpStats( isochores, "stats_isochores_raw", options )
 
         # merge isochores and check if consistent (fully normalized)
         isochores.sort()
@@ -107,11 +110,11 @@ def buildSegments( options ):
         
     return segments, annotations, workspaces, isochores
 
-def applyIsochores( segments, annotations, workspaces, isochores = None ):
+def applyIsochores( segments, annotations, workspaces, options, isochores = None ):
     '''apply isochores to segments, annotations.
 
-    Segments and annotations are filtered to keep only those overlapping
-    the workspace.
+    Segments and annotations are filtered and truncated to keep 
+    only those overlapping the workspace.
 
     If no isochores are given, isochores are not applied.
 
@@ -132,25 +135,27 @@ def applyIsochores( segments, annotations, workspaces, isochores = None ):
         if segments.sum() == 0:
             raise ValueError( "isochores and segments do not overlap" )
 
-        dumpStats( workspaces, "stats_workspaces_isochores" )
-        dumpStats( annotations, "stats_annotations_isochores" )
-        dumpStats( segments, "stats_segments_isochores" )
+        dumpStats( workspaces, "stats_workspaces_isochores", options )
+        dumpStats( annotations, "stats_annotations_isochores", options )
+        dumpStats( segments, "stats_segments_isochores", options )
     
-        dumpBed( workspaces, "workspaces_isochores" )
-        dumpBed( annotations, "annotations_isochores" )
-        dumpBed( segments, "segments_isochores" )
+        dumpBed( workspaces, "workspaces_isochores", options )
+        dumpBed( annotations, "annotations_isochores", options )
+        dumpBed( segments, "segments_isochores", options )
 
     else:
         # intersect workspace and segments/annotations
-        annotations.filter( workspaces["collapsed"] )
-        segments.filter( workspaces["collapsed"] )
+        # annotations and segments are truncated by workspace
+        annotations.intersect( workspaces["collapsed"] )
+        segments.intersect( workspaces["collapsed"] )
         
-        dumpStats( annotations, "stats_annotations_pruned" )
-        dumpStats( segments, "stats_segments_pruned" )
+        dumpStats( annotations, "stats_annotations_truncated", options )
+        dumpStats( segments, "stats_segments_truncated", options )
 
     workspace = workspaces["collapsed"] 
 
     if options.restrict_workspace:
+
         E.info( "restricting workspace" )
         # this is very cumbersome - refactor merge and collapse
         # to return an IntervalDictionary instead of adding it
@@ -163,7 +168,7 @@ def applyIsochores( segments, annotations, workspaces, isochores = None ):
                 workspace.filter( segments["merged"] )
                 del segments[merged]
 
-        dumpStats( workspaces, "stats_workspaces_restricted" )
+        dumpStats( workspaces, "stats_workspaces_restricted", options )
         
     # segments.dump( open("segments_dump.bed", "w" ) )
     # workspaces.dump( open("workspaces_dump.bed", "w" ) )
@@ -175,3 +180,68 @@ def applyIsochores( segments, annotations, workspaces, isochores = None ):
                                        segments[track] )
 
     return workspace
+
+
+def readDescriptions( options ):
+    '''read descriptions from tab separated file.'''
+
+    description_header, descriptions, description_width = [], {}, 0
+    if options.input_filename_descriptions:
+        E.info( "reading descriptions from %s" % options.input_filename_descriptions )
+
+        with IOTools.openFile( options.input_filename_descriptions ) as inf:
+            first = True
+            for line in inf:
+                if line.startswith("#"): continue
+                data = line[:-1].split( "\t" )
+
+                if description_width: assert len(data) -1 == description_width
+                else: description_width = len(data) - 1
+
+                if first: 
+                    description_header = data[1:]
+                    first = False
+                else:
+                    descriptions[data[0]] = data[1:]
+
+    return description_header, descriptions, description_width
+
+
+def outputResults( results, options, header, description_header, descriptions ):
+    '''compute FDR and output results.'''
+
+    pvalues = [ x.pvalue for x in results ]
+    qvalues = gat.getQValues( pvalues, 
+                              method = options.qvalue_method,
+                              vlambda = options.qvalue_lambda,
+                              pi0_method = options.qvalue_pi0_method )
+
+    output = [ x._replace( qvalue = qvalue ) for x, qvalue in zip(results, qvalues) ]
+
+    outfile = options.stdout
+
+    outfile.write("\t".join( list(header) + list(description_header) ) + "\n" )
+
+    if options.output_order == "track":
+        output.sort( key = lambda x: (x.track, x.annotation) )
+    elif options.output_order == "annotation":
+        output.sort( key = lambda x: (x.annotation, x.track) )
+    elif options.output_order == "fold":
+        output.sort( key = lambda x: x.fold )
+    elif options.output_order == "pvalue":
+        output.sort( key = lambda x: x.pvalue )
+    elif options.output_order == "qvalue":
+        output.sort( key = lambda x: x.qvalue )
+    else:
+        raise ValueError("unknown sort order %s" % options.output_order )
+
+    for result in output:
+        outfile.write( "\t".join( map(str, result) ) )
+        if descriptions:
+            try:
+                outfile.write( "\t" + "\t".join( descriptions[result.annotation] ) )
+            except KeyError:
+                outfile.write( "\t" + "\t".join( [""] * description_width ) )
+        outfile.write("\n")
+
+

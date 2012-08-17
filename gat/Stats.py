@@ -168,3 +168,74 @@ def percentile(N, percent, key=lambda x:x):
     d0 = key(N[int(f)]) * (c-k)
     d1 = key(N[int(c)]) * (k-f)
     return d0+d1
+
+###################################################################
+###################################################################
+###################################################################
+## adjust P-Value
+###################################################################
+def adjustPValues( pvalues, method = 'fdr', n = None ):
+    '''returns an array of adjusted pvalues
+    
+    Reimplementation of p.adjust in the R package.
+
+    p: numeric vector of p-values (possibly with 'NA's).  Any other
+    R is coerced by 'as.numeric'.
+
+    method: correction method. Valid values are:
+
+    n: number of comparisons, must be at least 'length(p)'; only set
+    this (to non-default) when you know what you are doing
+    
+    For more information, see the documentation of the
+    p.adjust method in R.
+    '''
+
+    if n == None: n = len(pvalues)
+
+    if method == "fdr": method = "BH"
+
+    # optional, remove NA values
+    p = numpy.array( pvalues, dtype = numpy.float )
+    lp = len(p)
+    
+    assert n <= lp
+
+    if n <= 1:
+        return p
+    if n == 2 and method == "hommel":
+        method = "hochberg"
+
+    if method == "bonferroni":
+        p0 = n * p 
+    elif method == "holm":
+        i = numpy.arange( lp )
+        o = numpy.argsort( p )
+        ro = numpy.argsort( o )
+        m = numpy.maximum.accumulate( (n - i) * p[o] )
+        p0 = m[ro]
+    elif method == "hommel":
+        raise NotImplementedError( "hommel method not fully implemented" )
+    elif method == "hochberg":
+        i = numpy.arange( 0, lp)[::-1] 
+        o = numpy.argsort(1-p)
+        ro = numpy.argsort( o )
+        m = numpy.minimum.accumulate( (n - i) * p[o] )
+        p0 = m[ro]
+    elif method == "BH":
+        i = numpy.arange( 1, lp + 1)[::-1] 
+        o = numpy.argsort(1-p)
+        ro = numpy.argsort( o )
+        m = numpy.minimum.accumulate( float(n) / i * p[o] )
+        p0 = m[ro]
+    elif method == "BY":
+        i = numpy.arange( 1, lp + 1)[::-1] 
+        o = numpy.argsort(1-p)
+        ro = numpy.argsort( o )
+        q = numpy.sum( 1.0 / numpy.arange( 1, n + 1) )
+        m = numpy.minimum.accumulate( q * float(n) / i * p[o])
+        p0 = m[ro]
+    elif method == "none":
+        p0 = p
+
+    return numpy.minimum( p0, numpy.ones( len(p0) ) )

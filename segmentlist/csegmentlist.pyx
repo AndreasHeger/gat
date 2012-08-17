@@ -662,8 +662,15 @@ cdef class SegmentList:
 
         return overlap
 
-    cpdef Position intersectionWithSegments( self, SegmentList other ):
-        '''return the number of segments overlapping with *other*.'''
+    cpdef Position intersectionWithSegments( self, 
+                                             SegmentList other, 
+                                             mode = "base" ):
+        '''return the number of segments overlapping with *other*.
+
+        *mode* can be either ``base`` or ``midpoint``. With ``base``, an overlap is 
+        recorded if a single ``base`` in self overlaps a interval in other. With ``midpoint``,
+        an overlap is counted only if the midpoint of an interval overlaps any interval in ``other``.
+        '''
 
         assert self.is_normalized, "intersection from non-normalized list"
         assert other.is_normalized, "intersection with non-normalized list"
@@ -676,6 +683,8 @@ cdef class SegmentList:
         last_this_idx = last_other_idx = -1
         cdef Segment this_segment = Segment(0,0)
         cdef Segment other_segment = Segment(0,0)
+
+        cdef int midpoint_overlap = mode == "midpoint"
 
         cdef Position noverlap
         noverlap = 0
@@ -698,7 +707,12 @@ cdef class SegmentList:
                 other_idx += 1
             else:
                 # deal with overlap
-                noverlap += 1
+                if midpoint_overlap:
+                    if other_segment.start <= this_segment.start + (this_segment.end - this_segment.start) // 2 \
+                            < other_segment.end:
+                        noverlap += 1
+                else:
+                    noverlap += 1
                 this_idx += 1
 
         return noverlap

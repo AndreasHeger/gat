@@ -248,7 +248,7 @@ def main( argv = None ):
                       help="type of pvalue reported [default=%default]."  )
 
     parser.add_option("-q", "--qvalue-method", dest="qvalue_method", type="choice",
-                      choices = ( "storey", ),
+                      choices = ( "storey", "BH", "bonferroni", "holm", "hommel", "hochberg", "BY", "none" ),
                       help="method to perform multiple testing correction by controlling the fdr [default=%default]."  )
 
     parser.add_option( "--qvalue-lambda", dest="qvalue_lambda", type="float",
@@ -369,25 +369,9 @@ def main( argv = None ):
     (options, args) = E.Start( parser, argv = argv, add_output_options = True )
 
     ##################################################
-    description_header, descriptions, description_width = [], {}, 0
-    if options.input_filename_descriptions:
-        E.info( "reading descriptions from %s" % options.input_filename_descriptions )
+    description_header, descriptions, description_width = IO.readDescriptions( options )
 
-        with IOTools.openFile( options.input_filename_descriptions ) as inf:
-            first = True
-            for line in inf:
-                if line.startswith("#"): continue
-                data = line[:-1].split( "\t" )
-
-                if description_width: assert len(data) -1 == description_width
-                else: description_width = len(data) - 1
-
-                if first: 
-                    description_header = data[1:]
-                    first = False
-                else:
-                    descriptions[data[0]] = data[1:]
-
+    ##################################################
     size_pos, size_segment = gat.csegmentlist.getSegmentSize()
     E.debug( "sizes: pos=%i segment=%i, max_coord=%i" % (size_pos, size_segment, 2**(8 * size_pos )))
 

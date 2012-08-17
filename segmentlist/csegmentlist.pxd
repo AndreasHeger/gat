@@ -133,7 +133,7 @@ cdef class SegmentList:
     cpdef Position overlapWithRange( self, Position start, Position end )
     cpdef SegmentList getOverlappingSegmentsWithRange( self, Position start, Position end )
     cpdef Position overlapWithSegments( self, SegmentList other )
-    cpdef Position intersectionWithSegments( self, SegmentList other )
+    cpdef Position intersectionWithSegments( self, SegmentList other, mode = * )
     cpdef SegmentList getFilledSegmentsFromStart( self, Position start, PositionDifference remainder )
     cpdef SegmentList getFilledSegmentsFromEnd( self, Position end, PositionDifference remainder )
     cpdef SegmentList filter( self, SegmentList other )
