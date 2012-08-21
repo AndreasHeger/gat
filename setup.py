@@ -30,7 +30,7 @@ from Cython.Distutils import build_ext
 #    from setuptools.command.build_ext import build_ext
 
 name = "gat"
-version = "0.1.2"
+version = "0.2"
 
 classifiers = """
 Development Status :: 5 - Production/Stable
@@ -67,7 +67,7 @@ cgat = Extension(
 metadata = {
     'name': name,
     'version': version,
-    'description': "GenomicEnrichmentTool", 
+    'description': "GenomicAssocationTester", 
     'long_description': __doc__,
     'author': "Andreas Heger",
     'author_email': "andreas.heger@gmail.com",
@@ -79,7 +79,6 @@ metadata = {
     'ext_modules': [ segmentlist, cgat ],
     'cmdclass' : {'build_ext': build_ext },
     'scripts' : ['scripts/gatrun.py', 'scripts/great.py' ],
-    # do not pack in order to permit linking to csamtools.so
     'zip_safe' :False,
 
    }
