@@ -86,7 +86,8 @@ def fromSegments( options, args ):
 
     E.info( "intervals loaded in %i seconds" % (time.time() - tstart) )
 
-    workspace = workspaces['collapsed']
+    # filter segments by workspace
+    workspace = IO.applyIsochores( segments, annotations, workspaces, options, isochores )
 
     ##################################################
     ##################################################
@@ -323,6 +324,9 @@ def main( argv = None ):
                        help="restrict workspace to those segments that contain both track"
                        " and annotations [default=%default]" )
 
+    parser.add_option( "--truncate-workspace-to-annotations", dest="truncate_workspace_to_annotations", action="store_true", 
+                       help="truncate workspace with annotations [default=%default]" )
+
     parser.add_option( "--shift-extension", dest="shift_extension", type="float",
                       help="if the sampling method is 'shift', create a segment of size # anound the segment"
                        " to determine the size of the region for shifthing [default=%default]."  )
@@ -350,7 +354,7 @@ def main( argv = None ):
         pvalue_method = "empirical",
         output_plots_pattern = None,
         output_samples_pattern = None,
-        qvalue_method = "storey",
+        qvalue_method = "BH",
         qvalue_lambda = None,
         qvalue_pi0_method = "smoother",
         sampler = "annotator",
@@ -360,6 +364,7 @@ def main( argv = None ):
         conditional_extension = None,
         conditional_expansion = None,
         restrict_workspace = False,
+        truncate_workspace_to_annotations = False,
         enable_split_tracks = False,
         shift_expansion = 2.0,
         shift_extension = 0,

@@ -20,7 +20,6 @@ import glob
 from distutils.core import setup, Extension
 from Cython.Distutils import build_ext
 
-
 ## note that for automatic cythoning, 
 ## both pyrex and cython need to be installed.
 ## see http://mail.python.org/pipermail/distutils-sig/2007-September/008204.html
@@ -30,10 +29,10 @@ from Cython.Distutils import build_ext
 #    from setuptools.command.build_ext import build_ext
 
 name = "gat"
-version = "0.2"
+version = "0.1"
 
 classifiers = """
-Development Status :: 5 - Production/Stable
+Development Status :: 4 - Beta
 Operating System :: MacOS :: MacOS X
 Operating System :: Microsoft :: Windows :: Windows NT/2000
 Operating System :: OS Independent
@@ -78,7 +77,9 @@ metadata = {
     'requires' : ['cython (>=0.12)'],
     'ext_modules': [ segmentlist, cgat ],
     'cmdclass' : {'build_ext': build_ext },
-    'scripts' : ['scripts/gatrun.py', 'scripts/great.py' ],
+    'scripts' : ['scripts/gat-run.py', 
+                 'scripts/gat-great.py',
+                 'scripts/gat-plot.py' ],
     'zip_safe' :False,
 
    }

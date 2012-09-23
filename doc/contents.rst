@@ -7,18 +7,26 @@ Welcome to the home page of the Genomic Association Tester (*GAT*).
 Overview
 ========
 
-The genomic association tester (GAT) tests for association
-between sets of genomic intervals.
+A common question in genomic analysis is whether two sets of genomic
+intervals overlap significantly. This question arises, for example, in
+the interpretation of ChIP-Seq or RNA-Seq data. Because of complex
+genome organization, its answer is non-trivial.
 
-GAT tests if two sets of genomic intervals are associated more than expected by chance.
-Assocation typically means nucleotide overlap, but other 
-measures such as the distance between elements or the number of
-overlapping segments can be used. 
+The Genomic Association Tester (GAT) is a tool for computing
+the significance of overlap between multiple sets of genomic
+intervals. GAT estimates significance based on simulation and
+can take into account genome organization like isochores and correct for
+regions of low mapability.
 
-The tests are performed by simulation within a genomic context. 
-The simulation part takes care of segment length distribution. 
-The genomic context takes into account chromosomal location and optionally 
-isochores.
+GAT accepts as input standard genomic file formats and can be used in
+large scale analyses, comparing the association of multiple sets of
+genomic intervals simultaneously. Multiple testing is controlled using
+the false discovery rate.
+
+In this manual, the :ref:`Introduction` covers the basic concepts of
+GAT. In order to get an idea of typical use cases, see the
+:ref:`Tutorials` section. The :ref:`Usage` section contains
+a complete usage reference.
 
 Contents
 ========
@@ -26,13 +34,22 @@ Contents
 .. toctree::
    :maxdepth: 2
 
-   tutorial.rst
+   introduction.rst   
+   tutorials.rst
    usage.rst
+   glossary.rst
+
+Implementation notes
+====================
+
+.. toctree::
+   :maxdepth: 2
+
+   background.rst   
    examples.rst
-   background.rst
    testing.rst
    implemenation.rst
-   glossary.rst
+   tutorial.rst
 
 Indices and tables
 ==================

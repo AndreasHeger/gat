@@ -317,7 +317,12 @@ def main( argv ):
 
             results.append( r )
 
-    IO.outputResults( results, options, GENESET_RESULT._fields, description_header, descriptions )
+    IO.outputResults( results, 
+                      options, 
+                      GENESET_RESULT._fields, 
+                      description_header, 
+                      description_width,
+                      descriptions )
 
     E.Stop()
 

@@ -107,7 +107,7 @@ def buildSegments( options ):
 
     else:
         isochores = None
-        
+    
     return segments, annotations, workspaces, isochores
 
 def applyIsochores( segments, annotations, workspaces, options, isochores = None ):
@@ -170,14 +170,25 @@ def applyIsochores( segments, annotations, workspaces, options, isochores = None
 
         dumpStats( workspaces, "stats_workspaces_restricted", options )
         
+    if options.truncate_workspace_to_annotations:
+
+        E.info( "truncating workspace to annotations" )
+        annotations.merge()
+        workspace.intersect( annotations["merged"] )
+        del annotations["merged"]
+
+        dumpStats( workspaces, "stats_workspaces_truncated", options )
+
     # segments.dump( open("segments_dump.bed", "w" ) )
     # workspaces.dump( open("workspaces_dump.bed", "w" ) )
 
     # output overlap stats
     # output segment densities per workspace
-    for track in segments.tracks:
-        workspaces.outputOverlapStats( E.openOutputFile( "overlap_%s" % track), 
-                                       segments[track] )
+    if "overlap" in options.output_stats or \
+            "all" in options.output_stats:
+        for track in segments.tracks:
+            workspaces.outputOverlapStats( E.openOutputFile( "overlap_%s" % track), 
+                                           segments[track] )
 
     return workspace
 
@@ -195,7 +206,8 @@ def readDescriptions( options ):
                 if line.startswith("#"): continue
                 data = line[:-1].split( "\t" )
 
-                if description_width: assert len(data) -1 == description_width
+                if description_width: 
+                    assert len(data) -1 == description_width, "inconsistent number of descriptions in %s" % options.input_filename_descriptions
                 else: description_width = len(data) - 1
 
                 if first: 
@@ -203,13 +215,18 @@ def readDescriptions( options ):
                     first = False
                 else:
                     descriptions[data[0]] = data[1:]
+        assert len(description_header) == description_width, "number of descriptions (%i) inconsistent with header (%s) in %s" % \
+            ( description_width, len(description_header), options.input_filename_descriptions)
 
     return description_header, descriptions, description_width
 
 
-def outputResults( results, options, header, description_header, descriptions ):
+def outputResults( results, options, header, 
+                   description_header, 
+                   description_width,
+                   descriptions ):
     '''compute FDR and output results.'''
-
+    
     pvalues = [ x.pvalue for x in results ]
     qvalues = gat.getQValues( pvalues, 
                               method = options.qvalue_method,

@@ -141,6 +141,10 @@ class UnconditionalSampler:
                      (workspace.counts(),
                       workspace.sum() ) )
 
+        if workspace.sum() == 0:
+            E.warn( "empty workspace - no computation performed" )
+            return counts_per_track
+
         # compute samples unconditionally
         for x in xrange( self.num_samples ):
             # use textual sample ids to avoid parsing from dumped samples
@@ -212,6 +216,10 @@ class ConditionalSampler( UnconditionalSampler ):
         E.info( "workspace without conditioning: %i segments, %i nucleotides" % \
                      (workspace.counts(),
                       workspace.sum() ) )
+
+        if workspace.sum() == 0:
+            E.warn( "empty workspace - no computation performed" )
+            return counts_per_track
 
         # compute samples conditionally
         for annoid, annotation in enumerate(annotations.tracks):
@@ -295,6 +303,10 @@ def sampleUnconditionally( track, counts,
     E.info( "workspace after conditioning: %i segments, %i nucleotides" % \
                  (workspace.counts(),
                   workspace.sum() ) )
+
+    if workspace.sum() == 0:
+        E.warn( "empty workspace - no computation performed" )
+        return counts_per_track
 
     # compute samples unconditionally
     for x in xrange( num_samples ):

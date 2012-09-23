@@ -2040,6 +2040,14 @@ class IntervalDictionary( object ):
             else:
                 del self.intervals[contig]
 
+    def truncate( self, other ):
+        '''truncate intervals with intervals in other.'''
+        for contig, segmentlist in self.intervals.items():
+            if contig in other:
+                segmentlist.truncate( other[contig] )
+            else:
+                del self.intervals[contig]
+
     def extend( self, extension ):
         '''extend each interval by a certain amount.'''
         for contig, segmentlist in self.intervals.items():

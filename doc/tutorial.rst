@@ -53,7 +53,7 @@ Running gat
 
 To run gat, execute::
 
-   gatrun.py --segments=cpg.bed.gz --annotations="H3*.bed.gz" --workspace=genome.bed.gz --num-samples=1000 > gat1.tsv
+   gat-run.py --segments=cpg.bed.gz --annotations="H3*.bed.gz" --workspace=genome.bed.gz --num-samples=1000 > gat1.tsv
 
 The above command computes the overlap of cpg islands with any of the tracks in the files :file:`H3*.bed.gz`
 within the full genome workspace. Logging information and the final results are written to :file:`stdout`, which 
@@ -100,7 +100,7 @@ analysis, i.e., overlapping segments within a workspace will be merged.
 
 We can re-run the previous analysis by adding the additional workspace at the command line:
 
-   gatrun.py --segments=cpg.bed.gz --annotations="H3*.bed.gz" --workspace=genome.bed.gz --workspace=genes.bed.gz --num-samples=1000 > gat2.tsv
+   gat-run.py --segments=cpg.bed.gz --annotations="H3*.bed.gz" --workspace=genome.bed.gz --workspace=genes.bed.gz --num-samples=1000 > gat2.tsv
 
 Supplied with several workspaces, GAT will first normalize each workspace individually. It will then intersect all workspaces and restrict 
 analysis to only those genomic segments, that are the intersection
@@ -127,7 +127,7 @@ with promotor regions for our gene set::
 
 Then, we re-run gat by using the promotor workspace instead of the gene workspace::
 
-   gatrun.py --segments=cpg.bed.gz --annotations="H3*.bed.gz" --workspace=genome.bed.gz --workspace=promotors.bed.gz --log=log --num-samples=1000 > gat3.tsv
+   gat-run.py --segments=cpg.bed.gz --annotations="H3*.bed.gz" --workspace=genome.bed.gz --workspace=promotors.bed.gz --log=log --num-samples=1000 > gat3.tsv
 
 +-----+----------+--------+------------+------------+------------+----------+------+----------+----------+
 |track|annotation|observed|expected    |CI95low     |CI95high    |stddev    |fold  |pvalue    |qvalue    |

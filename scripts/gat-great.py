@@ -82,9 +82,9 @@ GREAT_RESULT = collections.namedtuple( "GREAT",
                                        ("track",
                                         "annotation",
                                         "isochore",
-                                        "nsegments_in_workspace",
+                                        "observed", # nsegments_overlapping_annotations
                                         "expected",
-                                        "nsegments_overlapping_annotation",
+                                        "nsegments_in_workspace",
                                         "nannotations_in_workspace",
                                         "nannotations_overlapping_segments",
                                         "basecoverage_annotation",
@@ -193,13 +193,14 @@ def main( argv ):
 
     tstart = time.time()
 
+    ############################################
     segments, annotations, workspaces, isochores = IO.buildSegments( options )
-
     E.info( "intervals loaded in %i seconds" % (time.time() - tstart) )
 
     # filter segments by workspace
     workspace = IO.applyIsochores( segments, annotations, workspaces, options, isochores )
 
+    ############################################
     description_header, descriptions, description_width = IO.readDescriptions( options )
 
     ############################################
@@ -230,11 +231,11 @@ def main( argv ):
                      basecoverage_workspace):
         return GREAT_RESULT._make( (
                 segment, annotation, isochore, 
+                0, # observed
+                0, # expected
                 nsegments_in_workspace,
-                0,
-                0,
-                0,
-                0,
+                0, # nannotations_in_workspace
+                0, # nannotations_overlapping_segments
                 basecoverage_annotation,
                 basecoverage_workspace,
                 0.0,
@@ -333,9 +334,9 @@ def main( argv ):
                 #                                   nsegments_in_workspace )
                 r = GREAT_RESULT._make( (
                             segment, annotation, isochore,
-                            nsegments_in_workspace,
-                            expected,
                             nsegments_overlapping_annotation,
+                            expected,
+                            nsegments_in_workspace,
                             nannotations_in_workspace,
                             nannotations_overlapping_segments,
                             basecoverage_annotation,
@@ -359,7 +360,7 @@ def main( argv ):
         data = pair[1]
             
         nsegments_in_workspace = sum( [x.nsegments_in_workspace for x in data ] )
-        nsegments_overlapping_annotation = sum( [x.nsegments_overlapping_annotation for x in data ] )
+        nsegments_overlapping_annotation = sum( [x.observed for x in data ] )
         nannotations_in_workspace = sum( [x.nannotations_in_workspace for x in data ] )
         nannotations_overlapping_segments = sum( [x.nannotations_overlapping_segments for x in data ] )
 
@@ -381,9 +382,9 @@ def main( argv ):
 
         r = GREAT_RESULT._make( (
                 segment, annotation, "all",
-                nsegments_in_workspace,
-                expected,
                 nsegments_overlapping_annotation,
+                expected,
+                nsegments_in_workspace,
                 nannotations_in_workspace,
                 nannotations_overlapping_segments,
                 basecoverage_annotation,
@@ -395,7 +396,12 @@ def main( argv ):
 
         results.append( r )
 
-    IO.outputResults( results, options, GREAT_RESULT._fields, description_header, descriptions )
+    IO.outputResults( results, 
+                      options, 
+                      GREAT_RESULT._fields, 
+                      description_header, 
+                      description_width,
+                      descriptions )
 
     E.Stop()
 
