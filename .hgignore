@@ -3,3 +3,4 @@ syntax: regexp
 ^annotator/
 ^build/
 ^paper/
+^tutorial/
