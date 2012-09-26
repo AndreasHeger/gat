@@ -11,6 +11,8 @@ PAPEROPT_a4     = -D latex_paper_size=a4
 PAPEROPT_letter = -D latex_paper_size=letter
 ALLSPHINXOPTS   = -d _build/doctrees $(PAPEROPT_$(PAPER)) $(SPHINXOPTS) .
 
+PUBLISH_DIR=/ifs/home/andreas/public_html/documentation/gat
+
 .PHONY: help clean html dirhtml pickle json htmlhelp qthelp latex changes linkcheck doctest
 
 help:
@@ -88,5 +90,5 @@ doctest:
 	      "results in _build/doctest/output.txt."
 
 publish:
-	rm -rf /home/andreas/public_html/documentation/gat
-	cp -r _build/html/ /home/andreas/public_html/documentation/gat
+	rm -rf $(PUBLISH_DIR) 
+	cp -r _build/html/ $(PUBLISH_DIR) 

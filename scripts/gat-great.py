@@ -186,6 +186,7 @@ def main( argv ):
         shift_expansion = 2.0,
         shift_extension = 0,
         overlap_mode = "midpoint",
+        truncate_workspace_to_annotations = False,
         )
 
     ## add common options (-h/--help, ...) and parse command line 
