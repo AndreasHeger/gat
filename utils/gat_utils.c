@@ -2,7 +2,6 @@
 #include <zlib.h>
 #include "gat_utils.h"
 
-
 // return insertion_point, after numpy-1.0.4/numpy/core/src/multiarraymodule.c
 // local_search_left
 // can be replaced by bsearch?

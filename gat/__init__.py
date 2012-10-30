@@ -55,8 +55,23 @@ class DummyAnnotatorResult:
         data = line[:-1].split("\t")
         x.track, x.annotation = data[:2]
         x.observed, x.expected, x.lower95, x.upper95, x.stddev, x.fold, x.pvalue, x.qvalue = \
-            map(float, data[2:] )
-        
+            map(float, data[2:10] )
+        if len(data) > 10:
+            (track_nsegments,
+            track_size,
+            track_density,
+            annotation_nsegments,
+            annotation_size,
+            annotation_density,
+            overlap_nsegments,
+            overlap_size,
+            overlap_density,
+            percent_overlap_nsegments_track,
+            percent_overlap_size_track,
+            percent_overlap_nsegments_annotation,
+            percent_overlap_size_annotation) = map(float, data[10:23])
+            
+
         return x
 
     def __str__(self):
@@ -467,6 +482,12 @@ def run( segments,
 
     fdr
        method to compute qvalues
+
+    pseudo_count
+       pseudo_count to add to observed and expected values
+
+    reference
+       data with reference observed and expected values.
     '''
 
     ## get arguments
@@ -474,6 +495,8 @@ def run( segments,
     cache = kwargs.get( "cache", None )
     output_counts = kwargs.get( "output_counts", None )
     sample_files = kwargs.get( "sample_files", [] )
+    pseudo_count = kwargs.get( "pseudo_count", 1.0 )
+    reference = kwargs.get( "reference", None )
     output_samples_pattern = kwargs.get( "output_samples_pattern", None )
     outfile_sample_stats = kwargs.get( "outfile_sample_stats", None )
 
@@ -587,6 +610,13 @@ def run( segments,
                                                                          annotations[annotation], 
                                                                          workspace )
 
+            # if reference is given, p-value will indicate difference
+            # The test that track and annotation are present is done elsewhere
+            if reference:
+                ref = reference[track][annotation]
+            else:
+                ref = None
+                
             annotator_results[track][annotation] = AnnotatorResult( \
                 track = track,
                 annotation = annotation,
@@ -594,7 +624,9 @@ def run( segments,
                 samples = sampled_counts[track][annotation],
                 track_segments = temp_segs,
                 annotation_segments = temp_annos,
-                workspace = temp_workspace)
+                workspace = temp_workspace,
+                reference = ref,
+                pseudo_count = pseudo_count )
 
     ##################################################
     ##################################################
@@ -604,18 +636,14 @@ def run( segments,
     if output_counts:
         E.info( "writing counts to %s" % output_counts )
         output = list( iterator_results( annotator_results ) )
-        outfile = open( output_counts, "w")
-        outfile.write("sampleid" )
+        outfile = IOTools.openFile( output_counts, "w")
+        outfile.write("track\tannotation\tobserved\tcounts\n" )
+        
         for o in output:
-            outfile.write("\t%s-%s" % (o.track, o.annotation) )
-        outfile.write("\n")
-
-        outfile.write("observed\t%s\n" % "\t".join(map(str, [o.observed for o in output ] ) ) )
-
-        for x in xrange(num_samples):
-            outfile.write( "%i\t%s\n" % \
-                               (x, 
-                                "\t".join(map(str, [o.getSample(x) for o in output ] ) ) ) )
+            outfile.write( "%s\t%s\t%i\t%s\n" % \
+                               (o.track, o.annotation,
+                                o.observed,
+                                ",".join(["%i" % x for x in o.samples]) ) )
 
     return annotator_results
 

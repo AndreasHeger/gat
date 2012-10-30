@@ -162,11 +162,13 @@ cdef class SegmentList:
         new_size = other.nsegments + self.nsegments
         if self.allocated == 0:
             self.segments = <Segment*>malloc( new_size * sizeof( Segment ) )
-            assert self.segments != NULL
+            if not self.segments: 
+                raise MemoryError( "out of memory when allocation %i bytes" % sizeof( new_size * sizeof( Segment ) ))
             self.allocated = new_size
         elif new_size >= self.allocated:
             self.segments = <Segment*>realloc( <void *>self.segments, new_size * sizeof( Segment ) )
-            assert self.segments != NULL
+            if not self.segments: 
+                raise MemoryError( "out of memory when allocation %i bytes" % sizeof( new_size * sizeof( Segment ) ))
             self.allocated = new_size
         memcpy( &self.segments[self.nsegments],
                  other.segments,
@@ -184,12 +186,13 @@ cdef class SegmentList:
 
         if self.allocated == 0:
             self.segments = <Segment*>malloc( self.chunk_size * sizeof( Segment ) )
+            if not self.segments: raise MemoryError( "out of memory when allocation %i bytes" % sizeof( self.chunk_size * sizeof( Segment ) ))
             self.allocated = self.chunk_size
         elif self.nsegments == self.allocated:
             self.allocated *= 2
             self.segments = <Segment*>realloc( self.segments,
                                                self.allocated * sizeof( Segment ) )
-        assert self.segments != NULL, "memory error"
+            if not self.segments: raise MemoryError( "out of memory when allocation %i bytes" % sizeof( self.allocated * sizeof( Segment ) ))
 
         self.segments[self.nsegments] = segment
         self.nsegments += 1
@@ -264,10 +267,14 @@ cdef class SegmentList:
         
         if self.allocated == 0:
             self.segments = <Segment*>malloc( nsegments * sizeof( Segment ) )
+            if not self.segments: 
+                raise MemoryError( "out of memory when allocation %i bytes" % sizeof( nsegments * sizeof( Segment ) ))
         else:
             self.segments = <Segment*>realloc( self.segments,
                                                nsegments * sizeof( Segment ) )
-        assert self.segments != NULL
+            if not self.segments: 
+                raise MemoryError( "out of memory when allocation %i bytes" % sizeof( self.nsegments * sizeof( Segment ) ))
+
         self.allocated = nsegments
 
     cdef insert( self, int idx, Segment seg ):
@@ -858,6 +865,8 @@ cdef class SegmentList:
         cdef size_t allocated
         # create new list
         new_segments =<Segment*>malloc( self.nsegments * sizeof( Segment ) )
+        if not new_segments: 
+            raise MemoryError( "out of memory when allocation %i bytes" % sizeof( self.nsegments * sizeof( Segment ) ))
 
         cdef int this_idx, other_idx, working_idx, last_this_idx, last_other_idx
         working_idx = this_idx = other_idx = 0
@@ -931,7 +940,10 @@ cdef class SegmentList:
         cdef size_t allocated
         # create new list with 10% overhead
         allocated = int(lmax( self.nsegments, other.nsegments) * 1.1)
+
         new_segments =<Segment*>malloc( allocated * sizeof( Segment ) )
+        if not new_segments: 
+            raise MemoryError( "out of memory when allocation %i bytes" % sizeof( allocated * sizeof( Segment ) ))
 
         cdef int this_idx, other_idx, working_idx, last_this_idx, last_other_idx
         working_idx = this_idx = other_idx = 0

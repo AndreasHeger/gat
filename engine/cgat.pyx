@@ -153,6 +153,7 @@ cdef class SegmentListSamplerWithEdgeEffects:
         self.segment_list = segment_list
         self.nsegments = len(segment_list)
         self.cdf = <Position*>malloc( sizeof(Position) * self.nsegments )
+        if not self.cdf: raise MemoryError( "out of memory when allocation %i bytes" % sizeof( sizeof(Position) * self.nsegments ))
         self.total_size = 0
         for i from 0 <= i < len(segment_list):
             self.total_size += segment_length( segment_list.segments[i] )
@@ -233,6 +234,7 @@ cdef class SegmentListSampler:
         self.segment_list = segment_list
         self.nsegments = len(segment_list)
         self.cdf = <Position*>malloc( sizeof(Position) * self.nsegments )
+        if not self.cdf: raise MemoryError( "out of memory when allocation %i bytes" % sizeof( sizeof(Position) * self.nsegments ))
         self.total_size = 0
         for i from 0 <= i < len(segment_list):
             self.total_size += segment_length( segment_list.segments[i] )
@@ -345,6 +347,7 @@ cdef class HistogramSampler:
         assert self.nbuckets > 0, "sampling from empty histogram"
 
         self.cdf = <Position*>malloc( sizeof(Position) * self.nbuckets )
+        if not self.cdf: raise MemoryError( "out of memory when allocation %i bytes" % sizeof( sizeof(Position) * self.nbuckets ))
         self.total_size = 0
         for i from 0 <= i < self.nbuckets:
             self.total_size += histogram[i]
@@ -1151,6 +1154,7 @@ cdef double getTwoSidedPValue( EnrichmentStatistics * stats,
     cdef long idx, l
     cdef double min_pval, pval, rval
     
+    # find index of value correspending to observed value in samples
     idx = searchargsorted( stats.samples,
                            stats.sorted2sample,
                            stats.nsamples,
@@ -1234,7 +1238,9 @@ cdef void compressSampleIndex( EnrichmentStatistics * stats ):
         stats.sample2sorted[stats.sorted2sample[x]] = refidx
         x += 1
 
-cdef EnrichmentStatistics * makeEnrichmentStatistics( observed, samples ):
+cdef EnrichmentStatistics * makeEnrichmentStatistics( observed, samples,
+                                                      reference,
+                                                      pseudo_count ):
 
     cdef EnrichmentStatistics * stats 
     cdef Position offset, i, l
@@ -1244,6 +1250,8 @@ cdef EnrichmentStatistics * makeEnrichmentStatistics( observed, samples ):
         raise ValueError( "not enough samples - no stats in makeEnrichmentStatistics" )
 
     stats = <EnrichmentStatistics*>malloc( sizeof(EnrichmentStatistics) )
+    if not stats: raise MemoryError( "out of memory when allocation %i bytes" % sizeof( EnrichmentStatistics) )
+
     stats.samples = <double*>calloc( l, sizeof(double))
     stats.sorted2sample = <int*>calloc( l, sizeof(int))
     stats.sample2sorted = <int*>calloc( l, sizeof(int))
@@ -1264,15 +1272,24 @@ cdef EnrichmentStatistics * makeEnrichmentStatistics( observed, samples ):
     # print "after"
     # for i from 0 <= i < l: 
     #     print i, stats.samples[i], stats.sorted2sample[i], stats.sample2sorted[i]
-
     stats.expected = numpy.mean(samples)
+
+    if reference != None:
+        # test against reference
+        # move expected by fold change in the reference set
+        stats.expected *= reference.fold
+
+    # optionally add pseudo_counts
     if stats.expected != 0:
-        stats.fold = stats.observed / stats.expected
+        stats.fold = (stats.observed + pseudo_count) / (stats.expected + pseudo_count)
     else:
         stats.fold = 1.0
 
     stats.stddev = numpy.std(samples)
 
+    # compute 95% confidence intervals 
+    # The confidence interval are the values that lie
+    # at the 5% and 95% percentile of the samples.
     offset = int(0.05 * l)
     
     if offset > 0: 
@@ -1282,7 +1299,24 @@ cdef EnrichmentStatistics * makeEnrichmentStatistics( observed, samples ):
         stats.lower95 = stats.samples[stats.sorted2sample[ 0 ]]
         stats.upper95 = stats.samples[stats.sorted2sample[ l-1 ]]
     
-    stats.pvalue = getTwoSidedPValue( stats, stats.observed )
+    # adjust confidence intervals for reference fold change
+    # NB: I am not sure that this is proper
+    if reference == None:
+        stats.pvalue = getTwoSidedPValue( stats, stats.observed )
+    else:
+        # compute adjusted pvalue. Conceptually, move the distribution to center around 
+        # expected instead of the mean. Instead of moving the distribution, simply changing 
+        # the observed value is equivalent
+        if reference.fold > 0:
+            stats.pvalue = getTwoSidedPValue( stats, stats.observed / reference.fold )
+        else:
+            raise ValueError( "0 fold change not applicable" )
+
+        # this is analogous to shifting the excepted value.
+        # Is this correct?
+        stats.lower95 *= reference.fold
+        stats.upper95 *= reference.fold
+
     stats.qvalue = 1.0
 
     return stats
@@ -1346,11 +1380,16 @@ cdef class AnnotatorResult(object):
                   samples,
                   track_segments,
                   annotation_segments,
-                  workspace ):
+                  workspace,
+                  reference = None,
+                  pseudo_count = 1.0 ):
 
         self.track = track
         self.annotation = annotation
-        self.stats = makeEnrichmentStatistics( observed, samples )
+        self.stats = makeEnrichmentStatistics( observed, 
+                                               samples,
+                                               reference,
+                                               pseudo_count )
 
         self.track_nsegments = track_segments.counts()
         self.track_size = track_segments.sum()
@@ -1365,7 +1404,7 @@ cdef class AnnotatorResult(object):
         self.overlap_size = overlap.sum()
 
         self.workspace_size = workspace.sum()
-        
+
     def __str__(self):
 
         # if self.stats.nsamples < 10**6:
@@ -1377,6 +1416,14 @@ cdef class AnnotatorResult(object):
             logfold = self.format_fold % math.log( self.stats.fold, 2 )
         else:
             logfold = "-inf"
+
+        def _toFold( a, b ):
+            if b > 0: return self.format_fold % (100.0 * float(a) / b )
+            else: return "na"
+
+        def _toDensity( a, b ):
+            if b > 0: return self.format_density % (100.0 * float(a) / b )
+            else: return "na"
 
         return "\t".join( (self.track,
                            self.annotation,
@@ -1391,17 +1438,17 @@ cdef class AnnotatorResult(object):
                            self.format_pvalue % self.stats.qvalue,
                            self.format_counts % self.track_nsegments,
                            self.format_counts % self.track_size,
-                           self.format_density % ( float(self.track_size) / self.workspace_size),
+                           _toDensity( self.track_size, self.workspace_size),
                            self.format_counts % self.annotation_nsegments,
                            self.format_counts % self.annotation_size,
-                           self.format_density % ( float(self.annotation_size) / self.workspace_size),
+                           _toDensity( self.annotation_size, self.workspace_size),
                            self.format_counts % self.overlap_nsegments,
                            self.format_counts % self.overlap_size,
-                           self.format_density % ( float(self.overlap_size) / self.workspace_size),
-                           self.format_fold % ( 100.0 * float( self.overlap_nsegments) / self.track_nsegments ),
-                           self.format_fold % ( 100.0 * float( self.overlap_size) / self.track_size ),
-                           self.format_fold % ( 100.0 * float( self.overlap_nsegments) / self.annotation_nsegments ),
-                           self.format_fold % ( 100.0 * float( self.overlap_size) / self.annotation_size ),
+                           _toDensity( self.overlap_size, self.workspace_size),
+                           _toFold( self.overlap_nsegments, self.track_nsegments ),
+                           _toFold( self.overlap_size, self.track_size ),
+                           _toFold( self.overlap_nsegments, self.annotation_nsegments ),
+                           _toFold( self.overlap_size, self.annotation_size ),
                            ) )
 
     def __dealloc__(self):
@@ -1738,6 +1785,7 @@ cdef class TupleProxy:
         cdef int s
         s = sizeof(char) * nbytes
         self.data = <char*>malloc( s )
+        if not self.data: raise MemoryError( "out of memory when allocation %i bytes" % sizeof( s ) )
         memcpy( <char*>self.data, buffer, s )
         self.update( self.data, nbytes )
 

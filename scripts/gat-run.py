@@ -149,6 +149,21 @@ def fromSegments( options, args ):
     ##################################################
     ##################################################
     ##################################################
+    ## check if reference is compplete
+    ##################################################
+    if options.reference:
+        reference = options.reference
+        for track in segments.tracks:
+            if track not in options.reference:
+                raise ValueError("missing track '%s' in reference" % track )
+            r = options.reference[track]
+            for annotation in annotations.tracks:
+                if annotation not in r:
+                    raise ValueError("missing annotation '%s' in annotations for track='%s'" % (annotation, track ))
+
+    ##################################################
+    ##################################################
+    ##################################################
     ## open sample stats outfile
     ##################################################
     if "sample" in options.output_stats or \
@@ -157,6 +172,8 @@ def fromSegments( options, args ):
         outfile_sample_stats = E.openOutputFile( "sample_stats" )
     else:
         outfile_sample_stats = None
+
+    
 
     ##################################################
     ##################################################
@@ -176,7 +193,9 @@ def fromSegments( options, args ):
                                  output_samples_pattern = options.output_samples_pattern,
                                  sample_files = options.sample_files,
                                  conditional = options.conditional,
-                                 conditional_extension = options.conditional_extension )
+                                 conditional_extension = options.conditional_extension,
+                                 reference = options.reference,
+                                 pseudo_count = options.pseudo_count )
 
     return annotator_results
 
@@ -185,7 +204,7 @@ def fromResults( filename ):
 
     annotator_results = collections.defaultdict( dict )
 
-    with open(filename, "r") as infile:
+    with IOTools.openFile(filename, "r") as infile:
         for line in infile:
             if line.startswith("#"): continue
             if line.startswith("track"): continue
@@ -259,13 +278,13 @@ def main( argv = None ):
                        choices = ("smoother", "bootstrap" ),
                        help="fdr computation: method for estimating pi0 [default=%default]."  )
 
-    parser.add_option( "--counts-file", dest="input_filename_counts", type="string", 
+    parser.add_option( "--input-counts-file", dest="input_filename_counts", type="string", 
                       help="start processing from counts - no segments required [default=%default]."  )
 
     parser.add_option( "--output-counts-file", dest="output_filename_counts", type="string", 
                       help="output counts to filename [default=%default]."  )
 
-    parser.add_option( "--results-file", dest="input_filename_results", type="string", 
+    parser.add_option( "--input-results-file", dest="input_filename_results", type="string", 
                       help="start processing from results - no segments required [default=%default]."  )
 
     parser.add_option( "--output-plots-pattern", dest="output_plots_pattern", type="string", 
@@ -335,6 +354,15 @@ def main( argv = None ):
                       help="if the sampling method is 'shift', multiply each segment by # "
                            " to determine the size of the region for shifthing [default=%default]."  )
 
+    parser.add_option( "--pseudo-count", dest="pseudo_count", type="float",
+                      help="pseudo count. The pseudo count is added to both the observed and expected overlap. "
+                       " Using a pseudo-count avoids gat reporting fold changes of 0 [default=%default]."  )
+
+    parser.add_option( "--null", dest="null", type="string",
+                      help="null hypothesis. The default is to test categories for enrichment/depletion. "
+                           " If a filename with gat output is given, gat will test for the difference "
+                           " in fold change between the segments supplied and in the other file [default=%default]."  )
+
     parser.set_defaults(
         annotation_files = [],
         segment_files = [],
@@ -368,6 +396,9 @@ def main( argv = None ):
         enable_split_tracks = False,
         shift_expansion = 2.0,
         shift_extension = 0,
+        # pseudo count for fold change computation to avoid 0 fc
+        pseudo_count = 1.0,
+        null = "default",
         )
 
     ## add common options (-h/--help, ...) and parse command line 
@@ -381,12 +412,26 @@ def main( argv = None ):
     E.debug( "sizes: pos=%i segment=%i, max_coord=%i" % (size_pos, size_segment, 2**(8 * size_pos )))
 
     ##################################################
-    if options.input_filename_counts:
-        annotator_results = gat.fromCounts( options.input_filename_counts )
-    elif options.input_filename_results:
-        E.info( "reading annotator results from %s" % options.input_filename_results )
-        annotator_results = fromResults( options.input_filename_results )
+    # read fold changes that results should be compared with
+    if options.null != "default":
+        if not os.path.exists( options.null ):
+            raise OSError( "file %s not found" % options.null )
+        E.info( "reading reference results from %s" % options.null )
+        options.reference = fromResults( options.null )
     else:
+        options.reference = None
+
+    if options.input_filename_counts:
+        # use pre-computed counts
+        annotator_results = gat.fromCounts( options.input_filename_counts )
+
+    elif options.input_filename_results:
+        # use previous results (re-computes fdr)
+        E.info( "reading gat results from %s" % options.input_filename_results )
+        annotator_results = fromResults( options.input_filename_results )
+
+    else:
+        # do full gat analysis
         annotator_results = fromSegments( options, args )
 
     if options.pvalue_method != "empirical":
