@@ -141,9 +141,15 @@ class UnconditionalSampler:
             _write( sample_id, isochore, numpy.sort( numpy.array( l )))
                         
     def sample( self, track, counts, counter, segs, annotations, workspace ):
+
+        # rebuild non-isochore annotations and workspace
+        contig_annotations = annotations.clone()
+        contig_annotations.fromIsochores()
+
+        contig_workspace = workspace.clone()
+        contig_workspace.fromIsochores()
         
         E.info( "performing unconditional sampling" )
-                     
         counts_per_track = collections.defaultdict( list )
 
         E.info( "workspace without conditioning: %i segments, %i nucleotides" % \
@@ -170,6 +176,8 @@ class UnconditionalSampler:
             if self.samples_outfile: 
                 self.samples_outfile.write("track name=%s\n" % sample_id)
 
+            sample = IntervalDictionary()
+
             for isochore in segs.keys():
                 counts.pairs += 1
 
@@ -194,22 +202,24 @@ class UnconditionalSampler:
                     #             (sample_id, isochore, segs[isochore].sum(), r.sum()) )
 
                 self.outputSampleStats( sample_id, isochore, r )
-
-                # compute counts for each annotation/isochore and save
-                for annotation in annotations.tracks:
-                    annos = annotations[annotation]
-                    counts_per_isochore[annotation].append( self.counter( r, 
-                                                                          annos[isochore], 
-                                                                          temp_workspace[isochore] ) )
+                
+                sample.add( isochore, r )
 
                 # save sample
                 if self.samples_outfile: 
                     for start, end in r:
                         self.samples_outfile.write( "%s\t%i\t%i\n" % (isochore, start, end))
 
+            # re-combine isochores
+            sample.fromIsochores()
+
             # TODO: choose aggregator
             for annotation in annotations.tracks:
-                counts_per_track[annotation].append( sum( counts_per_isochore[annotation] ) )
+                counts_per_track[annotation].append( sum( [
+                    self.counter( sample[contig],
+                                  contig_annotations[annotation][contig],
+                                  contig_workspace[contig])
+                    for contig in sample.keys() ] ) )
                 
         self.outputSampleStats( None, "", [] )
 
@@ -462,7 +472,7 @@ def run( segments,
             else:
                 ref = None
                 
-            annotator_results[track][annotation] = AnnotatorResult( \
+            annotator_results[track][annotation] = AnnotatorResultExtended( \
                 track = track,
                 annotation = annotation,
                 observed = observed,
@@ -498,23 +508,21 @@ def fromCounts( filename ):
 
     annotator_results = collections.defaultdict( dict )
 
-    with open( filename, "r") as infile:
+    with IOTools.openFile( filename, "r") as infile:
 
         E.info( "loading data")
 
-        headers = infile.readline()[:-1].split("\t")[1:]
-        observed = numpy.array( infile.readline()[:-1].split("\t")[1:], dtype = numpy.float)
-        samples = numpy.loadtxt( infile, dtype=numpy.float, delimiter="\t" )
-
-        E.info( "computing PValue statistics" )
-
-        for x,header in enumerate(headers):
-            track, annotation = header.split("-")
-            annotator_results[track][annotation] = AnnotatorResult( \
+        header = infile.readline()
+        if not header== "track\tannotation\tobserved\tcounts\n":
+            raise ValueError("%s not a counts file: got %s" % (infile, header) )
+        
+        for line in infile:
+            track, annotation, observed, counts = line[:-1].split( "\n" )
+            annotator_result[track][annotation] = AnnotatorResult( 
                 track = track,
                 annotation = annotation,
-                observed = observed[x],
-                samples = samples[:,x+1] )
+                observed = int(observed),
+                samples = numpy.array( map(int, counts.split(",")), dtype=numpy.float ) )
 
     return annotator_results
 

@@ -1258,7 +1258,7 @@ cdef EnrichmentStatistics * makeEnrichmentStatistics( observed, samples,
 
     stats.observed = observed
     stats.nsamples = l 
-    for i from 0 <= i < l: stats.samples[i] = samples[i]
+    for i from 0 <= i < l: stats.samples[i] = float(samples[i])
 
     # create index of sorted values
     r = numpy.argsort( samples )
@@ -1327,6 +1327,241 @@ cdef EnrichmentStatistics * makeEnrichmentStatistics( observed, samples,
 ## Annotator results
 ############################################################
 cdef class AnnotatorResult(object):
+    '''container for annotator results.'''
+
+    format_observed = "%i"
+    format_expected = "%6.4f"
+    format_fold = "%6.4f"
+    format_pvalue = "%6.4e"
+    format_counts = "%i"
+    format_density = "%6.4e"
+
+    headers = ["track", 
+               "annotation",
+               "observed",
+               "expected",
+               "CI95low", 
+               "CI95high",
+               "stddev",
+               "fold",
+               "l2fold",
+               "pvalue",
+               "qvalue",
+               ]
+
+    cdef:
+        EnrichmentStatistics * stats
+        str track, annotation
+
+    def __init__( self,
+                  track,
+                  annotation,
+                  observed,
+                  samples,
+                  reference = None,
+                  pseudo_count = 1.0 ):
+
+        self.track = track
+        self.annotation = annotation
+        self.stats = makeEnrichmentStatistics( observed, 
+                                               samples,
+                                               reference,
+                                               pseudo_count )
+
+
+    def __str__(self):
+
+        # if self.stats.nsamples < 10**6:
+        #     format_pvalue = "%7.6f"
+        # else:
+        #     format_pvalue = "%7.6e"
+
+        if self.stats.fold > 0:
+            logfold = self.format_fold % math.log( self.stats.fold, 2 )
+        else:
+            logfold = "-inf"
+
+        return "\t".join( (self.track,
+                           self.annotation,
+                           self.format_observed % self.stats.observed,
+                           self.format_expected % self.stats.expected,
+                           self.format_expected % self.stats.lower95,
+                           self.format_expected % self.stats.upper95,
+                           self.format_expected % self.stats.stddev,
+                           self.format_fold % self.stats.fold,
+                           logfold,
+                           self.format_pvalue % self.stats.pvalue,
+                           self.format_pvalue % self.stats.qvalue,
+                           ) )
+
+    def __dealloc__(self):
+        free( self.stats.samples )
+        free( self.stats.sorted2sample )
+        free( self.stats.sample2sorted )
+        free( self.stats )
+
+    property track:
+        def __get__(self): return self.track
+
+    property annotation:
+        def __get__(self): return self.annotation
+
+    property observed:
+        def __get__(self): return self.stats.observed
+
+    property expected:
+        def __get__(self): return self.stats.expected
+
+    property fold:
+        def __get__(self): return self.stats.fold
+
+    property stddev:
+        def __get__(self): return self.stats.stddev
+
+    property pvalue:
+        def __get__(self): return self.stats.pvalue
+        def __set__(self, val): self.stats.pvalue = val
+
+    property qvalue:
+        def __get__(self): return self.stats.qvalue
+        def __set__(self, val): self.stats.qvalue = val
+ 
+    property nsamples:
+        def __get__(self): return self.stats.nsamples
+
+    property samples:
+        def __get__(self): 
+            cdef Position x
+            r = numpy.zeros( self.nsamples, dtype = numpy.float )
+            for x from 0 <= x < self.stats.nsamples:
+                r[x] = self.stats.samples[x]
+            return r
+
+    def isSampleSignificantAtPvalue( self, sample_id, double pvalue ):
+        return isSampleSignificantAtPvalue( self.stats, sample_id, pvalue )
+
+    def getSample( self, sample_id ):
+        return self.stats.samples[sample_id]
+
+    def getEmpiricalPValue( self, value ):
+        return getTwoSidedPValue( self.stats, value )
+
+cdef class AnnotatorResultExtended(AnnotatorResult):
+    '''container for annotator results.'''
+
+    format_density = "%6.4e"
+
+    headers = ["track", 
+               "annotation",
+               "observed",
+               "expected",
+               "CI95low", 
+               "CI95high",
+               "stddev",
+               "fold",
+               "l2fold",
+               "pvalue",
+               "qvalue",
+               "track_nsegments",
+               "track_size",
+               "track_density",
+               "annotation_nsegments",
+               "annotation_size",
+               "annotation_density",
+               "overlap_nsegments",
+               "overlap_size",
+               "overlap_density",
+               "percent_overlap_nsegments_track",
+               "percent_overlap_size_track",
+               "percent_overlap_nsegments_annotation",
+               "percent_overlap_size_annotation",
+               ]
+
+    cdef:
+        Position track_nsegments
+        Position track_size
+        Position annotation_nsegments
+        Position annotation_size
+        Position overlap_nsegments
+        Position overlap_size
+        Position workspace_size
+
+    def __init__( self,
+                  track,
+                  annotation,
+                  observed,
+                  samples,
+                  track_segments,
+                  annotation_segments,
+                  workspace,
+                  reference = None,
+                  pseudo_count = 1.0 ):
+
+        AnnotatorResult.__init__( self, track, annotation, observed, samples, 
+                                  reference = reference, 
+                                  pseudo_count = pseudo_count )
+
+        self.track_nsegments = track_segments.counts()
+        self.track_size = track_segments.sum()
+
+        self.annotation_nsegments = annotation_segments.counts()
+        self.annotation_size = annotation_segments.sum()
+
+        overlap = track_segments.clone()
+        overlap.intersect( annotation_segments )
+
+        self.overlap_nsegments = overlap.counts()
+        self.overlap_size = overlap.sum()
+
+        self.workspace_size = workspace.sum()
+
+    def __str__(self):
+
+        # if self.stats.nsamples < 10**6:
+        #     format_pvalue = "%7.6f"
+        # else:
+        #     format_pvalue = "%7.6e"
+
+        if self.stats.fold > 0:
+            logfold = self.format_fold % math.log( self.stats.fold, 2 )
+        else:
+            logfold = "-inf"
+
+        def _toFold( a, b ):
+            if b > 0: return self.format_fold % (100.0 * float(a) / b )
+            else: return "na"
+
+        def _toDensity( a, b ):
+            if b > 0: return self.format_density % (100.0 * float(a) / b )
+            else: return "na"
+
+        return "\t".join( (self.track,
+                           self.annotation,
+                           self.format_observed % self.stats.observed,
+                           self.format_expected % self.stats.expected,
+                           self.format_expected % self.stats.lower95,
+                           self.format_expected % self.stats.upper95,
+                           self.format_expected % self.stats.stddev,
+                           self.format_fold % self.stats.fold,
+                           logfold,
+                           self.format_pvalue % self.stats.pvalue,
+                           self.format_pvalue % self.stats.qvalue,
+                           self.format_counts % self.track_nsegments,
+                           self.format_counts % self.track_size,
+                           _toDensity( self.track_size, self.workspace_size),
+                           self.format_counts % self.annotation_nsegments,
+                           self.format_counts % self.annotation_size,
+                           _toDensity( self.annotation_size, self.workspace_size),
+                           self.format_counts % self.overlap_nsegments,
+                           self.format_counts % self.overlap_size,
+                           _toDensity( self.overlap_size, self.workspace_size),
+                           _toFold( self.overlap_nsegments, self.track_nsegments ),
+                           _toFold( self.overlap_size, self.track_size ),
+                           _toFold( self.overlap_nsegments, self.annotation_nsegments ),
+                           _toFold( self.overlap_size, self.annotation_size ),
+                           ) )
+
+cdef class AnnotatorResultOriginal(object):
     '''container for annotator results.'''
 
     format_observed = "%i"
@@ -2150,6 +2385,36 @@ class IntervalDictionary( object ):
             else:
                 del self.intervals[contig]
 
+    def toIsochores( self, isochores ):
+        '''split contigs into isochores.'''
+        for contig, segmentlist in self.intervals.items():
+            for other_track, other_vv in isochores.iteritems():
+                newlist = csegmentlist.SegmentList( clone = segmentlist )
+                newlist.intersect( other_vv[contig] )
+                isochore = "%s.%s" % (contig, other_track)
+                self.intervals[isochore] = newlist
+            del self.intervals[contig]
+
+    def fromIsochores( self ):
+        '''merge isochores into contigs'''
+        new = collections.defaultdict( csegmentlist.SegmentList )
+        normalize = False
+        # isochores might or might not be present
+        for isochore, segmentlist in self.intervals.items():
+            if "." in isochore:
+                contig, iso = isochore.split(".")
+                new[contig].extend( segmentlist )
+                normalize = True
+            else:
+                new[isochore] = segmentlist 
+
+        if normalize:
+            # merge adjacent intervals (and normalize)
+            for x in new.values(): 
+                x.merge( 0 )
+                
+        self.intervals = new
+
 #####################################################################
 #####################################################################
 #####################################################################
@@ -2346,13 +2611,20 @@ class IntervalCollection(object):
     def toIsochores( self, isochores ):
         '''split contigs in each track into isochores.'''
         for track, vv in self.intervals.iteritems():
-            for contig, segmentlist in vv.items():
-                for other_track, other_vv in isochores.iteritems():
-                    newlist = csegmentlist.SegmentList( clone = segmentlist )
-                    newlist.intersect( other_vv[contig] )
-                    isochore = "%s.%s" % (contig, other_track)
-                    vv[isochore] = newlist
-                del vv[contig]
+            vv.toIsochores( isochores )
+
+    def fromIsochores( self ):
+        '''merge isochores together.'''
+        for track, vv in self.intervals.iteritems():
+            vv.fromIsochores( )
+
+    def clone( self ):
+        '''return a copy of self.'''
+        new = IntervalCollection( self.name )
+        for track,v in self.intervals.iteritems():
+            for contig, segmentlist in v.iteritems():
+                new.add( track, contig, csegmentlist.SegmentList( clone = segmentlist) )
+        return new
 
     @property
     def tracks(self): return self.intervals.keys()

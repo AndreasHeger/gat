@@ -79,6 +79,7 @@ metadata = {
     'cmdclass' : {'build_ext': build_ext },
     'scripts' : ['scripts/gat-run.py', 
                  'scripts/gat-great.py',
+                 'scripts/gat-compare.py',
                  'scripts/gat-plot.py' ],
     'zip_safe' :False,
 

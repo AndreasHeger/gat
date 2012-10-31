@@ -7,13 +7,13 @@
 // use bisection to return the index of the first element i in base
 // such that base[i] <= target. When there is no such index, return
 // nmemb.
-long searchsorted(void * base,
+long searchsorted(const void * base,
 		  size_t nmemb,
 		  size_t size,
 		  const void * target,
 		  int(*compar)(const void *, const void *));
 
-long searchargsorted(void * base,
+long searchargsorted(const void * base,
 		     int * sorted,
 		     size_t nmemb,
 		     size_t size,

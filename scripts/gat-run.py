@@ -41,7 +41,7 @@ Usage
 
 Example::
 
-   python gatrun.py 
+   python gat-run.py 
       --segment-file=segments.bed.gz 
       --workspace-file=workspace.bed.gz 
       --annotation-file=annotations_architecture.bed.gz  
