@@ -234,6 +234,8 @@ class ConditionalSampler( UnconditionalSampler ):
         return dictionary with counts per track
         '''
 
+        # This method needs to re-factored to remove isochores before counting.
+
         E.info( "performing conditional sampling" )
 
         counts_per_annotation = collections.defaultdict( list )
