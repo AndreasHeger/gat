@@ -514,7 +514,7 @@ def run( segments,
             outfile.write("track\tannotation\tobserved\tcounts\n" )
         
             for o in output:
-                outfile.write( "%s\t%s\t%s\ti\t%s\n" % \
+                outfile.write( "%s\t%s\t%i\t%s\n" % \
                                    (o.track, o.annotation,
                                     o.observed,
                                     ",".join(["%i" % x for x in o.samples]) ) )

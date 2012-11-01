@@ -175,8 +175,24 @@ Counters describe the measure of association that is tested. Counters
 are selected with the command line option ``--counter``. Available 
 counters are:
 
-   1. ``nucleotide-overlap``: number of bases overlapping
-   2. ``segment-overlap``: number of intervals intersecting
+   1. ``nucleotide-overlap``: number of bases overlapping [default]
+   2. ``segment-overlap``: number of intervals intervals in the
+   :term:`segments of interest` overlapping :term:`annotations`. A single
+   base-pair overlap is sufficient.
+   3. ``segment-mid-overlap``: number of intervals in the
+   :term:`segments of interest` overlapping at their midpoint
+   :term:`annotations`.
+   4. ``annotations-overlap``: number of intervals in the
+   :term:`annotations` overlapping :term:`segments of intereset`. A single
+   base-pair overlap is sufficient.
+   5. ``segment-mid-overlap``: number of intervals in the
+   :term:`annotations` overlapping at their midpoint 
+   :term:`segments of intereset`
+   
+Multiple counters can be given. If only one counter is provided, the
+output will be to stdout. Otherwise, separate output files will be
+created each counter. The filename can be controlled with the
+``--output-table-pattern`` option.
 
 Changing the PValue method
 --------------------------
@@ -222,6 +238,63 @@ If the option ``--counts-file`` is given, *gat* will skip the sampling
 and counting step completely and read observed counts from 
 ``--count-file=counts_filename``.
 
+Outputting intermediate results
+-------------------------------
+
+A variety of options govern the output of intermediate results by gat.
+These options usually accept patterns that represent filenames with 
+a ``%s`` as a wild card character. The wild card is replaced with
+various keys. Note that the amount of data output can be substantial.
+
+``--output-counts-pattern``
+   output counts. One file is created for each counter.
+
+``--output-plots-pattern``
+   create plots (requires matplotlib_). One plot for each annotation
+   is created showing the distribution of expected counts and the
+   observed count. Also, outputs the distribution of p-values and
+   q-values.
+   
+``--output-samples-pattern``
+   output :term:`bed` formatted files with individual samples.
+
+Other tools
+===========
+
+gat-compare
+-----------
+
+The gat-compare tool can be used to test if the fold changes found in
+two or more different gat experiments are significantly different from
+each other.
+
+This tool requires the output files with counts created using the
+``--output-counts-pattern`` option.
+
+For example, to compare if fold changes are signficantly different
+between two cell lines, execute::
+
+   gat-run.py --segments=CD4.bed.gz <...>
+   --output-counts-pattern=CD4.%s.overlap.counts.tsv.gz
+   gat-run.py --segments=CD14.bed.gz <...>
+   --output-counts-pattern=CD14.%s.overlap.counts.tsv.gz
+
+   gat-compare.py CD4.nucleotide-overlap.counts.tsv.gz CD14.nucleotide-overlap.counts.tsv.gz
+
+gat-plot
+--------
+
+Plot gat results.
+
+gat-great
+---------
+
+Perform a GREAT_ analysis::
+
+   gat-great.py 
+      --segment-file=segments.bed.gz 
+      --workspace-file=workspace.bed.gz 
+      --annotation-file=annotations.bed.gz  
 
 .. _pvalue: http://en.wikipedia.org/wiki/P-value
 .. _qvalue: http://genomics.princeton.edu/storeylab/qvalue/linux.html
@@ -229,3 +302,5 @@ and counting step completely and read observed counts from
 .. _UCSC: http://genome.ucsc.edu/FAQ/FAQformat#format1
 .. _Storey et al. (2002): http://genomics.princeton.edu/storeylab/papers/directfdr.pdf
 .. _false discovery rate: http://en.wikipedia.org/wiki/False_discovery_rate
+.. _matplotlib: http://matplotlib.org/
+.. _GREAT: http://bejerano.stanford.edu/great/public/html/

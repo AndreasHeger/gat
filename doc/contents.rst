@@ -37,6 +37,7 @@ Contents
    introduction.rst   
    tutorials.rst
    usage.rst
+   fold.rst
    glossary.rst
 
 Implementation notes
