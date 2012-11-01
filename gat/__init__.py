@@ -54,6 +54,7 @@ class DummyAnnotatorResult:
         x = cls()
         data = line[:-1].split("\t")
         x.track, x.annotation = data[:2]
+        x.counter = "na"
         x.observed, x.expected, x.lower95, x.upper95, x.stddev, x.fold, x.pvalue, x.qvalue = \
             map(float, data[2:10] )
         if len(data) > 10:
@@ -94,13 +95,14 @@ class UnconditionalSampler:
                  samples_outfile, 
                  outfile_sample_stats,
                  sampler,
-                 workspace_generator, counter ):
+                 workspace_generator, 
+                 counters ):
         self.num_samples = num_samples
         self.samples = samples
         self.samples_outfile = samples_outfile
         self.sampler = sampler
         self.workspace_generator = workspace_generator
-        self.counter = counter
+        self.counters = counters
         self.outfile_sample_stats = outfile_sample_stats
         
         if self.outfile_sample_stats:
@@ -140,7 +142,11 @@ class UnconditionalSampler:
             self.all_lengths.extend( l  )
             _write( sample_id, isochore, numpy.sort( numpy.array( l )))
                         
-    def sample( self, track, counts, counter, segs, annotations, workspace ):
+    def sample( self, track, counts, counters, segs, annotations, workspace ):
+        '''sample and return counts.
+
+        Return a list of counted results for each counter.
+        '''
 
         # rebuild non-isochore annotations and workspace
         contig_annotations = annotations.clone()
@@ -150,7 +156,7 @@ class UnconditionalSampler:
         contig_workspace.fromIsochores()
         
         E.info( "performing unconditional sampling" )
-        counts_per_track = collections.defaultdict( list )
+        counts_per_track = [ collections.defaultdict( list ) for x in counters ]
 
         E.info( "workspace without conditioning: %i segments, %i nucleotides" % \
                     (workspace.counts(),
@@ -212,14 +218,15 @@ class UnconditionalSampler:
 
             # re-combine isochores
             sample.fromIsochores()
-
-            # TODO: choose aggregator
-            for annotation in annotations.tracks:
-                counts_per_track[annotation].append( sum( [
-                    self.counter( sample[contig],
-                                  contig_annotations[annotation][contig],
-                                  contig_workspace[contig])
-                    for contig in sample.keys() ] ) )
+            
+            for counter_id, counter in enumerate(counters):
+                # TODO: choose aggregator
+                for annotation in annotations.tracks:
+                    counts_per_track[counter_id][annotation].append( sum( [
+                                counter( sample[contig],
+                                         contig_annotations[annotation][contig],
+                                         contig_workspace[contig])
+                                for contig in sample.keys() ] ) )
                 
         self.outputSampleStats( None, "", [] )
 
@@ -227,14 +234,16 @@ class UnconditionalSampler:
 
 class ConditionalSampler( UnconditionalSampler ):
     
-    def sample( self, track, counts, counter, segs, annotations, workspace ):
+    def sample( self, track, counts, counters, segs, annotations, workspace ):
         '''conditional sampling - sample using only those 
         segments that contain both a segment and an annotation.
 
         return dictionary with counts per track
         '''
 
-        # This method needs to re-factored to remove isochores before counting.
+        # This method needs to re-factored to remove isochores before counting
+        # and to work with multiple counters
+        raise NotImplementedError
 
         E.info( "performing conditional sampling" )
 
@@ -308,7 +317,7 @@ def run( segments,
          annotations, 
          workspace, 
          sampler, 
-         counter,
+         counters,
          workspace_generator,
          **kwargs ):
     '''run an enrichment analysis.
@@ -325,7 +334,7 @@ def run( segments,
     num_samples
        number of samples to compute
 
-    output_counts
+    output_counts_pattern
        output counts to filename 
 
     output_samples_pattern
@@ -350,35 +359,34 @@ def run( segments,
     ## get arguments
     num_samples = kwargs.get( "num_samples", 10000 )
     cache = kwargs.get( "cache", None )
-    output_counts = kwargs.get( "output_counts", None )
+    output_counts_pattern = kwargs.get( "output_counts_pattern", None )
     sample_files = kwargs.get( "sample_files", [] )
     pseudo_count = kwargs.get( "pseudo_count", 1.0 )
     reference = kwargs.get( "reference", None )
     output_samples_pattern = kwargs.get( "output_samples_pattern", None )
     outfile_sample_stats = kwargs.get( "outfile_sample_stats", None )
 
-    if output_samples_pattern != None: 
-        if "%s" not in output_samples_pattern:
-            raise ValueError( "output_samples_pattern should contain at least one '%s'")
-
     ##################################################
     ##################################################
     ##################################################
     # collect observed counts from segments
     E.info( "collecting observed counts" )
-    observed_counts = computeCounts( counter = counter,
-                                     aggregator = sum,
-                                     segments = segments,
-                                     annotations = annotations,
-                                     workspace = workspace,
-                                     workspace_generator = workspace_generator )
-    E.info( "collecting observed densities" )
+    observed_counts = []
+    for counter in counters:
+        observed_counts.append( computeCounts( counter = counter,
+                                               aggregator = sum,
+                                               segments = segments,
+                                               annotations = annotations,
+                                               workspace = workspace,
+                                               workspace_generator = workspace_generator ) )
 
     ##################################################
     ##################################################
     ##################################################
     # sample and collect counts
     ##################################################
+    E.info( "starting sampling" )
+
     if cache:
         E.info( "samples are cached in %s" % cache)
         samples = SamplesCached( filename = cache )
@@ -425,7 +433,7 @@ def run( segments,
                                           outfile_sample_stats,
                                           sampler,
                                           workspace_generator, 
-                                          counter )
+                                          counters )
         else:
             outer_sampler = UnconditionalSampler( num_samples, 
                                             samples, 
@@ -433,10 +441,9 @@ def run( segments,
                                             outfile_sample_stats,
                                             sampler,
                                             workspace_generator, 
-                                            counter )
+                                            counters )
 
-
-        counts_per_track = outer_sampler.sample( track, counts, counter, segs, annotations, workspace )
+        counts_per_track = outer_sampler.sample( track, counts, counters, segs, annotations, workspace )
 
         if samples_outfile: samples_outfile.close()
 
@@ -460,55 +467,65 @@ def run( segments,
     ## build annotator results
     ##################################################
     E.info( "computing PValue statistics" )
-    annotator_results = collections.defaultdict( dict )
-    for track, r in observed_counts.iteritems():
-        for annotation, observed in r.iteritems():
-            temp_segs, temp_annos, temp_workspace = workspace_generator( segments[track], 
-                                                                         annotations[annotation], 
-                                                                         workspace )
 
-            # if reference is given, p-value will indicate difference
-            # The test that track and annotation are present is done elsewhere
-            if reference:
-                ref = reference[track][annotation]
-            else:
-                ref = None
-                
-            annotator_results[track][annotation] = AnnotatorResultExtended( \
-                track = track,
-                annotation = annotation,
-                observed = observed,
-                samples = sampled_counts[track][annotation],
-                track_segments = temp_segs,
-                annotation_segments = temp_annos,
-                workspace = temp_workspace,
-                reference = ref,
-                pseudo_count = pseudo_count )
+    annotator_results = list()
+
+    counter_id = 0
+    for counter, observed_count in zip( counters, observed_counts ):
+
+        for track, r in observed_count.iteritems():
+            for annotation, observed in r.iteritems():
+                temp_segs, temp_annos, temp_workspace = workspace_generator( segments[track], 
+                                                                             annotations[annotation], 
+                                                                             workspace )
+
+                # if reference is given, p-value will indicate difference
+                # The test that track and annotation are present is done elsewhere
+                if reference:
+                    ref = reference[track][annotation]
+                else:
+                    ref = None
+                annotator_results.append( AnnotatorResultExtended( \
+                        track = track,
+                        annotation = annotation,
+                        counter = counter.name,
+                        observed = observed,
+                        samples = sampled_counts[track][counter_id][annotation],
+                        track_segments = temp_segs,
+                        annotation_segments = temp_annos,
+                        workspace = temp_workspace,
+                        reference = ref,
+                        pseudo_count = pseudo_count ) )
+        counter_id += 1
 
     ##################################################
     ##################################################
     ##################################################
     ## dump large table with counts
     ##################################################
-    if output_counts:
-        E.info( "writing counts to %s" % output_counts )
-        output = list( iterator_results( annotator_results ) )
-        outfile = IOTools.openFile( output_counts, "w")
-        outfile.write("track\tannotation\tobserved\tcounts\n" )
+    if output_counts_pattern:
+        for counter in counters:
+            name = counter.name
+            filename = re.sub("%s", name, output_counts_pattern )
+            
+            E.info( "writing counts to %s" % filename )
+            output = [ x for x in annotator_results if x.counter == name ]
+            outfile = IOTools.openFile( filename, "w")
+            outfile.write("track\tannotation\tobserved\tcounts\n" )
         
-        for o in output:
-            outfile.write( "%s\t%s\t%i\t%s\n" % \
-                               (o.track, o.annotation,
-                                o.observed,
-                                ",".join(["%i" % x for x in o.samples]) ) )
-
+            for o in output:
+                outfile.write( "%s\t%s\t%s\ti\t%s\n" % \
+                                   (o.track, o.annotation,
+                                    o.observed,
+                                    ",".join(["%i" % x for x in o.samples]) ) )
+                
     return annotator_results
 
 def fromCounts( filename ):
     '''build annotator results from a tab-separated table
     with counts.'''
 
-    annotator_results = collections.defaultdict( dict )
+    annotator_results = []
 
     with IOTools.openFile( filename, "r") as infile:
 
@@ -519,13 +536,14 @@ def fromCounts( filename ):
             raise ValueError("%s not a counts file: got %s" % (infile, header) )
         
         for line in infile:
-            track, annotation, observed, counts = line[:-1].split( "\n" )
-            annotator_result[track][annotation] = AnnotatorResult( 
+            track, annotation, observed, counts = line[:-1].split( "\t" )
+            samples = numpy.array( map(int, counts.split(",")), dtype=numpy.float )
+            observed = int(observed)
+            annotator_results.append( gat.AnnotatorResult( 
                 track = track,
                 annotation = annotation,
-                observed = int(observed),
-                samples = numpy.array( map(int, counts.split(",")), dtype=numpy.float ) )
+                counter = "na",
+                observed = observed,
+                samples = samples ) )
 
     return annotator_results
-
-

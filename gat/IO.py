@@ -3,7 +3,13 @@ import sys, re, os, glob
 import gat
 import gat.IOTools as IOTools
 import gat.Experiment as E
+import numpy
 
+try:
+    import matplotlib.pyplot as plt
+    HASPLOT = True
+except (ImportError,RuntimeError):
+    HASPLOT = False
 
 ##################################################
 ##################################################
@@ -220,45 +226,150 @@ def readDescriptions( options ):
 
     return description_header, descriptions, description_width
 
-
-def outputResults( results, options, header, 
+def outputResults( results, 
+                   options, 
+                   header, 
                    description_header, 
                    description_width,
-                   descriptions ):
+                   descriptions,
+                   format_observed = "%i" ):
     '''compute FDR and output results.'''
     
     pvalues = [ x.pvalue for x in results ]
+
+    ##################################################
+    ##################################################
+    ##################################################
+    ## compute global fdr
+    ##################################################
+    E.info( "computing FDR statistics" )
     qvalues = gat.getQValues( pvalues, 
                               method = options.qvalue_method,
                               vlambda = options.qvalue_lambda,
                               pi0_method = options.qvalue_pi0_method )
 
-    output = [ x._replace( qvalue = qvalue ) for x, qvalue in zip(results, qvalues) ]
+    try:
+        results = [ x._replace( qvalue = qvalue ) for x, qvalue in zip(results, qvalues) ]
+        is_tuple = True
+    except AttributeError:
+        # not a namedtuple
+        for x, qvalue in zip(results, qvalues): 
+            x.qvalue = qvalue
+            x.format_observed = format_observed
 
-    outfile = options.stdout
+        is_tuple = False
 
-    outfile.write("\t".join( list(header) + list(description_header) ) + "\n" )
+    counters = set([x.counter for x in results ] )
 
-    if options.output_order == "track":
-        output.sort( key = lambda x: (x.track, x.annotation) )
-    elif options.output_order == "annotation":
-        output.sort( key = lambda x: (x.annotation, x.track) )
-    elif options.output_order == "fold":
-        output.sort( key = lambda x: x.fold )
-    elif options.output_order == "pvalue":
-        output.sort( key = lambda x: x.pvalue )
-    elif options.output_order == "qvalue":
-        output.sort( key = lambda x: x.qvalue )
-    else:
-        raise ValueError("unknown sort order %s" % options.output_order )
+    for counter in counters:
 
-    for result in output:
-        outfile.write( "\t".join( map(str, result) ) )
-        if descriptions:
-            try:
-                outfile.write( "\t" + "\t".join( descriptions[result.annotation] ) )
-            except KeyError:
-                outfile.write( "\t" + "\t".join( [""] * description_width ) )
-        outfile.write("\n")
+        if len(counters) == 1:
+            outfile = options.stdout
+            output = results
+        else:
+            outfilename = re.sub("%s", counter, options.output_tables_pattern )
+            E.info( "output for counter %s goes to outfile %s"  % (counter, outfilename ))
+            outfile = IOTools.openFile( outfilename, "w" )
+            output = [ x for x in results if x.counter == counter ]
+
+        outfile.write("\t".join( list(header) + list(description_header) ) + "\n" )
+
+        if options.output_order == "track":
+            output.sort( key = lambda x: (x.track, x.annotation) )
+        elif options.output_order == "annotation":
+            output.sort( key = lambda x: (x.annotation, x.track) )
+        elif options.output_order == "fold":
+            output.sort( key = lambda x: x.fold )
+        elif options.output_order == "pvalue":
+            output.sort( key = lambda x: x.pvalue )
+        elif options.output_order == "qvalue":
+            output.sort( key = lambda x: x.qvalue )
+        else:
+            raise ValueError("unknown sort order %s" % options.output_order )
+
+        for result in output:
+            if is_tuple:
+                outfile.write( "\t".join( map(str, result) ) )
+            else:
+                outfile.write( str(result ))
+
+            if descriptions:
+                try:
+                    outfile.write( "\t" + "\t".join( descriptions[result.annotation] ) )
+                except KeyError:
+                    outfile.write( "\t" + "\t".join( [""] * description_width ) )
+            outfile.write("\n")
+            
+        if outfile != options.stdout:
+            outfile.close()
+
+def plotResults( results, options ):
+    '''plot annotator results.'''
+
+    ##################################################
+    # plot histograms
+    if options.output_plots_pattern and HASPLOT:
+
+        def buildPlotFilename( options, key ):
+            filename = re.sub("%s", key, options.output_plots_pattern)
+            filename = re.sub("[^a-zA-Z0-9-_./]", "_", filename )
+            dirname = os.path.dirname( filename )
+            if dirname and not os.path.exists( dirname ): os.makedirs( dirname )
+            return filename
+
+        E.info("plotting sample stats" )
+
+        for r in results:
+
+            plt.figure()
+            key = "%s-%s-%s" % (r.track, r.annotation, r.counter)
+            s = r.samples
+            hist, bins = numpy.histogram( s,
+                                          bins = 100)
+            
+            # convert to density
+            hist = numpy.array( hist, dtype = numpy.float )
+            hist /= sum(hist)
+
+            # plot bars
+            plt.bar( bins[:-1], hist, width=1.0, label = key )
+            
+            # plot estimated 
+            sigma = r.stddev
+            mu = r.expected
+            plt.plot(bins, 
+                     1.0/(sigma * numpy.sqrt(2 * numpy.pi)) *
+                     numpy.exp( - (bins - mu)**2 / (2 * sigma**2) ),
+                     label = "std distribution",
+                     linewidth=2, 
+                     color='r' )
+
+            plt.legend()
+            filename = buildPlotFilename( options, key )
+            plt.savefig( filename )
+
+        E.info( "plotting P-value distribution" )
+        
+        key = "pvalue"
+        plt.figure()
+
+        x,bins,y = plt.hist( [r.pvalue for r in results ],
+                             bins = numpy.arange( 0, 1.05, 0.025) ,
+                             label = "pvalue" )
+
+        plt.hist( [r.qvalue for r in results ],
+                  bins = numpy.arange( 0, 1.05, 0.025) ,
+                  label = "qvalue",
+                  alpha=0.5 )
+
+        plt.legend()
+
+        # hist, bins = numpy.histogram( \
+        #     [r.pvalue for r in gat.iterator_results(annotator_results) ],
+        #     bins = 20 )
+        # plt.plot( bins[:-1], hist, label = key )
+
+        filename = buildPlotFilename( options, key )
+        plt.savefig( filename )
 
 

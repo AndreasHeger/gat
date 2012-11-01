@@ -267,13 +267,11 @@ cdef class SegmentList:
         
         if self.allocated == 0:
             self.segments = <Segment*>malloc( nsegments * sizeof( Segment ) )
-            if not self.segments: 
-                raise MemoryError( "out of memory when allocation %i bytes" % sizeof( nsegments * sizeof( Segment ) ))
+            if not self.segments: raise MemoryError( "out of memory when allocation %i bytes" % sizeof( nsegments * sizeof( Segment ) ))
         else:
             self.segments = <Segment*>realloc( self.segments,
                                                nsegments * sizeof( Segment ) )
-            if not self.segments: 
-                raise MemoryError( "out of memory when allocation %i bytes" % sizeof( self.nsegments * sizeof( Segment ) ))
+            if not self.segments: raise MemoryError( "out of memory when allocation %i bytes" % sizeof( self.nsegments * sizeof( Segment ) ))
 
         self.allocated = nsegments
 

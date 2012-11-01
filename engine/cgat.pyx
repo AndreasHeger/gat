@@ -1050,12 +1050,14 @@ cdef class Counter:
     '''
 
 cdef class CounterNucleotideOverlap(Counter):
+    name = "nucleotide-overlap"
 
     def __call__(self, csegmentlist.SegmentList segments, csegmentlist.SegmentList annotations, csegmentlist.SegmentList workspace = None ):
         '''return number of nucleotides overlapping between segments and annotations.'''
         return annotations.overlapWithSegments( segments )
 
 cdef class CounterNucleotideDensity(Counter):
+    name = "nucleotide-density"
 
     def __call__(self, csegmentlist.SegmentList segments, csegmentlist.SegmentList annotations, csegmentlist.SegmentList workspace ):
         '''return number of nucleotides overlapping between segments and annotations.
@@ -1067,16 +1069,32 @@ cdef class CounterNucleotideDensity(Counter):
         return float(annotations.overlapWithSegments( segments )) / l
 
 cdef class CounterSegmentOverlap(Counter):
+    name = "segment-overlap"
 
     def __call__(self, segments, annotations, workspace = None ):
         '''return number of segments overlapping with annotations.'''
         return segments.intersectionWithSegments( annotations )
 
+cdef class CounterSegmentMidpointOverlap(Counter):
+    name = "segment-midoverlap"
+
+    def __call__(self, segments, annotations, workspace = None ):
+        '''return number of segments overlapping with annotations.'''
+        return segments.intersectionWithSegments( annotations, mode = "midpoint" )
+
 cdef class CounterAnnotationOverlap(Counter):
+    name = "annotation-overlap"
 
     def __call__(self, segments, annotations, workspace = None ):
         '''return number of segments overlapping with annotations.'''
         return annotations.intersectionWithSegments( segments )
+
+cdef class CounterAnnotationMidpointOverlap(Counter):
+    name = "annotation-midoverlap"
+
+    def __call__(self, segments, annotations, workspace = None ):
+        '''return number of segments overlapping with annotations.'''
+        return annotations.intersectionWithSegments( segments, mode = "midpoint" )
 
 ############################################################
 ############################################################
@@ -1148,7 +1166,7 @@ ctypedef struct EnrichmentStatistics:
     double qvalue 
 
 cdef double getTwoSidedPValue( EnrichmentStatistics * stats, 
-                                double val ):
+                               double val ):
     '''return pvalue for *val* within sorted array *ar*
     '''
     cdef long idx, l
@@ -1329,7 +1347,7 @@ cdef EnrichmentStatistics * makeEnrichmentStatistics( observed, samples,
 cdef class AnnotatorResult(object):
     '''container for annotator results.'''
 
-    format_observed = "%i"
+    cdef str format_observed
     format_expected = "%6.4f"
     format_fold = "%6.4f"
     format_pvalue = "%6.4e"
@@ -1351,23 +1369,25 @@ cdef class AnnotatorResult(object):
 
     cdef:
         EnrichmentStatistics * stats
-        str track, annotation
+        str track, annotation, counter
 
     def __init__( self,
                   track,
                   annotation,
+                  counter,
                   observed,
                   samples,
                   reference = None,
                   pseudo_count = 1.0 ):
-
         self.track = track
         self.annotation = annotation
+        self.counter = counter
         self.stats = makeEnrichmentStatistics( observed, 
                                                samples,
                                                reference,
                                                pseudo_count )
 
+        self.format_observed = "%i"
 
     def __str__(self):
 
@@ -1395,16 +1415,20 @@ cdef class AnnotatorResult(object):
                            ) )
 
     def __dealloc__(self):
-        free( self.stats.samples )
-        free( self.stats.sorted2sample )
-        free( self.stats.sample2sorted )
-        free( self.stats )
+        if self.stats != NULL:
+            free( self.stats.samples )
+            free( self.stats.sorted2sample )
+            free( self.stats.sample2sorted )
+            free( self.stats )
 
     property track:
         def __get__(self): return self.track
 
     property annotation:
         def __get__(self): return self.annotation
+
+    property counter:
+        def __get__(self): return self.counter
 
     property observed:
         def __get__(self): return self.stats.observed
@@ -1436,6 +1460,9 @@ cdef class AnnotatorResult(object):
             for x from 0 <= x < self.stats.nsamples:
                 r[x] = self.stats.samples[x]
             return r
+
+    property format_observed:
+        def __set__(self,f): self.format_observed = f
 
     def isSampleSignificantAtPvalue( self, sample_id, double pvalue ):
         return isSampleSignificantAtPvalue( self.stats, sample_id, pvalue )
@@ -1489,6 +1516,7 @@ cdef class AnnotatorResultExtended(AnnotatorResult):
     def __init__( self,
                   track,
                   annotation,
+                  counter,
                   observed,
                   samples,
                   track_segments,
@@ -1497,134 +1525,10 @@ cdef class AnnotatorResultExtended(AnnotatorResult):
                   reference = None,
                   pseudo_count = 1.0 ):
 
-        AnnotatorResult.__init__( self, track, annotation, observed, samples, 
+        AnnotatorResult.__init__( self, track, annotation, counter, observed, samples, 
                                   reference = reference, 
                                   pseudo_count = pseudo_count )
 
-        self.track_nsegments = track_segments.counts()
-        self.track_size = track_segments.sum()
-
-        self.annotation_nsegments = annotation_segments.counts()
-        self.annotation_size = annotation_segments.sum()
-
-        overlap = track_segments.clone()
-        overlap.intersect( annotation_segments )
-
-        self.overlap_nsegments = overlap.counts()
-        self.overlap_size = overlap.sum()
-
-        self.workspace_size = workspace.sum()
-
-    def __str__(self):
-
-        # if self.stats.nsamples < 10**6:
-        #     format_pvalue = "%7.6f"
-        # else:
-        #     format_pvalue = "%7.6e"
-
-        if self.stats.fold > 0:
-            logfold = self.format_fold % math.log( self.stats.fold, 2 )
-        else:
-            logfold = "-inf"
-
-        def _toFold( a, b ):
-            if b > 0: return self.format_fold % (100.0 * float(a) / b )
-            else: return "na"
-
-        def _toDensity( a, b ):
-            if b > 0: return self.format_density % (100.0 * float(a) / b )
-            else: return "na"
-
-        return "\t".join( (self.track,
-                           self.annotation,
-                           self.format_observed % self.stats.observed,
-                           self.format_expected % self.stats.expected,
-                           self.format_expected % self.stats.lower95,
-                           self.format_expected % self.stats.upper95,
-                           self.format_expected % self.stats.stddev,
-                           self.format_fold % self.stats.fold,
-                           logfold,
-                           self.format_pvalue % self.stats.pvalue,
-                           self.format_pvalue % self.stats.qvalue,
-                           self.format_counts % self.track_nsegments,
-                           self.format_counts % self.track_size,
-                           _toDensity( self.track_size, self.workspace_size),
-                           self.format_counts % self.annotation_nsegments,
-                           self.format_counts % self.annotation_size,
-                           _toDensity( self.annotation_size, self.workspace_size),
-                           self.format_counts % self.overlap_nsegments,
-                           self.format_counts % self.overlap_size,
-                           _toDensity( self.overlap_size, self.workspace_size),
-                           _toFold( self.overlap_nsegments, self.track_nsegments ),
-                           _toFold( self.overlap_size, self.track_size ),
-                           _toFold( self.overlap_nsegments, self.annotation_nsegments ),
-                           _toFold( self.overlap_size, self.annotation_size ),
-                           ) )
-
-cdef class AnnotatorResultOriginal(object):
-    '''container for annotator results.'''
-
-    format_observed = "%i"
-    format_expected = "%6.4f"
-    format_fold = "%6.4f"
-    format_pvalue = "%6.4e"
-    format_counts = "%i"
-    format_density = "%6.4e"
-
-    headers = ["track", 
-               "annotation",
-               "observed",
-               "expected",
-               "CI95low", 
-               "CI95high",
-               "stddev",
-               "fold",
-               "l2fold",
-               "pvalue",
-               "qvalue",
-               "track_nsegments",
-               "track_size",
-               "track_density",
-               "annotation_nsegments",
-               "annotation_size",
-               "annotation_density",
-               "overlap_nsegments",
-               "overlap_size",
-               "overlap_density",
-               "percent_overlap_nsegments_track",
-               "percent_overlap_size_track",
-               "percent_overlap_nsegments_annotation",
-               "percent_overlap_size_annotation",
-               ]
-
-    cdef:
-        EnrichmentStatistics * stats
-        str track, annotation
-        Position track_nsegments
-        Position track_size
-        Position annotation_nsegments
-        Position annotation_size
-        Position overlap_nsegments
-        Position overlap_size
-        Position workspace_size
-
-    def __init__( self,
-                  track,
-                  annotation,
-                  observed,
-                  samples,
-                  track_segments,
-                  annotation_segments,
-                  workspace,
-                  reference = None,
-                  pseudo_count = 1.0 ):
-
-        self.track = track
-        self.annotation = annotation
-        self.stats = makeEnrichmentStatistics( observed, 
-                                               samples,
-                                               reference,
-                                               pseudo_count )
 
         self.track_nsegments = track_segments.counts()
         self.track_size = track_segments.sum()
@@ -1685,58 +1589,6 @@ cdef class AnnotatorResultOriginal(object):
                            _toFold( self.overlap_nsegments, self.annotation_nsegments ),
                            _toFold( self.overlap_size, self.annotation_size ),
                            ) )
-
-    def __dealloc__(self):
-        free( self.stats.samples )
-        free( self.stats.sorted2sample )
-        free( self.stats.sample2sorted )
-        free( self.stats )
-
-    property track:
-        def __get__(self): return self.track
-
-    property annotation:
-        def __get__(self): return self.annotation
-
-    property observed:
-        def __get__(self): return self.stats.observed
-
-    property expected:
-        def __get__(self): return self.stats.expected
-
-    property fold:
-        def __get__(self): return self.stats.fold
-
-    property stddev:
-        def __get__(self): return self.stats.stddev
-
-    property pvalue:
-        def __get__(self): return self.stats.pvalue
-        def __set__(self, val): self.stats.pvalue = val
-
-    property qvalue:
-        def __get__(self): return self.stats.qvalue
-        def __set__(self, val): self.stats.qvalue = val
- 
-    property nsamples:
-        def __get__(self): return self.stats.nsamples
-
-    property samples:
-        def __get__(self): 
-            cdef Position x
-            r = numpy.zeros( self.nsamples, dtype = numpy.float )
-            for x from 0 <= x < self.stats.nsamples:
-                r[x] = self.stats.samples[x]
-            return r
-
-    def isSampleSignificantAtPvalue( self, sample_id, double pvalue ):
-        return isSampleSignificantAtPvalue( self.stats, sample_id, pvalue )
-
-    def getSample( self, sample_id ):
-        return self.stats.samples[sample_id]
-
-    def getEmpiricalPValue( self, value ):
-        return getTwoSidedPValue( self.stats, value )
 
 ############################################################
 ############################################################
