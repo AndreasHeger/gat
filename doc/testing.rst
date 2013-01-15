@@ -24,10 +24,12 @@ The tests below sample from a segment list *10* segments with each segment of si
 .. toctree::
    :maxdepth: 2
 
-   testingSamplerGatSegments.rst
    testingSamplerGatAnnotator.rst
+   testingSamplerGatSegments.rst
    testingSamplerGatUniform.rst
+   testingSamplerGatPermutation.rst
    testingSamplerGatBruteForce.rst
+   testingSamplerGatShift.rst
    testingSamplerAnnotator.rst
    testingPosition.rst
 

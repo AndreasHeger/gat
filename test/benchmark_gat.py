@@ -353,6 +353,7 @@ class TestSegmentTrimming( GatTest ):
         # print numpy.histogram( starts, bins = xrange( 0, workspace_size+1) )
 
         counts_within_workspace = getWorkspaceCounts( workspace,
+                                                      segments,
                                                       samples,
                                                       filename = getPlotFilename( str(self) ),
                                                       expected = expected,
@@ -420,6 +421,7 @@ class TestPositionSampling( GatTest ):
         samples = self.getSamples( workspace, sampler, sample_length )
         
         counts_within_workspace = getWorkspaceCounts( workspace,
+                                                      workspace,
                                                       samples,
                                                       filename = getPlotFilename( str(self) ),
                                                       expected = expected,
@@ -524,13 +526,16 @@ class TestPositionSampling( GatTest ):
 ##############################################################################        
 ##############################################################################        
 def getWorkspaceCounts( workspace, 
+                        segments,
                         samples,
                         filename,
                         expected = None,
                         density = 0 ):
     '''compute sample counts within workspace.
 
-    returns array of size workspace with counts
+    returns array of size workspace with counts.
+
+    Also outputs plots.
     '''
 
     l = workspace.max()
@@ -538,6 +543,7 @@ def getWorkspaceCounts( workspace,
     ntests = len(samples)
 
     segment_sizes = []
+    nsegments = []
     starts = numpy.zeros( l+1, numpy.int )
     ends = numpy.zeros( l+1, numpy.int )
 
@@ -559,6 +565,7 @@ def getWorkspaceCounts( workspace,
                                max(ss),
                                numpy.mean(ss),
                                numpy.median(ss) ) )
+        nsegments.append( len(ss) )
 
     counts_within_workspace = []
     for start, end in workspace:
@@ -576,8 +583,11 @@ def getWorkspaceCounts( workspace,
     plt.subplots_adjust( right = 0.7 )
     # plt.axes( [0.1,0.1,0.51,0.5] )
 
-    plt.subplot( "311" )
-    plt.plot( xrange(len(counts_within_workspace)), counts_within_workspace, '.', label = "coverage" )
+    plt.subplot( "411" )
+    plt.plot( xrange(len(counts_within_workspace)), 
+              counts_within_workspace, 
+              '.', 
+              label = "coverage" )
 
     plt.plot( xrange(len(counts_within_workspace)), newy, '-', 
               label="smooth (%i)" % dx )
@@ -596,7 +606,7 @@ def getWorkspaceCounts( workspace,
                   '--' )
     plt.legend( loc=(1.03,0.2) )
 
-    plt.subplot( "312" )
+    plt.subplot( "412" )
     segment_sizes.sort()
     segment_sizes = zip(*segment_sizes)
     plt.plot( segment_sizes[0], label="stddev" )
@@ -604,16 +614,24 @@ def getWorkspaceCounts( workspace,
     plt.plot( segment_sizes[2], label="max" )
     plt.plot( segment_sizes[3], label="mean" )
     plt.plot( segment_sizes[4], label="median" )
-    plt.legend( loc=(1.03,0.2) )
+    plt.legend( loc=(1.03,0) )
     plt.xlabel( "sample" )
     plt.ylabel( "segment size" )
 
-    plt.subplot( "313" )
+    plt.subplot( "413" )
     plt.plot( starts, label="starts" )
     plt.plot( ends, label="ends" )
     plt.legend( loc=(1.03,0.2) )
     plt.xlabel( "position" )
     plt.ylabel( "counts" )
+
+    plt.subplot( "414" )
+    nsegments.sort()
+    plt.plot( nsegments, label="nsegments" )
+    plt.legend( loc=(1.03,0.2) )
+    plt.xlabel( "sample" )
+    plt.ylabel( "counts" )
+    plt.axhline( len(segments), color = 'r', ls = '--' )
 
     plt.savefig( filename )
 
@@ -720,6 +738,7 @@ class TestSegmentSamplingSamplerGat( GatTest ):
 
         # compute actual coverage counts
         counts_within_workspace = getWorkspaceCounts( workspace, 
+                                                      segments,
                                                       samples,
                                                       filename,
                                                       expected = expected,
@@ -918,6 +937,25 @@ class TestSegmentSamplingSamplerGat( GatTest ):
 
         self.checkSample( samples, segments, workspace )
 
+    def testSingleWorkspaceWithOffset( self ):
+        '''
+        test sampling within a single continuous workspace.'''
+        nsegments = 10
+        segment_size = 100
+        workspace_size = 10000
+        offset = 10000
+
+        workspace = csegmentlist.SegmentList( iter = [ (offset, offset + workspace_size) ],
+                                     normalize = True )
+
+        segments = csegmentlist.SegmentList( iter = ( (x,  x + segment_size)   \
+                                                 for x in range( offset, offset + 1000 * nsegments, 1000) ),
+                                    normalize = True )
+        
+        samples = self.getSamples( segments, workspace )
+
+        self.checkSample( samples, segments, workspace )
+
     def testSingleWorkspaceSingleSegment( self ):
         '''
         test sampling within a single continuous workspace.'''
@@ -934,6 +972,7 @@ class TestSegmentSamplingSamplerGat( GatTest ):
 
         samples = self.getSamples( segments, workspace )
         self.checkSample( samples, segments, workspace )
+
 
     def testFullWorkspace( self ):
         '''
@@ -1071,6 +1110,15 @@ class TestSegmentSamplingSamplerBruteForce( TestSegmentSamplingSamplerGat ):
 
     def setUp(self):
         self.sampler = gat.SamplerBruteForce()
+
+class TestSegmentSamplingSamplerPermutation( TestSegmentSamplingSamplerGat ):
+
+    check_nucleotides = True
+    check_average_coverage = True
+    check_uniform_coverage = True
+
+    def setUp(self):
+        self.sampler = gat.SamplerPermutation()
 
 class TestSegmentSamplingSamplerUniform( TestSegmentSamplingSamplerGat ):
 

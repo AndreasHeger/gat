@@ -3,7 +3,7 @@
 
 # You can set these variables from the command line.
 SPHINXOPTS    =
-SPHINXBUILD   = sphinx-build
+SPHINXBUILD   = sphinx-1.0-build
 PAPER         =
 
 # Internal variables.
@@ -12,6 +12,8 @@ PAPEROPT_letter = -D latex_paper_size=letter
 ALLSPHINXOPTS   = -d _build/doctrees $(PAPEROPT_$(PAPER)) $(SPHINXOPTS) .
 
 PUBLISH_DIR=/ifs/home/andreas/public_html/documentation/gat
+
+SAMPLERS=SamplerGat SamplerGatSegments SamplerGatUniform SamplerGatPermutation SamplerGatBruteForce SamplerAnnotator SamplerShift
 
 .PHONY: help clean html dirhtml pickle json htmlhelp qthelp latex changes linkcheck doctest
 
@@ -32,6 +34,10 @@ clean:
 	-rm -rf _build/*
 
 html:
+	for x in $(SAMPLERS); do \
+		echo $$x; \
+		perl -p -i -e "s/%%%/$$x/g" < testingSamplerTemplate.rst > testingSampler$$x.rst; \
+	done 
 	$(SPHINXBUILD) -b html $(ALLSPHINXOPTS) _build/html
 	@echo
 	@echo "Build finished. The HTML pages are in _build/html."
