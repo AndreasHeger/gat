@@ -4,12 +4,12 @@ SamplerAnnotator
 Continuous workspaces
 +++++++++++++++++++++
 
-.. figure:: ../test/testSingleWorkspace.TestSegmentSamplingGat.png
+.. figure:: ../test/testSingleWorkspace.TestSegmentSamplingSamplerGat.png
    :width: 500
 
    Single continuous workspace.
 
-.. figure:: ../test/testFullWorkspace.TestSegmentSamplingGat.png
+.. figure:: ../test/testFullWorkspace.TestSegmentSamplingSamplerGat.png
    :width: 500
 
    A single continuous workspace of size 100. Samples contain a single
@@ -17,7 +17,7 @@ Continuous workspaces
    will sample until all 100 bases of the workspace are reached, the
    returned segment length can be up to 500 (200 + 100 + 200 ).
 
-.. figure:: ../test/testSmallWorkspace.TestSegmentSamplingGat.png
+.. figure:: ../test/testSmallWorkspace.TestSegmentSamplingSamplerGat.png
    :width: 500
 
    A single continuous workspace of size 100. Samples contain a single
@@ -26,32 +26,32 @@ Continuous workspaces
 Segmented workspaces
 ++++++++++++++++++++
 
-.. figure:: ../test/testSegmentedWorkspaceSmallGap.TestSegmentSamplingGat.png
+.. figure:: ../test/testSegmentedWorkspaceSmallGap.TestSegmentSamplingSamplerGat.png
    :width: 500
 
    Workspace segmented into 10 segments of size 999 with a single nucleotide
    gap between workspaces.
 
-.. figure:: ../test/testSegmentedWorkspaceLargeGap.TestSegmentSamplingGat.png
+.. figure:: ../test/testSegmentedWorkspaceLargeGap.TestSegmentSamplingSamplerGat.png
    :width: 500
 
    Workspace segmented into 10 segments of size 900 with a 100 nucleotide
    gap between workspaces.
 
-.. figure:: ../test/testSegmentedWorkspace2x.TestSegmentSamplingGat.png
+.. figure:: ../test/testSegmentedWorkspace2x.TestSegmentSamplingSamplerGat.png
    :width: 500
 
    Workspace segmented into 10 segments of size 200 with a 800 nucleotide
    gap between workspaces. In this case, workspace segments are only twice 
    the size of segments.
 
-.. figure:: ../test/testSegmentedWorkspaceSmallGapUnequalSides.TestSegmentSamplingGat.png
+.. figure:: ../test/testSegmentedWorkspaceSmallGapUnequalSides.TestSegmentSamplingSamplerGat.png
    :width: 500
 
    A segmented workspace of size 100 split at position 50 with a gap of 25. There is 
    a single segment of size 50.
 
-.. figure:: ../test/testSegmentedWorkspaceSmallGapEqualSides.TestSegmentSamplingGat.png
+.. figure:: ../test/testSegmentedWorkspaceSmallGapEqualSides.TestSegmentSamplingSamplerGat.png
    :width: 500
 
    A segmented workspace of size 125 split at position 50 with a gap of 5. There is 

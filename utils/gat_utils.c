@@ -2,11 +2,10 @@
 #include <zlib.h>
 #include "gat_utils.h"
 
-
 // return insertion_point, after numpy-1.0.4/numpy/core/src/multiarraymodule.c
 // local_search_left
 // can be replaced by bsearch?
-long searchsorted(void * base,
+long searchsorted(const void * base,
 		  size_t nmemb,
 		  size_t size,
 		  const void * target,
@@ -16,12 +15,14 @@ long searchsorted(void * base,
 
   size_t imin = 0;
   size_t imax = nmemb;
-
+  // increment in bytes
+  char * b = (char*)base;
+  
   while (imin < imax) 
     {
       size_t imid = imin + ((imax - imin) >> 1);
       
-      if (compar( &base[imid*size], target) < 0)
+      if (compar( &b[imid*size], target) < 0)
 	imin = imid + 1;
       else
 	imax = imid;
@@ -33,7 +34,7 @@ long searchsorted(void * base,
 // return insertion_point, after numpy-1.0.4/numpy/core/src/multiarraymodule.c
 // local_search_left
 // can be replaced by bsearch?
-long searchargsorted(void * base,
+long searchargsorted(const void * base,
 		     int * sorted,
 		     size_t nmemb,
 		     size_t size,
@@ -44,12 +45,13 @@ long searchargsorted(void * base,
 
   size_t imin = 0;
   size_t imax = nmemb;
-  
+  // increment in bytes
+  char * b = (char*)base;
+    
   while (imin < imax) 
     {
       size_t imid = imin + ((imax - imin) >> 1);
-
-      if (compar( &base[sorted[imid]*size], target) < 0)
+      if (compar( &b[sorted[imid]*size], target) < 0)
 	imin = imid + 1;
       else
 	imax = imid;

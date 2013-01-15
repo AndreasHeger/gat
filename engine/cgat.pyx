@@ -98,7 +98,10 @@ cdef int cmpPosition( const_void_ptr s1, const_void_ptr s2 ):
 
 @cython.profile(False)
 cdef int cmpDouble( const_void_ptr s1, const_void_ptr s2 ):
-    return <int>((<double*>s1)[0] - (<double*>s2)[0])
+    # see http://www.gnu.org/software/libc/manual/html_node/Comparison-Functions.html
+    cdef double da = (<double*>s1)[0]
+    cdef double db = (<double*>s2)[0]
+    return (da > db) - (da < db)
 
 cdef class SegmentListSamplerSlow:
 
@@ -153,6 +156,7 @@ cdef class SegmentListSamplerWithEdgeEffects:
         self.segment_list = segment_list
         self.nsegments = len(segment_list)
         self.cdf = <Position*>malloc( sizeof(Position) * self.nsegments )
+        if not self.cdf: raise MemoryError( "out of memory when allocation %i bytes" % sizeof( sizeof(Position) * self.nsegments ))
         self.total_size = 0
         for i from 0 <= i < len(segment_list):
             self.total_size += segment_length( segment_list.segments[i] )
@@ -233,6 +237,7 @@ cdef class SegmentListSampler:
         self.segment_list = segment_list
         self.nsegments = len(segment_list)
         self.cdf = <Position*>malloc( sizeof(Position) * self.nsegments )
+        if not self.cdf: raise MemoryError( "out of memory when allocation %i bytes" % sizeof( sizeof(Position) * self.nsegments ))
         self.total_size = 0
         for i from 0 <= i < len(segment_list):
             self.total_size += segment_length( segment_list.segments[i] )
@@ -345,6 +350,7 @@ cdef class HistogramSampler:
         assert self.nbuckets > 0, "sampling from empty histogram"
 
         self.cdf = <Position*>malloc( sizeof(Position) * self.nbuckets )
+        if not self.cdf: raise MemoryError( "out of memory when allocation %i bytes" % sizeof( sizeof(Position) * self.nbuckets ))
         self.total_size = 0
         for i from 0 <= i < self.nbuckets:
             self.total_size += histogram[i]
@@ -1047,12 +1053,14 @@ cdef class Counter:
     '''
 
 cdef class CounterNucleotideOverlap(Counter):
+    name = "nucleotide-overlap"
 
     def __call__(self, csegmentlist.SegmentList segments, csegmentlist.SegmentList annotations, csegmentlist.SegmentList workspace = None ):
         '''return number of nucleotides overlapping between segments and annotations.'''
         return annotations.overlapWithSegments( segments )
 
 cdef class CounterNucleotideDensity(Counter):
+    name = "nucleotide-density"
 
     def __call__(self, csegmentlist.SegmentList segments, csegmentlist.SegmentList annotations, csegmentlist.SegmentList workspace ):
         '''return number of nucleotides overlapping between segments and annotations.
@@ -1064,16 +1072,32 @@ cdef class CounterNucleotideDensity(Counter):
         return float(annotations.overlapWithSegments( segments )) / l
 
 cdef class CounterSegmentOverlap(Counter):
+    name = "segment-overlap"
 
     def __call__(self, segments, annotations, workspace = None ):
         '''return number of segments overlapping with annotations.'''
         return segments.intersectionWithSegments( annotations )
 
+cdef class CounterSegmentMidpointOverlap(Counter):
+    name = "segment-midoverlap"
+
+    def __call__(self, segments, annotations, workspace = None ):
+        '''return number of segments overlapping with annotations.'''
+        return segments.intersectionWithSegments( annotations, mode = "midpoint" )
+
 cdef class CounterAnnotationOverlap(Counter):
+    name = "annotation-overlap"
 
     def __call__(self, segments, annotations, workspace = None ):
         '''return number of segments overlapping with annotations.'''
         return annotations.intersectionWithSegments( segments )
+
+cdef class CounterAnnotationMidpointOverlap(Counter):
+    name = "annotation-midoverlap"
+
+    def __call__(self, segments, annotations, workspace = None ):
+        '''return number of segments overlapping with annotations.'''
+        return annotations.intersectionWithSegments( segments, mode = "midpoint" )
 
 ############################################################
 ############################################################
@@ -1145,12 +1169,13 @@ ctypedef struct EnrichmentStatistics:
     double qvalue 
 
 cdef double getTwoSidedPValue( EnrichmentStatistics * stats, 
-                                double val ):
+                               double val ):
     '''return pvalue for *val* within sorted array *ar*
     '''
     cdef long idx, l
     cdef double min_pval, pval, rval
-    
+
+    # find index of value correspending to observed value in samples
     idx = searchargsorted( stats.samples,
                            stats.sorted2sample,
                            stats.nsamples,
@@ -1158,9 +1183,10 @@ cdef double getTwoSidedPValue( EnrichmentStatistics * stats,
                            &val,
                            &cmpDouble,
                         )
-
+    
     l = stats.nsamples
     min_pval = 1.0 / l
+
     if idx == l:
         idx = 1
     elif val > stats.expected :
@@ -1172,9 +1198,9 @@ cdef double getTwoSidedPValue( EnrichmentStatistics * stats,
         while idx < l and stats.samples[stats.sorted2sample[idx]] == val: 
             idx += 1
         # no -1 because of 0-based indices
-            
-    pval = float(idx) / l
 
+    pval = float(idx) / l
+    
     return dmax( min_pval, pval)
 
 cdef void compressSampleIndex( EnrichmentStatistics * stats ):
@@ -1234,7 +1260,9 @@ cdef void compressSampleIndex( EnrichmentStatistics * stats ):
         stats.sample2sorted[stats.sorted2sample[x]] = refidx
         x += 1
 
-cdef EnrichmentStatistics * makeEnrichmentStatistics( observed, samples ):
+cdef EnrichmentStatistics * makeEnrichmentStatistics( observed, samples,
+                                                      reference,
+                                                      pseudo_count ):
 
     cdef EnrichmentStatistics * stats 
     cdef Position offset, i, l
@@ -1244,13 +1272,15 @@ cdef EnrichmentStatistics * makeEnrichmentStatistics( observed, samples ):
         raise ValueError( "not enough samples - no stats in makeEnrichmentStatistics" )
 
     stats = <EnrichmentStatistics*>malloc( sizeof(EnrichmentStatistics) )
+    if not stats: raise MemoryError( "out of memory when allocation %i bytes" % sizeof( EnrichmentStatistics) )
+
     stats.samples = <double*>calloc( l, sizeof(double))
     stats.sorted2sample = <int*>calloc( l, sizeof(int))
     stats.sample2sorted = <int*>calloc( l, sizeof(int))
 
     stats.observed = observed
     stats.nsamples = l 
-    for i from 0 <= i < l: stats.samples[i] = samples[i]
+    for i from 0 <= i < l: stats.samples[i] = float(samples[i])
 
     # create index of sorted values
     r = numpy.argsort( samples )
@@ -1264,15 +1294,24 @@ cdef EnrichmentStatistics * makeEnrichmentStatistics( observed, samples ):
     # print "after"
     # for i from 0 <= i < l: 
     #     print i, stats.samples[i], stats.sorted2sample[i], stats.sample2sorted[i]
-
     stats.expected = numpy.mean(samples)
+
+    if reference != None:
+        # test against reference
+        # move expected by fold change in the reference set
+        stats.expected *= reference.fold
+
+    # optionally add pseudo_counts
     if stats.expected != 0:
-        stats.fold = stats.observed / stats.expected
+        stats.fold = (stats.observed + pseudo_count) / (stats.expected + pseudo_count)
     else:
         stats.fold = 1.0
 
     stats.stddev = numpy.std(samples)
 
+    # compute 95% confidence intervals 
+    # The confidence interval are the values that lie
+    # at the 5% and 95% percentile of the samples.
     offset = int(0.05 * l)
     
     if offset > 0: 
@@ -1282,7 +1321,24 @@ cdef EnrichmentStatistics * makeEnrichmentStatistics( observed, samples ):
         stats.lower95 = stats.samples[stats.sorted2sample[ 0 ]]
         stats.upper95 = stats.samples[stats.sorted2sample[ l-1 ]]
     
-    stats.pvalue = getTwoSidedPValue( stats, stats.observed )
+    # adjust confidence intervals for reference fold change
+    # NB: I am not sure that this is proper
+    if reference == None:
+        stats.pvalue = getTwoSidedPValue( stats, stats.observed )
+    else:
+        # compute adjusted pvalue. Conceptually, move the distribution to center around 
+        # expected instead of the mean. Instead of moving the distribution, simply changing 
+        # the observed value is equivalent
+        if reference.fold > 0:
+            stats.pvalue = getTwoSidedPValue( stats, stats.observed / reference.fold )
+        else:
+            raise ValueError( "0 fold change not applicable" )
+
+        # this is analogous to shifting the excepted value.
+        # Is this correct?
+        stats.lower95 *= reference.fold
+        stats.upper95 *= reference.fold
+
     stats.qvalue = 1.0
 
     return stats
@@ -1295,7 +1351,7 @@ cdef EnrichmentStatistics * makeEnrichmentStatistics( observed, samples ):
 cdef class AnnotatorResult(object):
     '''container for annotator results.'''
 
-    format_observed = "%i"
+    cdef str format_observed
     format_expected = "%6.4f"
     format_fold = "%6.4f"
     format_pvalue = "%6.4e"
@@ -1313,59 +1369,30 @@ cdef class AnnotatorResult(object):
                "l2fold",
                "pvalue",
                "qvalue",
-               "track_nsegments",
-               "track_size",
-               "track_density",
-               "annotation_nsegments",
-               "annotation_size",
-               "annotation_density",
-               "overlap_nsegments",
-               "overlap_size",
-               "overlap_density",
-               "percent_overlap_nsegments_track",
-               "percent_overlap_size_track",
-               "percent_overlap_nsegments_annotation",
-               "percent_overlap_size_annotation",
                ]
 
     cdef:
         EnrichmentStatistics * stats
-        str track, annotation
-        Position track_nsegments
-        Position track_size
-        Position annotation_nsegments
-        Position annotation_size
-        Position overlap_nsegments
-        Position overlap_size
-        Position workspace_size
+        str track, annotation, counter
 
     def __init__( self,
                   track,
                   annotation,
+                  counter,
                   observed,
                   samples,
-                  track_segments,
-                  annotation_segments,
-                  workspace ):
-
+                  reference = None,
+                  pseudo_count = 1.0 ):
         self.track = track
         self.annotation = annotation
-        self.stats = makeEnrichmentStatistics( observed, samples )
+        self.counter = counter
+        self.stats = makeEnrichmentStatistics( observed, 
+                                               samples,
+                                               reference,
+                                               pseudo_count )
 
-        self.track_nsegments = track_segments.counts()
-        self.track_size = track_segments.sum()
+        self.format_observed = "%i"
 
-        self.annotation_nsegments = annotation_segments.counts()
-        self.annotation_size = annotation_segments.sum()
-
-        overlap = track_segments.clone()
-        overlap.intersect( annotation_segments )
-
-        self.overlap_nsegments = overlap.counts()
-        self.overlap_size = overlap.sum()
-
-        self.workspace_size = workspace.sum()
-        
     def __str__(self):
 
         # if self.stats.nsamples < 10**6:
@@ -1389,32 +1416,23 @@ cdef class AnnotatorResult(object):
                            logfold,
                            self.format_pvalue % self.stats.pvalue,
                            self.format_pvalue % self.stats.qvalue,
-                           self.format_counts % self.track_nsegments,
-                           self.format_counts % self.track_size,
-                           self.format_density % ( float(self.track_size) / self.workspace_size),
-                           self.format_counts % self.annotation_nsegments,
-                           self.format_counts % self.annotation_size,
-                           self.format_density % ( float(self.annotation_size) / self.workspace_size),
-                           self.format_counts % self.overlap_nsegments,
-                           self.format_counts % self.overlap_size,
-                           self.format_density % ( float(self.overlap_size) / self.workspace_size),
-                           self.format_fold % ( 100.0 * float( self.overlap_nsegments) / self.track_nsegments ),
-                           self.format_fold % ( 100.0 * float( self.overlap_size) / self.track_size ),
-                           self.format_fold % ( 100.0 * float( self.overlap_nsegments) / self.annotation_nsegments ),
-                           self.format_fold % ( 100.0 * float( self.overlap_size) / self.annotation_size ),
                            ) )
 
     def __dealloc__(self):
-        free( self.stats.samples )
-        free( self.stats.sorted2sample )
-        free( self.stats.sample2sorted )
-        free( self.stats )
+        if self.stats != NULL:
+            free( self.stats.samples )
+            free( self.stats.sorted2sample )
+            free( self.stats.sample2sorted )
+            free( self.stats )
 
     property track:
         def __get__(self): return self.track
 
     property annotation:
         def __get__(self): return self.annotation
+
+    property counter:
+        def __get__(self): return self.counter
 
     property observed:
         def __get__(self): return self.stats.observed
@@ -1447,6 +1465,9 @@ cdef class AnnotatorResult(object):
                 r[x] = self.stats.samples[x]
             return r
 
+    property format_observed:
+        def __set__(self,f): self.format_observed = f
+
     def isSampleSignificantAtPvalue( self, sample_id, double pvalue ):
         return isSampleSignificantAtPvalue( self.stats, sample_id, pvalue )
 
@@ -1456,16 +1477,137 @@ cdef class AnnotatorResult(object):
     def getEmpiricalPValue( self, value ):
         return getTwoSidedPValue( self.stats, value )
 
+cdef class AnnotatorResultExtended(AnnotatorResult):
+    '''container for annotator results.'''
+
+    format_density = "%6.4e"
+
+    headers = ["track", 
+               "annotation",
+               "observed",
+               "expected",
+               "CI95low", 
+               "CI95high",
+               "stddev",
+               "fold",
+               "l2fold",
+               "pvalue",
+               "qvalue",
+               "track_nsegments",
+               "track_size",
+               "track_density",
+               "annotation_nsegments",
+               "annotation_size",
+               "annotation_density",
+               "overlap_nsegments",
+               "overlap_size",
+               "overlap_density",
+               "percent_overlap_nsegments_track",
+               "percent_overlap_size_track",
+               "percent_overlap_nsegments_annotation",
+               "percent_overlap_size_annotation",
+               ]
+
+    cdef:
+        Position track_nsegments
+        Position track_size
+        Position annotation_nsegments
+        Position annotation_size
+        Position overlap_nsegments
+        Position overlap_size
+        Position workspace_size
+
+    def __init__( self,
+                  track,
+                  annotation,
+                  counter,
+                  observed,
+                  samples,
+                  track_segments,
+                  annotation_segments,
+                  workspace,
+                  reference = None,
+                  pseudo_count = 1.0 ):
+
+        AnnotatorResult.__init__( self, track, annotation, counter, observed, samples, 
+                                  reference = reference, 
+                                  pseudo_count = pseudo_count )
+
+
+        self.track_nsegments = track_segments.counts()
+        self.track_size = track_segments.sum()
+
+        self.annotation_nsegments = annotation_segments.counts()
+        self.annotation_size = annotation_segments.sum()
+
+        overlap = track_segments.clone()
+        overlap.intersect( annotation_segments )
+
+        self.overlap_nsegments = overlap.counts()
+        self.overlap_size = overlap.sum()
+
+        self.workspace_size = workspace.sum()
+
+    def __str__(self):
+
+        # if self.stats.nsamples < 10**6:
+        #     format_pvalue = "%7.6f"
+        # else:
+        #     format_pvalue = "%7.6e"
+
+        if self.stats.fold > 0:
+            logfold = self.format_fold % math.log( self.stats.fold, 2 )
+        else:
+            logfold = "-inf"
+
+        def _toFold( a, b ):
+            if b > 0: return self.format_fold % (100.0 * float(a) / b )
+            else: return "na"
+
+        def _toDensity( a, b ):
+            if b > 0: return self.format_density % (100.0 * float(a) / b )
+            else: return "na"
+
+        return "\t".join( (self.track,
+                           self.annotation,
+                           self.format_observed % self.stats.observed,
+                           self.format_expected % self.stats.expected,
+                           self.format_expected % self.stats.lower95,
+                           self.format_expected % self.stats.upper95,
+                           self.format_expected % self.stats.stddev,
+                           self.format_fold % self.stats.fold,
+                           logfold,
+                           self.format_pvalue % self.stats.pvalue,
+                           self.format_pvalue % self.stats.qvalue,
+                           self.format_counts % self.track_nsegments,
+                           self.format_counts % self.track_size,
+                           _toDensity( self.track_size, self.workspace_size),
+                           self.format_counts % self.annotation_nsegments,
+                           self.format_counts % self.annotation_size,
+                           _toDensity( self.annotation_size, self.workspace_size),
+                           self.format_counts % self.overlap_nsegments,
+                           self.format_counts % self.overlap_size,
+                           _toDensity( self.overlap_size, self.workspace_size),
+                           _toFold( self.overlap_nsegments, self.track_nsegments ),
+                           _toFold( self.overlap_size, self.track_size ),
+                           _toFold( self.overlap_nsegments, self.annotation_nsegments ),
+                           _toFold( self.overlap_size, self.annotation_size ),
+                           ) )
+
 ############################################################
 ############################################################
 ############################################################
 def getNormedPValue( value, r ):
     '''return pvalue assuming that samples are normal distributed.'''
     absval = abs(value - r.expected)
-    if HAS_SCIPY:
-        pvalue = 1.0 - scipy.stats.norm.cdf( absval, 0, r.stddev )
+    if r.stddev == 0: 
+        # dummy pvalue - if no overlap in expected, pvalue is set to 1.
+        pvalue = 1.0
     else:
-        raise ImportError( "scipy required" )
+        if HAS_SCIPY:
+            pvalue = 1.0 - scipy.stats.norm.cdf( absval, 0, r.stddev )
+        else:
+            raise ImportError( "scipy required" )
     return pvalue
 
 ############################################################
@@ -1738,6 +1880,7 @@ cdef class TupleProxy:
         cdef int s
         s = sizeof(char) * nbytes
         self.data = <char*>malloc( s )
+        if not self.data: raise MemoryError( "out of memory when allocation %i bytes" % sizeof( s ) )
         memcpy( <char*>self.data, buffer, s )
         self.update( self.data, nbytes )
 
@@ -2102,6 +2245,36 @@ class IntervalDictionary( object ):
             else:
                 del self.intervals[contig]
 
+    def toIsochores( self, isochores ):
+        '''split contigs into isochores.'''
+        for contig, segmentlist in self.intervals.items():
+            for other_track, other_vv in isochores.iteritems():
+                newlist = csegmentlist.SegmentList( clone = segmentlist )
+                newlist.intersect( other_vv[contig] )
+                isochore = "%s.%s" % (contig, other_track)
+                self.intervals[isochore] = newlist
+            del self.intervals[contig]
+
+    def fromIsochores( self ):
+        '''merge isochores into contigs'''
+        new = collections.defaultdict( csegmentlist.SegmentList )
+        normalize = False
+        # isochores might or might not be present
+        for isochore, segmentlist in self.intervals.items():
+            if "." in isochore:
+                contig, iso = isochore.split(".")
+                new[contig].extend( segmentlist )
+                normalize = True
+            else:
+                new[isochore] = segmentlist 
+
+        if normalize:
+            # merge adjacent intervals (and normalize)
+            for x in new.values(): 
+                x.merge( 0 )
+                
+        self.intervals = new
+
 #####################################################################
 #####################################################################
 #####################################################################
@@ -2298,13 +2471,20 @@ class IntervalCollection(object):
     def toIsochores( self, isochores ):
         '''split contigs in each track into isochores.'''
         for track, vv in self.intervals.iteritems():
-            for contig, segmentlist in vv.items():
-                for other_track, other_vv in isochores.iteritems():
-                    newlist = csegmentlist.SegmentList( clone = segmentlist )
-                    newlist.intersect( other_vv[contig] )
-                    isochore = "%s.%s" % (contig, other_track)
-                    vv[isochore] = newlist
-                del vv[contig]
+            vv.toIsochores( isochores )
+
+    def fromIsochores( self ):
+        '''merge isochores together.'''
+        for track, vv in self.intervals.iteritems():
+            vv.fromIsochores( )
+
+    def clone( self ):
+        '''return a copy of self.'''
+        new = IntervalCollection( self.name )
+        for track,v in self.intervals.iteritems():
+            for contig, segmentlist in v.iteritems():
+                new.add( track, contig, csegmentlist.SegmentList( clone = segmentlist) )
+        return new
 
     @property
     def tracks(self): return self.intervals.keys()

@@ -33,7 +33,7 @@ gat-plot - plot results from a gat analysis
 Purpose
 -------
 
-This script takes the results of a gatrun.py
+This script takes the results of a ``gat-run.py` or ``gat-compare.py``
 and plots the results.
 
 This script requires matplotlib.
@@ -43,10 +43,8 @@ Usage
 
 Example::
 
-   python gatrun.py 
-      --segment-file=segments.bed.gz 
-      --workspace-file=workspace.bed.gz 
-      --annotation-file=annotations_architecture.bed.gz  
+   python gat-plot.py --input-filename-results=gat.results.tsv.gz
+   python gat-plot.py --input-filename-counts=gat.counts.tsv.gz
  
 Type::
 
@@ -198,18 +196,6 @@ def main( argv = None ):
     parser = optparse.OptionParser( version = "%prog version: $Id: script_template.py 2871 2010-03-03 10:20:44Z andreas $", 
                                     usage = globals()["__doc__"] )
 
-    parser.add_option("-a", "--annotation-file", "--annotations", dest="annotation_files", type="string", action="append",
-                      help="filename with annotations [default=%default]."  )
-
-    parser.add_option("-s", "--segment-file", "--segments", dest="segment_files", type="string", action="append",
-                      help="filename with segments. Also accepts a glob in parentheses [default=%default]."  )
-
-    parser.add_option("-w", "--workspace-file", "--workspace", dest="workspace_files", type="string", action="append",
-                      help="filename with workspace segments. Also accepts a glob in parentheses [default=%default]."  )
-
-    parser.add_option("-i", "--isochore-file", "--isochores", dest="isochore_files", type="string", action="append",
-                      help="filename with isochore segments. Also accepts a glob in parentheses [default=%default]."  )
-
     parser.add_option("-l", "--sample-file", dest="sample_files", type="string", action="append",
                       help="filename with sample files. Start processing from samples [default=%default]."  )
 
@@ -238,14 +224,8 @@ def main( argv = None ):
                       help="plots to be created [default=%default]."  )
 
     parser.set_defaults(
-        annotation_files = [],
-        segment_files = [],
-        workspace_files = [],  
         sample_files = [],
         num_samples = 1000,
-        nbuckets = 100000,
-        bucket_size = 1,
-        counter = "nucleotide-overlap",
         output_stats = [],
         output_filename_counts = None,
         output_order = "fold",

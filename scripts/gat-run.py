@@ -41,7 +41,7 @@ Usage
 
 Example::
 
-   python gatrun.py 
+   python gat-run.py 
       --segment-file=segments.bed.gz 
       --workspace-file=workspace.bed.gz 
       --annotation-file=annotations_architecture.bed.gz  
@@ -67,12 +67,6 @@ import gat
 import gat.Experiment as E
 import gat.IOTools as IOTools
 import gat.IO as IO
-
-try:
-    import matplotlib.pyplot as plt
-    HASPLOT = True
-except (ImportError,RuntimeError):
-    HASPLOT = False
 
 def fromSegments( options, args ):
     '''run analysis from segment files. 
@@ -119,14 +113,22 @@ def fromSegments( options, args ):
     ##################################################
     ##################################################
     # initialize counter
-    if options.counter == "nucleotide-overlap":
-        counter = gat.CounterNucleotideOverlap()
-    elif options.counter == "nucleotide-density":
-        counter = gat.CounterNucleotideDensity()
-    elif options.counter == "segment-overlap":
-        counter = gat.CounterSegmentOverlap()
-    else:
-        raise ValueError("unknown counter '%s'" % options.counter )
+    counters = []
+    for counter in options.counters:
+        if counter == "nucleotide-overlap":
+            counters.append( gat.CounterNucleotideOverlap() )
+        elif counter == "nucleotide-density":
+            counters.append( gat.CounterNucleotideDensity() )
+        elif counter == "segment-overlap":
+            counters.append( gat.CounterSegmentOverlap() )
+        elif counter == "annotations-overlap":
+            counters.append( gat.CounterAnnotationsOverlap() )
+        elif counter == "segment-midoverlap":
+            counters.append( gat.CounterSegmentMidpointOverlap() )
+        elif counter == "annotations-midoverlap":
+            counters.append( gat.CounterAnnotationsMidpointOverlap() )
+        else:
+            raise ValueError("unknown counter '%s'" % counter )
 
     ##################################################
     ##################################################
@@ -149,6 +151,21 @@ def fromSegments( options, args ):
     ##################################################
     ##################################################
     ##################################################
+    ## check if reference is compplete
+    ##################################################
+    if options.reference:
+        reference = options.reference
+        for track in segments.tracks:
+            if track not in options.reference:
+                raise ValueError("missing track '%s' in reference" % track )
+            r = options.reference[track]
+            for annotation in annotations.tracks:
+                if annotation not in r:
+                    raise ValueError("missing annotation '%s' in annotations for track='%s'" % (annotation, track ))
+
+    ##################################################
+    ##################################################
+    ##################################################
     ## open sample stats outfile
     ##################################################
     if "sample" in options.output_stats or \
@@ -157,6 +174,8 @@ def fromSegments( options, args ):
         outfile_sample_stats = E.openOutputFile( "sample_stats" )
     else:
         outfile_sample_stats = None
+
+    
 
     ##################################################
     ##################################################
@@ -167,16 +186,18 @@ def fromSegments( options, args ):
                                  annotations, 
                                  workspace,
                                  sampler, 
-                                 counter,
+                                 counters,
                                  workspace_generator = workspace_generator,
                                  num_samples = options.num_samples,
                                  cache = options.cache,
                                  outfile_sample_stats = outfile_sample_stats,
-                                 output_counts = options.output_filename_counts,
+                                 output_counts_pattern = options.output_counts_pattern,
                                  output_samples_pattern = options.output_samples_pattern,
                                  sample_files = options.sample_files,
                                  conditional = options.conditional,
-                                 conditional_extension = options.conditional_extension )
+                                 conditional_extension = options.conditional_extension,
+                                 reference = options.reference,
+                                 pseudo_count = options.pseudo_count )
 
     return annotator_results
 
@@ -185,7 +206,7 @@ def fromResults( filename ):
 
     annotator_results = collections.defaultdict( dict )
 
-    with open(filename, "r") as infile:
+    with IOTools.openFile(filename, "r") as infile:
         for line in infile:
             if line.startswith("#"): continue
             if line.startswith("track"): continue
@@ -221,11 +242,14 @@ def main( argv = None ):
     parser.add_option("-l", "--sample-file", dest="sample_files", type="string", action="append",
                       help="filename with sample files. Start processing from samples [default=%default]."  )
 
-    parser.add_option("-c", "--counter", dest="counter", type="choice",
+    parser.add_option("-c", "--counter", dest="counters", type="choice", action="append",
                       choices=("nucleotide-overlap", 
                                "nucleotide-density",
-                               "segment-overlap", ),
-                      help="quantity to test [default=%default]."  )
+                               "segment-overlap", 
+                               "segment-midoverlap",
+                               "annotations-overlap", 
+                               "annotations-midoverlap" ),
+                      help="quantity to use for estimating enrichment [default=%default]."  )
 
     parser.add_option("-m", "--sampler", dest="sampler", type="choice",
                       choices=("annotator", 
@@ -259,14 +283,17 @@ def main( argv = None ):
                        choices = ("smoother", "bootstrap" ),
                        help="fdr computation: method for estimating pi0 [default=%default]."  )
 
-    parser.add_option( "--counts-file", dest="input_filename_counts", type="string", 
+    parser.add_option( "--input-counts-file", dest="input_filename_counts", type="string", 
                       help="start processing from counts - no segments required [default=%default]."  )
 
-    parser.add_option( "--output-counts-file", dest="output_filename_counts", type="string", 
-                      help="output counts to filename [default=%default]."  )
-
-    parser.add_option( "--results-file", dest="input_filename_results", type="string", 
+    parser.add_option( "--input-results-file", dest="input_filename_results", type="string", 
                       help="start processing from results - no segments required [default=%default]."  )
+
+    parser.add_option( "--output-tables-pattern", dest="output_tables_pattern", type="string", 
+                      help="output pattern for result tables. Used if there are multiple counters used [default=%default]."  )
+
+    parser.add_option( "--output-counts-pattern", dest="output_counts_pattern", type="string", 
+                      help="output pattern for counts [default=%default]."  )
 
     parser.add_option( "--output-plots-pattern", dest="output_plots_pattern", type="string", 
                        help="output pattern for plots [default=%default]" )
@@ -335,6 +362,15 @@ def main( argv = None ):
                       help="if the sampling method is 'shift', multiply each segment by # "
                            " to determine the size of the region for shifthing [default=%default]."  )
 
+    parser.add_option( "--pseudo-count", dest="pseudo_count", type="float",
+                      help="pseudo count. The pseudo count is added to both the observed and expected overlap. "
+                       " Using a pseudo-count avoids gat reporting fold changes of 0 [default=%default]."  )
+
+    parser.add_option( "--null", dest="null", type="string",
+                      help="null hypothesis. The default is to test categories for enrichment/depletion. "
+                           " If a filename with gat output is given, gat will test for the difference "
+                           " in fold change between the segments supplied and in the other file [default=%default]."  )
+
     parser.set_defaults(
         annotation_files = [],
         segment_files = [],
@@ -343,15 +379,16 @@ def main( argv = None ):
         num_samples = 1000,
         nbuckets = 100000,
         bucket_size = 1,
-        counter = "nucleotide-overlap",
+        counters = [],
         output_stats = [],
         output_bed = [],
-        output_filename_counts = None,
         output_order = "fold",
         cache = None,
         input_filename_counts = None,
         input_filename_results = None,
         pvalue_method = "empirical",
+        output_tables_pattern = "%s.tsv.gz",
+        output_counts_pattern = None,
         output_plots_pattern = None,
         output_samples_pattern = None,
         qvalue_method = "BH",
@@ -368,6 +405,9 @@ def main( argv = None ):
         enable_split_tracks = False,
         shift_expansion = 2.0,
         shift_extension = 0,
+        # pseudo count for fold change computation to avoid 0 fc
+        pseudo_count = 1.0,
+        null = "default",
         )
 
     ## add common options (-h/--help, ...) and parse command line 
@@ -381,125 +421,62 @@ def main( argv = None ):
     E.debug( "sizes: pos=%i segment=%i, max_coord=%i" % (size_pos, size_segment, 2**(8 * size_pos )))
 
     ##################################################
-    if options.input_filename_counts:
-        annotator_results = gat.fromCounts( options.input_filename_counts )
-    elif options.input_filename_results:
-        E.info( "reading annotator results from %s" % options.input_filename_results )
-        annotator_results = fromResults( options.input_filename_results )
+    # set default counter
+    if not options.counters:
+        options.counters.append( "nucleotide-overlap" )
+
+    ##################################################
+    if options.output_tables_pattern != None: 
+        if "%s" not in options.output_tables_pattern:
+            raise ValueError( "output_tables_pattern should contain at least one '%s'")
+
+    if options.output_samples_pattern != None: 
+        if "%s" not in options.output_samples_pattern:
+            raise ValueError( "output_samples_pattern should contain at least one '%s'")
+
+    if options.output_counts_pattern != None: 
+        if "%s" not in options.output_counts_pattern:
+            raise ValueError( "output_counts_pattern should contain at least one '%s'")
+
+
+    ##################################################
+    # read fold changes that results should be compared with
+    if options.null != "default":
+        if not os.path.exists( options.null ):
+            raise OSError( "file %s not found" % options.null )
+        E.info( "reading reference results from %s" % options.null )
+        options.reference = fromResults( options.null )
     else:
+        options.reference = None
+
+    if options.input_filename_counts:
+        # use pre-computed counts
+        annotator_results = gat.fromCounts( options.input_filename_counts )
+
+    elif options.input_filename_results:
+        # use previous results (re-computes fdr)
+        E.info( "reading gat results from %s" % options.input_filename_results )
+        annotator_results = fromResults( options.input_filename_results )
+
+    else:
+        # do full gat analysis
         annotator_results = fromSegments( options, args )
 
+    ##################################################
     if options.pvalue_method != "empirical":
         E.info("updating pvalues to %s" % options.pvalue_method )
-        gat.updatePValues( gat.iterator_results(annotator_results), options.pvalue_method )
+        gat.updatePValues( annotator_results, options.pvalue_method )
 
-    ##################################################
-    ##################################################
-    ##################################################
-    ## compute global fdr
-    ##################################################
-    E.info( "computing FDR statistics" )
-    gat.updateQValues( list(gat.iterator_results(annotator_results)), 
-                       method = options.qvalue_method,
-                       vlambda = options.qvalue_lambda,
-                       pi0_method = options.qvalue_pi0_method )
-
-    ##################################################
     ##################################################
     ## output
-    ##################################################
-    outfile = options.stdout
+    IO.outputResults( annotator_results, 
+                      options, 
+                      gat.AnnotatorResultExtended.headers,
+                      description_header, 
+                      description_width,
+                      descriptions )
 
-    outfile.write( "\t".join( gat.AnnotatorResult.headers + description_header ) + "\n" )
-
-    output = list( gat.iterator_results( annotator_results ) )
-    if options.output_order == "track":
-        output.sort( key = lambda x: (x.track, x.annotation) )
-    elif options.output_order == "annotation":
-        output.sort( key = lambda x: (x.annotation, x.track) )
-    elif options.output_order == "fold":
-        output.sort( key = lambda x: x.fold )
-    elif options.output_order == "pvalue":
-        output.sort( key = lambda x: x.pvalue )
-    elif options.output_order == "qvalue":
-        output.sort( key = lambda x: x.qvalue )
-    else:
-        raise ValueError("unknown sort order %s" % options.output_order )
-
-    for result in output:
-        outfile.write( str(result) )
-        if descriptions:
-            try:
-                outfile.write( "\t" + "\t".join( descriptions[result.annotation] ) )
-            except KeyError:
-                outfile.write( "\t" + "\t".join( [""] * description_width ) )
-        outfile.write("\n")
-    
-    ##################################################
-    # plot histograms
-    if options.output_plots_pattern and HASPLOT:
-
-        def buildPlotFilename( options, key ):
-            filename = re.sub("%s", key, options.output_plots_pattern)
-            filename = re.sub("[^a-zA-Z0-9-_./]", "_", filename )
-            dirname = os.path.dirname( filename )
-            if dirname and not os.path.exists( dirname ): os.makedirs( dirname )
-            return filename
-
-        E.info("plotting sample stats" )
-
-        for r in gat.iterator_results(annotator_results):
-            plt.figure()
-            key = "%s-%s" % (r.track, r.annotation)
-            s = r.samples
-            hist, bins = numpy.histogram( s,
-                                          bins = 100 )
-            
-            # convert to density
-            hist = numpy.array( hist, dtype = numpy.float )
-            hist /= sum(hist)
-
-            # plot bars
-            plt.bar( bins[:-1], hist, width=1.0, label = key )
-            
-            # plot estimated 
-            sigma = r.stddev
-            mu = r.expected
-            plt.plot(bins, 
-                     1.0/(sigma * numpy.sqrt(2 * numpy.pi)) *
-                     numpy.exp( - (bins - mu)**2 / (2 * sigma**2) ),
-                     label = "std distribution",
-                     linewidth=2, 
-                     color='r' )
-
-            plt.legend()
-            filename = buildPlotFilename( options, key )
-            plt.savefig( filename )
-
-        E.info( "plotting P-value distribution" )
-        
-        key = "pvalue"
-        plt.figure()
-
-        x,bins,y = plt.hist( [r.pvalue for r in gat.iterator_results(annotator_results) ],
-                             bins = numpy.arange( 0, 1.05, 0.025) ,
-                             label = "pvalue" )
-
-        plt.hist( [r.qvalue for r in gat.iterator_results(annotator_results) ],
-                  bins = numpy.arange( 0, 1.05, 0.025) ,
-                  label = "qvalue",
-                  alpha=0.5 )
-
-        plt.legend()
-
-        # hist, bins = numpy.histogram( \
-        #     [r.pvalue for r in gat.iterator_results(annotator_results) ],
-        #     bins = 20 )
-        # plt.plot( bins[:-1], hist, label = key )
-
-        filename = buildPlotFilename( options, key )
-        plt.savefig( filename )
-
+    IO.plotResults( annotator_results, options )
 
     ## write footer and output benchmark information.
     E.Stop()
