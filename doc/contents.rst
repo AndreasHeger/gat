@@ -49,7 +49,8 @@ Implementation notes
    background.rst   
    examples.rst
    testing.rst
-   implemenation.rst
+   simulators.rst
+   implementation.rst
    tutorial.rst
 
 Indices and tables

@@ -245,7 +245,12 @@ cdef class SegmentListSampler:
             self.cdf[i] = self.total_size -1
 
     cpdef sample( self, Position sample_length ):
-        '''return a sample.'''
+        '''return a sampled segment of size sample_length.
+
+        
+        The length of the sampled segment might be less than *sample_length*
+        if it extends beyond a workspace boundary.
+        '''
 
         # note: could be made quicker by
         # - creating a sample random integers once, see numpy.random_integers?
@@ -255,8 +260,8 @@ cdef class SegmentListSampler:
         cdef size_t segment_index
         cdef Segment chosen_segment
 
-        cdef Position random_pos_in_workspace, random_pos_in_segment
-
+        cdef Position random_pos_in_workspace
+        cdef long random_pos_in_segment, sampling_start
         # sample a position 
         # r = rand() / (RAND_MAX / total_size + 1)
         random_pos_in_workspace = numpy.random.randint( 0, self.total_size )
@@ -274,12 +279,27 @@ cdef class SegmentListSampler:
 
         # resample start position within chosen segment
         # permitting for partial overlap.
-        random_pos_in_segment = numpy.random.randint( lmax(0, chosen_segment.start - sample_length + 1),
-                                                      chosen_segment.end )
+        
+        # start position allowed to be negative in order to avoid edge effects 
+        # at the beginnig of a workspace 
+        # if chosen_segment.start is < than sample_length
+        sampling_start = <long>chosen_segment.start - sample_length + 1
+
+        # reduce sampling space if previous segment is closer than sample_length
+        # to avoid edge effects at workspace boundaries where the distance between
+        # the adjacent workspaces is less than sample_length
+        if segment_index > 0:
+            sampling_start = lmax( self.segment_list.segments[segment_index-1].end,
+                                   sampling_start)
+        random_pos_in_segment = numpy.random.randint( \
+            sampling_start,
+            chosen_segment.end )
 
         # adjust position by sampled amount
-        start = random_pos_in_segment
-        end = start + sample_length
+        # adjust start position to negative coordinate
+        # sampled length might be less sample_length
+        start = lmax(0, random_pos_in_segment)
+        end = random_pos_in_segment + sample_length
 
         # print "sample %i-%i, rand_pos_workspace=%i, rand_pos_segment=%i, index=%i/%i, segment=%s" %\
         #     (start, end, random_pos_in_workspace, random_pos_in_segment, 
@@ -391,35 +411,63 @@ cdef class Sampler:
     pass
 
 cdef class SamplerAnnotator(Sampler):
+    '''
+    sample with the annotator method.
+
+    Samples are created in a two step procedure. First, the length
+    of a sample segment is chosen randomly from the empirical segment
+    length distribution. Then, a random coordinate is chosen. The sampling
+    stops when exactly the same number of nucleotides in the sampled segments 
+    overlap the workspace as in the input.
+
+    This method does not truncate segments to the workspace before
+    or after sampling. The truncation can happen before and/or after
+    the algorithm finishes.
+
+    The sampling algorithm avoids checking for segment overlap until
+    the number of nucleotides sampled reaches the expected count.
+    Then, overlapping and adjacent segments are merged and the actual
+    number of nucleotides overlapping the workspace computed.
+
+    In case of over-shoot, a random segment and position within the current 
+    sample is chosen and the overshoot is removed by trimming in a random
+    direction.
+
+    In case of under-shoot, the sampling process continues as usual. It 
+    will converge if a segment of the appropriate length is sampled and
+    placed without overlap or a sampled segment overlaps a previously
+    sampled segment and due to the merging process increments its length
+    by the correct number of bases.
+
+    Conceptually this corresponds to a random process where the probability
+    that a segment gains or loses a certain number of nucleotides is independent
+    of the size of the segment (Poisson Process). An example of segments of this
+    type are regions of conservation, indel-purified segments or inter-gap 
+    segment lengths.
+
+    Note that the length distribution of the sampled segments is not exactly 
+    the same as the input segments. Also, the number of segments sampled will
+    differ from the number of segments in the input set.
+
+    This method is quick if the workspace is large compared to the segments that
+    need to be placed. If it is small, a large number of samples will be rejected.
+
+    *bucket_size* - bin size for empirical length distribution
+
+    *nbuckets* - number of bins of the empirical length distribution
+
+    The product of *bucket_size* and *nbuckets* needs to be larger than
+    the largest segment in the input set.
+
+    returns a SegmentList of sampled segments.
+    '''
+
 
     cdef Position bucket_size
     cdef int nbuckets
     cdef int nunsuccessful_rounds
 
     def __init__( self, bucket_size = 1, nbuckets = 100000 ):
-        '''sampler of the TheAnnotator.
-
-        Samples are created in a two step procedure. First, the length
-        of a sample segment is chosen randomly from the empirical segment
-        length distribution. Then, a random coordinate is chosen. If the
-        sampled segment does not overlap with the workspace it is rejected.
-
-        Before adding the segment to the sampled set, it is truncated to
-        the workspace.
-
-        If it overlaps with a previously sampled segment, the segments
-        are merged. Thus, bases shared between two segments are not counted
-        twice.
-
-        Sampling continues, until exactly the same number of bases overlap between
-        the ``P`` and the ``W`` as do between ``S`` and ``W``.
-
-        Note that the length distribution of the ``P`` is different from ``S``.
-
-        This method is quick if the workspace is large compared to the segments that
-        need to be placed. If it is small, a large number of samples will be rejected.
-        '''
-
         self.bucket_size = bucket_size
         self.nbuckets = nbuckets
         self.nunsuccessful_rounds
@@ -451,9 +499,8 @@ cdef class SamplerAnnotator(Sampler):
         intersected_segments = csegmentlist.SegmentList()
 
         # collect all segments in workspace
+        # This method does not truncate.
         working_segments = csegmentlist.SegmentList( clone = segments )
-
-        # or: intersect?
         working_segments.filter( workspace )
 
         if len(working_segments) == 0:
@@ -469,13 +516,13 @@ cdef class SamplerAnnotator(Sampler):
         # safety margin to avoid realloc calls
         sampled_segments = csegmentlist.SegmentList( allocate = int(1.1 * len(segments)) )
 
-        # build length histogram
+        # build a segment length histogram
         histogram = working_segments.getLengthDistribution( self.bucket_size,
                                                             self.nbuckets )
 
         hs = HistogramSampler( histogram, self.bucket_size )
 
-        # get segment sampler
+        # set up segment sampler
         sls = SegmentListSampler( workspace )
 
         remaining = ltotal
@@ -484,39 +531,35 @@ cdef class SamplerAnnotator(Sampler):
         max_unsuccessful_rounds = 20
 
         while true_remaining > 0 and nunsuccessful_rounds < max_unsuccessful_rounds:
-            # print "------------------------------------"
-            # print "true_remanining", true_remaining, "remaining", remaining, "ltotal", ltotal
-            # print "sampled_segments", sampled_segments.sum(), len(sampled_segments)
-            # print "unintersected_segments", unintersected_segments.sum(), len(unintersected_segments)
-            # print "intersected_segments", intersected_segments.sum(), len(intersected_segments)
 
+            ###################################################################
             # Sample a segment length from the histogram
             length = hs.sample()
             assert length > 0
 
+            ###################################################################
             # If we can now potentially get required number of nucleotides, recompute
             # the required amount since we might need more due to overlap
             if remaining <= length:
-                #print "recomputing segments", nunsuccessful_rounds
-                #print " sampled segments", sampled_segments.asList()
+                # add current sampled segments to list of segments
                 unintersected_segments.extend( sampled_segments )
+                # merge overlapping and adjacent segments
                 unintersected_segments.merge( 0 )
-                #print "extended"
+
+                # reset sampled segments
                 sampled_segments.clear()
+
+                ############################################
                 # compute overlap with workspace
                 intersected_segments = csegmentlist.SegmentList( clone = unintersected_segments )
                 intersected_segments.intersect( workspace )
 
-                #print " unintersected_segments", unintersected_segments.sum(), len(unintersected_segments)
-                #print unintersected_segments.asList()
-                #print " intersected_segments", intersected_segments.sum(), len(intersected_segments)
-                #print intersected_segments.asList()
                 assert intersected_segments.sum() <= unintersected_segments.sum()
-                #if not intersected_segments.sum() <= ltotal:
-                #   print "\n".join( [str(x) for x in intersected_segments ] ) + "\n"
-                #assert intersected_segments.sum() <= ltotal, \
-                #    "length of segments exceeds ltotal: %i > %i" % (intersected_segments.sum(), ltotal)
+
+                # recompute bases remaining to be covered
                 remaining = ltotal - <PositionDifference>intersected_segments.sum()
+
+                # check if we managed to increase coverage
                 if true_remaining == remaining:
                     nunsuccessful_rounds += 1
                 else:
@@ -524,63 +567,41 @@ cdef class SamplerAnnotator(Sampler):
 
             # deal with overshoot
             if true_remaining < 0:
-                #print "removing overshoot", true_remaining
                 temp_sampler = SegmentListSampler( unintersected_segments )
+
                 # sample a position from current list of sampled segments
                 start, end, overlap = temp_sampler.sample( 1 )
-                #print "unintersected_segments before trim", unintersected_segments.sum(), unintersected_segments.asList()
-                # causes a potential bias for overlapping segments- in case of overlapping segments, the
+
+                # causes a potential bias for overlapping segments:
+                # in case of overlapping segments, the
                 # segment chosen is always the first
                 unintersected_segments.trim_ends( start, 
                                                   -true_remaining,
                                                   numpy.random.randint( 0,2) )
+
                 # trimming might remove residues outside the workspace
                 # hence - recompute true_remaining by going back to loop.
-                #print "unintersected_segments after  trim", unintersected_segments.sum(), unintersected_segments.asList()
                 true_remaining = 1
                 continue
 
             # sample a position until we get a nonzero overlap
             start, end, overlap = sls.sample( length )
-            #print start, end, overlap, remaining, true_remaining
+
             sampled_segment = Segment( start, end )
 
-            # If intersect > remaining we could well add too much (but we're not sure, since
-            # there may be overlap with previously sampled segments).  Make sure we don't
-            # overshoot the mark.  However, if we can't increase the amount of overlap in a
-            # reasonable amount of time, don't bother
-            # 
-            #     # note that this part causes an edge bias as segments are preferentially added
-            #     # from within a workspace, thus depleting counts at positions were the workspace 
-            #     # is discontinuous.
-            # 
-            # if remaining < overlap and nunsuccessful_rounds < max_unsuccessful_rounds:
-            #     #print "truncating sampled segment", remaining, overlap, str(sampled_segment)
-            #     if workspace.overlapWithRange( sampled_segment.start, sampled_segment.start+1 ) > 0:
-            #         # Left end overlaps with workspace
-            #         sampled_segment.end = sampled_segment.start + remaining;
-            #     elif workspace.overlapWithRange( sampled_segment.end-1, sampled_segment.end ) > 0:
-            #         # Right end does?
-            #         sampled_segment.start = sampled_segment.end - remaining;
-
-            #     overlap = workspace.overlapWithRange( sampled_segment.start, sampled_segment.end );
-            #     #print "truncated to ", str(sampled_segment)
-
             if true_remaining > 0:
-                # print "adding segment ", sampled_segment, true_remaining
                 sampled_segments._add( sampled_segment )
                 remaining -= overlap
 
         self.nunsuccessful_rounds = nunsuccessful_rounds
-        
+
+        # merge overlapping/adjacent
         intersected_segments = csegmentlist.SegmentList( clone = unintersected_segments )
-        #print "final: unintersected", intersected_segments.sum(), intersected_segments.asList()
         intersected_segments.merge( 0 )
-        #print "final: merged", intersected_segments.sum(), intersected_segments.asList()
+
+        # remove all segments outside workspace
         intersected_segments.filter( workspace )
-        #print "final: filtered", intersected_segments.sum(), intersected_segments.asList()
-        #print "final:", intersected_segments.sum(), intersected_segments.asList()
-        
+
         assert intersected_segments.sum() > 0
         return intersected_segments
 
@@ -588,24 +609,41 @@ cdef class SamplerAnnotator(Sampler):
 ########################################################
 ########################################################
 cdef class SamplerSegments(Sampler):
+    '''
+    sample *n* segments from segment length distribution.
+
+    Samples are created in a two step procedure. First, the length
+    of a sample segment is chosen randomly from the empirical segment
+    length distribution. Then, a random coordinate is chosen. The sampling
+    stops when exactly *n* segments have been placed.
+    
+    Sampled segments may overlap.
+
+    The segment length distribution is derived from
+    the argument *segments* supplied to the :meth:`sample`
+    method.
+
+    *n* is given by the number of segments in the observed
+    data.
+
+    *segments* does not need to be normalized. In fact,
+    supplying overlapping segments is likely to be the 
+    most realistic use case.
+
+    *bucket_size* - bin size for empirical length distribution
+
+    *nbuckets* - number of bins of the empirical length distribution
+
+    The product of *bucket_size* and *nbuckets* needs to be larger than
+    the largest segment in the input set.
+
+    returns a SegmentList of sampled segments.
+    '''
 
     cdef Position bucket_size
     cdef Position nbuckets
 
     def __init__( self, bucket_size = 1, nbuckets = 100000 ):
-        '''sample *n* segments from length distribution.
-
-        The segment length distribution is derived from
-        the argument *segments* supplied to the :meth:`sample`
-        method.
-
-        *n* is given by the number of segments in the observed
-        data.
-
-        *segments* does not need to be normalized. In fact,
-        supplying overlapping segments is likely to be the 
-        most realistic use case.
-        '''
 
         self.bucket_size = bucket_size
         self.nbuckets = nbuckets
@@ -655,6 +693,29 @@ cdef class SamplerSegments(Sampler):
 ########################################################
 ########################################################
 cdef class SamplerBruteForce(Sampler):
+    '''
+    sample segments from length distribution until
+    workspace is covered by at least the same number of nucleotides
+    as the input.
+
+    This sampler applies a brute force algorithm - segments 
+    are added only if the do not overlap with a previously
+    sampled segment.
+
+    The segment length distribution is derived from
+    the argument *segments* supplied to the :meth:`sample`
+    method.
+
+    *bucket_size* - bin size for empirical length distribution
+
+    *nbuckets* - number of bins of the empirical length distribution
+
+    The product of *bucket_size* and *nbuckets* needs to be larger than
+    the largest segment in the input set.
+
+    returns a SegmentList of sampled segments.
+
+    '''
 
     cdef Position bucket_size
     cdef Position nbuckets
@@ -666,17 +727,6 @@ cdef class SamplerBruteForce(Sampler):
                   nbuckets = 100000,
                   ntries_inner = 100,
                   ntries_outer = 10 ):
-        '''sample segments from length distribution until
-        workspace is covered by the same number of nucleotides
-        as input.
-
-        The segment length distribution is derived from
-        the argument *segments* supplied to the :meth:`sample`
-        method.
-
-        Sample by brute force - add and remove segments until
-        the correct number of nucleotides has been sampled.
-        '''
 
         self.bucket_size = bucket_size
         self.nbuckets = nbuckets
@@ -766,6 +816,23 @@ cdef class SamplerBruteForce(Sampler):
 ########################################################
 ########################################################
 cdef class SamplerUniform(Sampler):
+    '''
+    For debugging purposes.
+
+    Every *increment* residues within the :term:`workspace`
+    a new segment is generated. The segment length is
+    taken from the segment size distribution of the input set.
+
+    Sampled segments extend from the position selected alternately into 
+    into forward or reverse direction.
+
+    *bucket_size* - bin size for empirical length distribution
+
+    *nbuckets* - number of bins of the empirical length distribution
+
+    The product of *bucket_size* and *nbuckets* needs to be larger than
+    the largest segment in the input set.
+    '''
 
     cdef Position bucket_size
     cdef Position nbuckets
@@ -779,22 +846,13 @@ cdef class SamplerUniform(Sampler):
                   increment,
                   bucket_size = 1,
                   nbuckets = 100000 ):
-        '''
-        For debugging purposes.
-
-        Every *increment* residues within the worspace
-        a new segment is generated. The segment length is
-        taken from the segment size distribution.
-
-        Segments are alternately forward/backward looking.
-        '''
+        self.current_orientation = 0
+        self.current_workspace = 0
+        self.current_position = 0
 
         self.bucket_size = bucket_size
         self.nbuckets = nbuckets
         self.increment = increment
-        self.current_orientation = 0
-        self.current_workspace = 0
-        self.current_position = 0
 
     cpdef csegmentlist.SegmentList sample( self,
                                            csegmentlist.SegmentList segments,
@@ -864,6 +922,24 @@ cdef class SamplerUniform(Sampler):
 ########################################################
 ########################################################
 cdef class SamplerShift(Sampler):
+    '''
+    Sample segments by shifting them by a random amount within *radius*
+    in a random direction.
+
+    This sampler can be used to investigate overlap between
+    two types of genomic annotations that tend to co-occur.
+    An example are two transcription factors that tend to 
+    occur in the promotor of the same genes. 
+
+    *radius* determines the size of the region that is accessible 
+    for randomly shifting a segment. It is expressed as a fraction 
+    of the size of a segment.
+
+    In the sampling procedure, the start of the segment is shifted
+    within radius. It is then wrapped around any discontinuities in the workspace. If
+    the segment extends beyond the radius, the remaining nucleotides will
+    be wrapped around.
+    '''
 
     cdef double radius
     cdef int extension 
@@ -871,19 +947,6 @@ cdef class SamplerShift(Sampler):
     def __init__( self, 
                   radius = 2,
                   extension = 0):
-        '''
-        Sample segments by shifting them by a random amount within *radius*
-        in a random direction.
-
-        *radius* determines the size of the region that is accessible 
-        for randomly shifting a segment. It is expressed as a fraction 
-        of the size of a segment.
-        
-        In the sampling procedure, the start of the segment is shifted
-        within radius. It is then wrapped around any discontinuities in the workspace. If
-        the segment extends beyond the radius, the remaining nucleotides will
-        be wrapped around.
-        '''
 
         self.radius = radius
         self.extension = extension
@@ -891,7 +954,15 @@ cdef class SamplerShift(Sampler):
     cpdef csegmentlist.SegmentList sample( self,
                                            csegmentlist.SegmentList segments,
                                            csegmentlist.SegmentList workspace ):
-        '''return a sampled list of segments.'''
+        '''create a random sample of segments.
+
+        *segments* - a list of segments
+        
+        *workspace* - the workspace to use
+
+        returns: a list of sampled segments.
+        '''
+
         assert workspace.is_normalized, "workspace is not normalized"
 
         cdef Segment segment
@@ -961,17 +1032,51 @@ cdef class SamplerShift(Sampler):
 ########################################################
 ########################################################
 ########################################################
-cdef class SamplerPermutation(Sampler):
+cdef class SamplerLocalPermutation(Sampler):
+    '''
+    Sample segments by local permutation.
+
+    This sampler creates a randomized copy of the input
+    set of segmeents by local permutation. The sampler proceeds locally,
+    that is for each continuous part of the workspace separately.
+
+    First, :term:`segments` of the input set overlapping with the current section
+    of the workspace are collected. Then, the order of the segments is randomly
+    permuted and randomly sized gaps inserted. Finally, segments are entered 
+    into the workspace from a randomly chosen point. If a segment extends beyond
+    the workspace boundary, it is wrapped around to the start of the
+    workspace.
+
+    If a segment of the input set is extending beyond a workspace boundary, the
+    full sized segment is used for the permutation, but the workspace segment
+    is enlarged by the same amount::
+
+           |-----workspace segment--------------------|
+      1111111      222         333      44444 55555
+      |----------workspace size for permutation-------|
+      33 4444    1111111     55555         222        3   - Random sample 1
+        222     44444 1111111    333   55555              - Random sample 2
+
+
+    '''
 
     def __init__( self ):
-        '''
-        Sample segments by permuting interval gaps and order.
-        '''
+        pass
 
     cpdef csegmentlist.SegmentList sample( self,
                                            csegmentlist.SegmentList segments,
                                            csegmentlist.SegmentList workspace ):
-        """return simulated fragments."""
+        '''create a random sample of segments.
+
+        .. note::
+            Still needs to optimized for speed
+
+        *segments* - a list of segments
+        
+        *workspace* - the workspace to use
+
+        returns: a list of sampled segments.
+        '''
 
         assert workspace.is_normalized, "workspace is not normalized"
 
@@ -980,7 +1085,7 @@ cdef class SamplerPermutation(Sampler):
         cdef PositionDifference work_start, work_end, start, end, last
         cdef PositionDifference total_length, free_length
         cdef Segment* _working_segments
-
+        cdef PositionDifference shift
         cdef csegmentlist.SegmentList sample = csegmentlist.SegmentList()
         
         for work_start, work_end in workspace:
@@ -1003,24 +1108,194 @@ cdef class SamplerPermutation(Sampler):
             random.shuffle( lengths )
         
             # 2. determine size of space between samples
+            # sample points in free area. The distance
+            # between the points is the space left.
             points = []
-            for x in range(len(lengths) + 1 ):
+            for x in range(len(lengths) ):
                 points.append( random.randint( 0, free_length ) )
             points.sort()
 
+            # cycle shift to avoid edge effects
+            shift = random.randint( 0, free_length )
+
             # 3. move segments to appropriate place
-            start = work_start
+            start = work_start + shift
             last = 0
             for x in range(len(lengths)):
                 start += points[x] - last
-                sample._add( Segment(start, start + lengths[x]) )
-                start += lengths[x]
+                # wrap around if beyond end of workspace
+                if start > work_end:
+                    start = work_start + start - work_end
+                end = start + lengths[x]
+                if end < work_end:
+                    sample._add( Segment(start, end ) )
+                    start += lengths[x]
+                else:
+                    # wrap around segment
+                    sample._add( Segment(start, work_end ) )
+                    end = work_start + end - work_end
+                    sample._add( Segment( work_start, end ) )
+
+                start = end
                 last = points[x]
                 
             assert start + (points[-1] - last) <= work_end, "start=%i, points[-1]=%i, work_end=%i" % \
                 (start, points[-1] -last, work_end)
         
             sample.normalize()
+        return sample
+
+########################################################
+########################################################
+########################################################
+cdef class SamplerGlobalPermutation(Sampler):
+
+    def __init__( self ):
+      '''
+      Sample segments by global permutation.
+
+      This sampler creates a randomized copy of the input
+      set of segmeents by permutation. The sampler uses all segments
+      within the workspace.
+
+      First, :term:`segments` of the input set overlapping with the workspace
+      are collected. Then, the order of the segments is randomly
+      permuted and randomly sized gaps inserted. Finally, segments are entered 
+      into the workspace from a randomly chosen point. If a segment extends beyond
+      the end of workspace segment it is wrapped around to the start of the next
+      workspace segment. 
+
+      If a segment of the input set is extending beyond a workspace boundary, the
+      full sized segment is used for the permutation, but the workspace segment
+      is enlarged by the same amount::
+
+             |--workspace segment--|      |--workspace segment--|
+        1111111      222         333      44444 55555
+        |--------------------------|      |---------------------|  - Workspace used for permutation
+        33 4444    1111111       55       555         222       3  - Random sample 1
+          222     44444 1111111              333   55555           - Random sample 2
+
+      '''
+
+    cpdef csegmentlist.SegmentList sample( self,
+                                           csegmentlist.SegmentList segments,
+                                           csegmentlist.SegmentList workspace ):
+        '''create a random sample of segments.
+
+        .. note::
+            Still needs to optimized for speed
+
+        *segments* - a list of segments
+        
+        *workspace* - the workspace to use
+
+        returns: a list of sampled segments.
+        '''
+
+        assert workspace.is_normalized, "workspace is not normalized"
+
+        cdef Segment segment
+        cdef csegmentlist.SegmentList working_segments, working_workspace
+        cdef PositionDifference work_start, work_end, start, end, last_end
+        cdef PositionDifference total_length, free_length
+        
+        cdef csegmentlist.SegmentList sample = csegmentlist.SegmentList()
+
+        # collect all segments in workspace
+        # This method does not truncate.
+        working_segments = csegmentlist.SegmentList( clone = segments )
+        working_segments.filter( workspace )
+
+        if len(working_segments) == 0: return sample
+        
+        # create a copy of the workspace
+        working_workspace = csegmentlist.SegmentList( clone = workspace )
+        
+        # extend workspace segments with segments
+        working_workspace.extend( working_segments )
+        working_workspace.merge( 0 )
+
+        # get lengths of segments inside and extending from workspace
+        lengths = [ x[1] - x[0] for x in working_segments ]
+        total_length = sum( lengths )
+
+        # compute workspace size free of segments
+        free_length = working_workspace.sum()
+        free_length -= total_length
+
+        # 1. permutate order of segments
+        random.shuffle( lengths )
+
+        # 2. determine size of space between samples
+        # sample points in free area. The distance
+        # between the points is the space left.
+        points = []
+        for x in range(len(lengths) ):
+            points.append( random.randint( 0, free_length ) )
+        points.sort()
+
+        # 3. cycle shift to avoid edge effects
+        shift = random.randint( 0, free_length )
+
+        # find starting position 
+        count = 0
+        idx = 0
+        for start,end in working_workspace:
+            count += end - start
+            if count > shift: 
+                count -= end - start
+                break
+            idx += 1
+
+        # idx is now the segment to start inserting in
+        # add missing residues
+        start += shift - count
+
+        # 4. move segments to appropriate place
+        last_end = 0
+        global_work_start, global_work_end = working_workspace.min(), working_workspace.max()
+        work_start, work_end = working_workspace[idx]
+
+        #print "starting adding", start
+        max_idx = len(working_workspace)
+        for segment_idx in range( len(lengths) ):
+
+            # place a gap
+            gap_length = points[segment_idx] - last_end
+            # print "gap"
+            while gap_length > 0:
+                increment = lmin( work_end - start, gap_length )
+                # print idx, start, start + increment, gap_length
+                start += increment
+                if start == work_end:
+                    idx += 1
+                    if idx >= max_idx: idx = 0
+                    work_start, work_end = working_workspace[idx]
+                    start = work_start
+                gap_length -= increment
+
+            # place a segment of a certain length
+            # the segment is split into multiple components at
+            # workspace gaps
+            #print "segment"
+            length = lengths[segment_idx]
+            while length > 0:
+                increment = lmin( work_end - start, length )
+                #print idx, start, start + increment, length
+                if increment > 0:
+                    sample._add( Segment( start, start + increment ) )
+                start += increment
+                if start == work_end:
+                    idx += 1
+                    if idx >= max_idx: idx = 0
+                    work_start, work_end = working_workspace[idx]
+                    start = work_start
+
+                length -= increment
+            last_end = start
+
+        sample.normalize()
+
         return sample
 
 ########################################################

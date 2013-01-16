@@ -3,7 +3,7 @@
 
 # You can set these variables from the command line.
 SPHINXOPTS    =
-SPHINXBUILD   = sphinx-1.0-build
+SPHINXBUILD   = sphinx-build
 PAPER         =
 
 # Internal variables.
@@ -13,7 +13,10 @@ ALLSPHINXOPTS   = -d _build/doctrees $(PAPEROPT_$(PAPER)) $(SPHINXOPTS) .
 
 PUBLISH_DIR=/ifs/home/andreas/public_html/documentation/gat
 
-SAMPLERS=SamplerGat SamplerGatSegments SamplerGatUniform SamplerGatPermutation SamplerGatBruteForce SamplerAnnotator SamplerShift
+SAMPLERS=SamplerGat SamplerSegments SamplerUniform \
+	SamplerLocalPermutation SamplerGlobalPermutation \
+	SamplerBruteForce SamplerShift \
+	SamplerAnnotator 
 
 .PHONY: help clean html dirhtml pickle json htmlhelp qthelp latex changes linkcheck doctest
 
@@ -36,7 +39,7 @@ clean:
 html:
 	for x in $(SAMPLERS); do \
 		echo $$x; \
-		perl -p -i -e "s/%%%/$$x/g" < testingSamplerTemplate.rst > testingSampler$$x.rst; \
+		perl -p -i -e "s/%%%/$$x/g" < SamplerTemplate.rst > testingSampler$$x.rst; \
 	done 
 	$(SPHINXBUILD) -b html $(ALLSPHINXOPTS) _build/html
 	@echo

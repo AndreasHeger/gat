@@ -1111,14 +1111,23 @@ class TestSegmentSamplingSamplerBruteForce( TestSegmentSamplingSamplerGat ):
     def setUp(self):
         self.sampler = gat.SamplerBruteForce()
 
-class TestSegmentSamplingSamplerPermutation( TestSegmentSamplingSamplerGat ):
+class TestSegmentSamplingSamplerLocalPermutation( TestSegmentSamplingSamplerGat ):
 
     check_nucleotides = True
     check_average_coverage = True
     check_uniform_coverage = True
 
     def setUp(self):
-        self.sampler = gat.SamplerPermutation()
+        self.sampler = gat.SamplerLocalPermutation()
+
+class TestSegmentSamplingSamplerGlobalPermutation( TestSegmentSamplingSamplerGat ):
+
+    check_nucleotides = True
+    check_average_coverage = True
+    check_uniform_coverage = True
+
+    def setUp(self):
+        self.sampler = gat.SamplerGlobalPermutation()
 
 class TestSegmentSamplingSamplerUniform( TestSegmentSamplingSamplerGat ):
 
