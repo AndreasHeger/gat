@@ -51,7 +51,6 @@ long searchargsorted(const void * base,
   while (imin < imax) 
     {
       size_t imid = imin + ((imax - imin) >> 1);
-
       if (compar( &b[sorted[imid]*size], target) < 0)
 	imin = imid + 1;
       else

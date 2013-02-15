@@ -58,6 +58,24 @@ with A = b_A / b_W
 
 P = Pr_binom( k >= k_A | n = n_S, p = p_A )
 
+Testing for fold change differences
+===================================
+
+Testing for fold change differences using the fold change ratios of
+samples and tests them against 1.
+
+It is important to perform the test on the fold changes and not the distributions
+of counts. Counts between different combinations of segments and
+annotations are not comparable. A larger set of :term:`segments of
+interest` will increase the expected counts compared to a smaller set.
+Similarly, a set with larger segments will have a higher expected
+overlap than a smaller set. Thus, only after normalization with the
+observed value the comparison can be made.
+
+I use the ratio of observed values, but I believe the difference could be used
+as well. Using the ratio in log-space facilitates plotting. It might
+also better compensate for extreme values if the expected overlap is
+small and there are many samples with no overlap.
 
 
 

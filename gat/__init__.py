@@ -537,8 +537,8 @@ def fromCounts( filename ):
         
         for line in infile:
             track, annotation, observed, counts = line[:-1].split( "\t" )
-            samples = numpy.array( map(int, counts.split(",")), dtype=numpy.float )
-            observed = int(observed)
+            samples = numpy.array( map(float, counts.split(",")), dtype=numpy.float )
+            observed = float(observed)
             annotator_results.append( gat.AnnotatorResult( 
                 track = track,
                 annotation = annotation,

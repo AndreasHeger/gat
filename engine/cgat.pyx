@@ -98,7 +98,10 @@ cdef int cmpPosition( const_void_ptr s1, const_void_ptr s2 ):
 
 @cython.profile(False)
 cdef int cmpDouble( const_void_ptr s1, const_void_ptr s2 ):
-    return <int>((<double*>s1)[0] - (<double*>s2)[0])
+    # see http://www.gnu.org/software/libc/manual/html_node/Comparison-Functions.html
+    cdef double da = (<double*>s1)[0]
+    cdef double db = (<double*>s2)[0]
+    return (da > db) - (da < db)
 
 cdef class SegmentListSamplerSlow:
 
@@ -1171,7 +1174,7 @@ cdef double getTwoSidedPValue( EnrichmentStatistics * stats,
     '''
     cdef long idx, l
     cdef double min_pval, pval, rval
-    
+
     # find index of value correspending to observed value in samples
     idx = searchargsorted( stats.samples,
                            stats.sorted2sample,
@@ -1180,9 +1183,10 @@ cdef double getTwoSidedPValue( EnrichmentStatistics * stats,
                            &val,
                            &cmpDouble,
                         )
-
+    
     l = stats.nsamples
     min_pval = 1.0 / l
+
     if idx == l:
         idx = 1
     elif val > stats.expected :
@@ -1194,9 +1198,9 @@ cdef double getTwoSidedPValue( EnrichmentStatistics * stats,
         while idx < l and stats.samples[stats.sorted2sample[idx]] == val: 
             idx += 1
         # no -1 because of 0-based indices
-            
-    pval = float(idx) / l
 
+    pval = float(idx) / l
+    
     return dmax( min_pval, pval)
 
 cdef void compressSampleIndex( EnrichmentStatistics * stats ):
@@ -1596,10 +1600,14 @@ cdef class AnnotatorResultExtended(AnnotatorResult):
 def getNormedPValue( value, r ):
     '''return pvalue assuming that samples are normal distributed.'''
     absval = abs(value - r.expected)
-    if HAS_SCIPY:
-        pvalue = 1.0 - scipy.stats.norm.cdf( absval, 0, r.stddev )
+    if r.stddev == 0: 
+        # dummy pvalue - if no overlap in expected, pvalue is set to 1.
+        pvalue = 1.0
     else:
-        raise ImportError( "scipy required" )
+        if HAS_SCIPY:
+            pvalue = 1.0 - scipy.stats.norm.cdf( absval, 0, r.stddev )
+        else:
+            raise ImportError( "scipy required" )
     return pvalue
 
 ############################################################

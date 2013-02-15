@@ -172,7 +172,7 @@ def applyIsochores( segments, annotations, workspaces, options, isochores = None
             else:
                 segments.merge()
                 workspace.filter( segments["merged"] )
-                del segments[merged]
+                del segments["merged"]
 
         dumpStats( workspaces, "stats_workspaces_restricted", options )
         
@@ -276,6 +276,8 @@ def outputResults( results,
 
         if options.output_order == "track":
             output.sort( key = lambda x: (x.track, x.annotation) )
+        elif options.output_order == "observed":
+            output.sort( key = lambda x: x.observed )
         elif options.output_order == "annotation":
             output.sort( key = lambda x: (x.annotation, x.track) )
         elif options.output_order == "fold":
@@ -322,17 +324,21 @@ def plotResults( results, options ):
         for r in results:
 
             plt.figure()
-            key = "%s-%s-%s" % (r.track, r.annotation, r.counter)
+            k = []
+            if r.track != "merged": k.append( r.track )
+            k.append( r.annotation )
+            if r.counter != "na": k.append( r.counter )
+            key = "-".join( k )
+
             s = r.samples
             hist, bins = numpy.histogram( s,
                                           bins = 100)
             
-            # convert to density
-            hist = numpy.array( hist, dtype = numpy.float )
-            hist /= sum(hist)
 
             # plot bars
-            plt.bar( bins[:-1], hist, width=1.0, label = key )
+            plt.hist( s, bins = 100, normed = True, label = key )
+            
+            plt.axvline( r.observed, color='r', linewidth=2 )
             
             # plot estimated 
             sigma = r.stddev
@@ -342,7 +348,7 @@ def plotResults( results, options ):
                      numpy.exp( - (bins - mu)**2 / (2 * sigma**2) ),
                      label = "std distribution",
                      linewidth=2, 
-                     color='r' )
+                     color='g' )
 
             plt.legend()
             filename = buildPlotFilename( options, key )

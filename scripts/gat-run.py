@@ -471,7 +471,7 @@ def main( argv = None ):
     ## output
     IO.outputResults( annotator_results, 
                       options, 
-                      gat.AnnotatorResult.headers,
+                      gat.AnnotatorResultExtended.headers,
                       description_header, 
                       description_width,
                       descriptions )

@@ -32,7 +32,7 @@ class TestSegmentList( GatTest ):
         self.assertEqual( len(s), 10 )
         self.assertEqual( s.sum(), 100 )
         s2 = csegmentlist.SegmentList( iter = ss )
-        s2.merge( distance = -1 )
+        s2.merge( -1 )
         self.assertEqual( s, s2 )
 
     def testNormalize1b( self ):
@@ -46,7 +46,7 @@ class TestSegmentList( GatTest ):
         self.assertEqual( len(s), 10 )
         self.assertEqual( s.sum(), 100 )
         s2 = csegmentlist.SegmentList( iter = ss )
-        s2.merge( distance = -1 )
+        s2.merge( -1 )
         self.assertEqual( s, s2 )
 
     def testNormalizeEmpty( self ):
@@ -58,7 +58,7 @@ class TestSegmentList( GatTest ):
         self.assertEqual( len(s), 0)
         self.assertEqual( s.isNormalized, 1)
         s2 = csegmentlist.SegmentList()
-        s2.merge( distance = -1 )
+        s2.merge( -1 )
         self.assertEqual( s, s2 )
 
     def testNormalizeEmptySegment( self ):
@@ -79,7 +79,7 @@ class TestSegmentList( GatTest ):
         self.assertEqual( len(s), 1)
 
         s2 = csegmentlist.SegmentList( iter = ss )
-        s2.merge( distance = -1 )
+        s2.merge( -1 )
         self.assertEqual( s, s2 )
 
     def testNormalize2( self ):
@@ -105,7 +105,7 @@ class TestSegmentList( GatTest ):
         self.assertEqual( len(s), 10 )
         self.assertEqual( s.sum(), 1000 )
         s2 = csegmentlist.SegmentList( iter = ss )
-        s2.merge( distance = -1 )
+        s2.merge( -1 )
         self.assertEqual( s, s2 )
 
     def testNormalize4( self ):
@@ -117,7 +117,7 @@ class TestSegmentList( GatTest ):
         self.assertEqual( len(s), 1 )
         self.assertEqual( s.sum(), 1090 )
         s2 = csegmentlist.SegmentList( iter = ss )
-        s2.merge( distance = -1 )
+        s2.merge( -1 )
         self.assertEqual( s, s2 )
 
     def testNormalize5( self ):
@@ -127,7 +127,7 @@ class TestSegmentList( GatTest ):
         self.assertEqual( len(s), len( [x for x in ss if x[1]-x[0] > 0] ) )
         self.assertEqual( s.sum(), 1000 )
         s2 = csegmentlist.SegmentList( iter = ss )
-        s2.merge( distance = -1 )
+        s2.merge( -1 )
         self.assertEqual( s, s2 )
 
     def testExtend( self ):
@@ -198,7 +198,7 @@ class TestSegmentList( GatTest ):
         ss = [ (x, x + 100  ) for x in range( 0, 1000, 100) ]
         random.shuffle(ss)
         s = csegmentlist.SegmentList( iter = ss )
-        s.merge( )
+        s.merge( 0 )
         self.assertEqual( len(s), 1 )
         self.assertEqual( s.sum(), 1000 )
 
@@ -209,7 +209,7 @@ class TestSegmentList( GatTest ):
             random.shuffle(ss)
             for x in range(0,y+1):
                 s = csegmentlist.SegmentList( iter = ss )
-                s.merge( distance = x )
+                s.merge(  x )
                 if x < y:
                     self.assertEqual( len(s), 10 )
                     self.assertEqual( s.sum(), 1000 - 10 * y)
@@ -300,8 +300,8 @@ class TestSegmentListOverlap( GatTest ):
         self.assertEqual( self.a.overlapWithRange( 2000, 3000), 0 )
 
     def testOverlapOutOfRange( self ):
-        self.assertEqual( self.a.overlapWithRange( -100, 5 ), 5)
-        self.assertEqual( self.a.overlapWithRange( -100,-50 ), 0)
+        self.assertRaises( OverflowError, self.a.overlapWithRange, -100, 5 )
+        self.assertRaises( OverflowError, self.a.overlapWithRange, -100, -50 )
         self.assertEqual( self.a.overlapWithRange( 905,1100 ), 5)
         self.assertEqual( self.a.overlapWithRange( 1000,1100 ), 0)
 
@@ -370,14 +370,13 @@ class TestSegmentListIntersection( GatTest):
         b = csegmentlist.SegmentList( iter = ( (x, x + 5 ) for x in range( 500, 2000, 100) ), normalize = True )
         self.assertEqual( b.filter(self.a).asList(), [(500, 505), (600, 605), (700, 705), (800, 805), (900, 905)] )
 
-        # test negative segments
-        b = csegmentlist.SegmentList( iter = ( (-1,56), ) )
+        b = csegmentlist.SegmentList( iter = ( (0,56), ) )
         c = csegmentlist.SegmentList( iter = [(0, 50), (75, 125)] )
-        self.assertEqual( b.filter(c).asList(), [(-1,56)] )
+        self.assertEqual( b.filter(c).asList(), [(0,56)] )
 
-        b = csegmentlist.SegmentList( iter = ( (-1,56), ) )
-        c = csegmentlist.SegmentList( iter = [(-10, 10)] )
-        self.assertEqual( b.filter(c).asList(), [(-1,56)] )
+        b = csegmentlist.SegmentList( iter = ( (0,56), ) )
+        c = csegmentlist.SegmentList( iter = [(0, 10)] )
+        self.assertEqual( b.filter(c).asList(), [(0,56)] )
 
 class TestIntervalCollection( GatTest):
 
@@ -467,6 +466,18 @@ class TestToFromIsochores( GatTest ):
         a.fromIsochores()
 
         self.check( a, orig )
+
+class TestPValue( GatTest ):
+    '''test if pvalue computation is correct.'''
+    
+    def testPValue1( self ):
+        
+        observed = 0.332640195285
+        values = [0.3593727449353678, 0.24446041723385858, 0.11321078358680142, 0.28500665546177717, 0.017634423032620888, 0.47144573882791929, 0.20295266762886535, 0.24374906675401431, 0.12536987767373536, 0.36647407597049514, 0.1317950839045143, 0.32036858313479905, 0.2131875486832529, 0.18211958887292382, 0.4382662865088186, 0.12487068923091568, 0.38895983423268921, 0.43156050120631062, 0.18784825518278428, 0.23958644581530344, 0.16386055449534453, 0.42697777787951602, 0.07748674945294963, 0.47881248869131277, 0.37267534771232319, 0.8083924735050152, 0.29179189019925428, 0.29802029242077777, 0.2054027587360118, 0.10766996738143179, 0.39134998593956405, 0.36412616130029274, 0.37015995608450686, 0.61246049427537563, 0.59897086243095388, 0.20718454055122912, 0.14334918487088333, 0.42189815231899974, 0.21738749430714899, 0.39304902005163428, 0.50261637732761, 0.20759334134444557, 0.21005124432686503, 0.31027042275886835, 0.71335371670327341, 1.4192781030245714, 0.50672517580861098, 0.18067653694488042, 0.85952730574991043, 0.19249388587333111, 0.18826477050167958, 0.22742885130411533, 0.24125995809534906, 0.045750800392306591, 0.78242626285998884, 0.20614461737324383, 0.56783904985512668, 0.33500622312674566, 0.043533317315170454, 0.27874382197104552, 0.3685525858770754, 0.1751812314517863, 0.2532293526642409, 0.15785104775566922, 0.2390711833181299, 0.42911409505776471, 0.16819203200742916, 0.40372196988518594, 0.43241512178368696, 0.30424021778439686, 0.19085162018033855, 0.58462246847853661, 0.631050399423982, 0.30137309454374051, 0.27565096287611918, 0.33033553618821287, 0.47665164689105288, 0.34084703029218633, 0.27978844627773986, 0.010536582324145049, 0.050935298127348511, 0.23536721808983668, 0.22364077067346355, 0.31704429093519465, 1.0296141286403104, 0.38123158028252929, 0.27538594123938104, 0.81446088474774558, 0.2660327021825486, 0.195234318277725, 0.462999083371401, 1.0587870384537303, 0.40260375543813692, 0.39471961997665139, 0.29845505700189406, 1.0259474557694457, 0.52111381852233729, 0.29182304834212835, 0.34045457181768657, 0.20417518807825608]
+        
+        result = gat.AnnotatorResult("test", "test", "na", observed, values, reference = None, pseudo_count = 0 )
+
+        self.assertEqual( result.pvalue, 0.57 )
         
 class TestSamples( GatTest ):
     
@@ -583,7 +594,9 @@ class TestStats( GatTest ):
 
             for x, s in enumerate(samples):
 
-                g = gat.AnnotatorResult( "track", "samples",
+                g = gat.AnnotatorResult( "track", 
+                                         "samples",
+                                         'counter',
                                          s,
                                          samples )
                 self.assertEqual( g.isSampleSignificantAtPvalue( x, g.pvalue ), True )
@@ -608,6 +621,7 @@ class TestStats( GatTest ):
         obs = 16
 
         g = gat.AnnotatorResult( "track", "samples",
+                                 'counter',
                                  obs,
                                  samples )
 
@@ -637,7 +651,9 @@ class TestStats( GatTest ):
                 samples.sort()
                 # print "obs", observed[x], "sample=", samples
 
-                results.append( gat.AnnotatorResult( str(track),                                                      str(annotation),
+                results.append( gat.AnnotatorResult( str(track),     
+                                                     str(annotation),
+                                                     'counter',
                                                      observed[x],
                                                      samples ) )
 
