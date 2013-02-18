@@ -71,8 +71,11 @@ def getDiff( a , b):
     if a == 0: return 1
     return abs( float(a -b) / a )
 
-def getPlotFilename( s ):
-    filename = "%s.png" % re.sub( "[ ()]", "", s )
+def getPlotFilename( s, section = None ):
+    if section:
+        filename = "%s_%s.png" % (re.sub( "[ ()]", "", s ), section)
+    else:
+        filename = "%s.png" % re.sub( "[ ()]", "", s )
     filename = re.sub( "__main__", "", filename )
     return filename
 
@@ -580,11 +583,11 @@ def getWorkspaceCounts( workspace,
     counts_within_workspace = numpy.array( counts_within_workspace, dtype = numpy.int )
     newy = smooth( counts_within_workspace, window_len = dx)
 
-    plt.figure( figsize=(10, 6), dpi=80 )
+    plt.figure( figsize=(14, 8), dpi=80 )
     plt.subplots_adjust( right = 0.7 )
     # plt.axes( [0.1,0.1,0.51,0.5] )
 
-    plt.subplot( "411" )
+    plt.subplot( "511" )
     plt.plot( xrange(len(counts_within_workspace)), 
               counts_within_workspace, 
               '.', 
@@ -607,7 +610,7 @@ def getWorkspaceCounts( workspace,
                   '--' )
     plt.legend( loc=(1.03,0.2) )
 
-    plt.subplot( "412" )
+    plt.subplot( "512" )
     segment_sizes.sort()
     segment_sizes = zip(*segment_sizes)
     plt.plot( segment_sizes[0], label="stddev" )
@@ -619,14 +622,14 @@ def getWorkspaceCounts( workspace,
     plt.xlabel( "sample" )
     plt.ylabel( "segment size" )
 
-    plt.subplot( "413" )
+    plt.subplot( "513" )
     plt.plot( starts, label="starts" )
     plt.plot( ends, label="ends" )
     plt.legend( loc=(1.03,0.2) )
     plt.xlabel( "position" )
     plt.ylabel( "counts" )
 
-    plt.subplot( "414" )
+    plt.subplot( "514" )
     nsegments.sort()
     plt.plot( nsegments, label="nsegments" )
     plt.legend( loc=(1.03,0.2) )
@@ -634,6 +637,21 @@ def getWorkspaceCounts( workspace,
     plt.ylabel( "counts" )
     plt.axhline( len(segments), color = 'r', ls = '--' )
 
+    # ouptput test configuration
+    plt.subplot( "515" )
+    mi, ma = workspace.min(), workspace.max()
+
+    extent = float(ma - mi)
+    for start, end in segments:
+        plt.axhspan( 0.28, 0.3, start / extent, end / extent )
+        
+    for start, end in workspace:
+        plt.axhspan( 0.4, 0.42, start / extent, end / extent, color = "r" )
+
+    plt.ylim( 0.1, 0.5)
+    ax = plt.gca()
+    ax.get_xaxis().set_visible(False)
+    ax.get_yaxis().set_visible(False)
     plt.savefig( filename )
 
     return counts_within_workspace

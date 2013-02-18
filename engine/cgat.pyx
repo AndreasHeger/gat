@@ -1260,10 +1260,13 @@ cdef class SamplerGlobalPermutation(Sampler):
 
         #print "starting adding", start
         max_idx = len(working_workspace)
+        last_ungapped_position = 0
         for segment_idx in range( len(lengths) ):
-
+            
             # place a gap
-            gap_length = points[segment_idx] - last_end
+            gap_length = points[segment_idx] - last_ungapped_position
+            assert gap_length >= 0
+            #print "gap_length", gap_length
             # print "gap"
             while gap_length > 0:
                 increment = lmin( work_end - start, gap_length )
@@ -1275,15 +1278,17 @@ cdef class SamplerGlobalPermutation(Sampler):
                     work_start, work_end = working_workspace[idx]
                     start = work_start
                 gap_length -= increment
+                last_ungapped_position += increment
 
             # place a segment of a certain length
             # the segment is split into multiple components at
             # workspace gaps
-            #print "segment"
             length = lengths[segment_idx]
+            #print "segment", length
+
             while length > 0:
                 increment = lmin( work_end - start, length )
-                #print idx, start, start + increment, length
+                #print idx, 'start=',start, 'end=', start + increment, 'len=',length
                 if increment > 0:
                     sample._add( Segment( start, start + increment ) )
                 start += increment
@@ -1292,9 +1297,7 @@ cdef class SamplerGlobalPermutation(Sampler):
                     if idx >= max_idx: idx = 0
                     work_start, work_end = working_workspace[idx]
                     start = work_start
-
                 length -= increment
-            last_end = start
 
         sample.normalize()
 
