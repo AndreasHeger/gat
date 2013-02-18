@@ -16,7 +16,7 @@ PUBLISH_DIR=/ifs/home/andreas/public_html/documentation/gat
 SAMPLERS=SamplerGat SamplerSegments SamplerUniform \
 	SamplerLocalPermutation SamplerGlobalPermutation \
 	SamplerBruteForce SamplerShift \
-	SamplerAnnotator 
+	SamplerTheAnnotator 
 
 .PHONY: help clean html dirhtml pickle json htmlhelp qthelp latex changes linkcheck doctest
 

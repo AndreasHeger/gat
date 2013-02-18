@@ -1069,7 +1069,8 @@ cdef class SamplerLocalPermutation(Sampler):
         '''create a random sample of segments.
 
         .. note::
-            Still needs to optimized for speed
+            Still needs to optimized for speed.
+            The algorithm is not fully implemented yet.
 
         *segments* - a list of segments
         
@@ -1149,33 +1150,34 @@ cdef class SamplerLocalPermutation(Sampler):
 ########################################################
 ########################################################
 cdef class SamplerGlobalPermutation(Sampler):
+    '''
+    Sample segments by global permutation.
+
+    This sampler creates a randomized copy of the input
+    set of segmeents by permutation. The sampler uses all segments
+    within the workspace.
+
+    First, :term:`segments` of the input set overlapping with the workspace
+    are collected. Then, the order of the segments is randomly
+    permuted and randomly sized gaps inserted. Finally, segments are entered 
+    into the workspace from a randomly chosen point. If a segment extends beyond
+    the end of workspace segment it is wrapped around to the start of the next
+    workspace segment. 
+
+    If a segment of the input set is extending beyond a workspace boundary, the
+    full sized segment is used for the permutation, but the workspace segment
+    is enlarged by the same amount::
+
+           |--workspace segment--|      |--workspace segment--|
+      1111111      222         333      44444 55555
+      |--------------------------|      |---------------------|  - Workspace used for permutation
+      33 4444    1111111       55       555         222       3  - Random sample 1
+        222     44444 1111111              333   55555           - Random sample 2
+
+    '''
 
     def __init__( self ):
-      '''
-      Sample segments by global permutation.
-
-      This sampler creates a randomized copy of the input
-      set of segmeents by permutation. The sampler uses all segments
-      within the workspace.
-
-      First, :term:`segments` of the input set overlapping with the workspace
-      are collected. Then, the order of the segments is randomly
-      permuted and randomly sized gaps inserted. Finally, segments are entered 
-      into the workspace from a randomly chosen point. If a segment extends beyond
-      the end of workspace segment it is wrapped around to the start of the next
-      workspace segment. 
-
-      If a segment of the input set is extending beyond a workspace boundary, the
-      full sized segment is used for the permutation, but the workspace segment
-      is enlarged by the same amount::
-
-             |--workspace segment--|      |--workspace segment--|
-        1111111      222         333      44444 55555
-        |--------------------------|      |---------------------|  - Workspace used for permutation
-        33 4444    1111111       55       555         222       3  - Random sample 1
-          222     44444 1111111              333   55555           - Random sample 2
-
-      '''
+        pass
 
     cpdef csegmentlist.SegmentList sample( self,
                                            csegmentlist.SegmentList segments,

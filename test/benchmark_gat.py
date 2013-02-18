@@ -52,7 +52,6 @@ def smooth(x,window_len=11,window='hanning'):
     if window_len<3:
         return x
 
-
     if not window in ['flat', 'hanning', 'hamming', 'bartlett', 'blackman']:
         raise ValueError, "Window is on of 'flat', 'hanning', 'hamming', 'bartlett', 'blackman'"
 
@@ -164,6 +163,8 @@ def getAnnotatorSamples( segments,
                            "-seed %i" % random.getrandbits(16),
                            "-dumpsegments",
                            "-iterations %i" % sample_size,
+                           # increment to avoid removing results with P=1.0
+                           "-baseline 1.01", 
                            "-annotation %s" % nannotations,
                            "-segments %s" % nsegments,
                            "-workspace %s" % nworkspace ) )
@@ -641,7 +642,7 @@ def getWorkspaceCounts( workspace,
 ##############################################################################        
 ##############################################################################        
 ##############################################################################        
-class TestSegmentSamplingSamplerGat( GatTest ):
+class TestSegmentSamplingSamplerAnnotator( GatTest ):
 
     ntests = 1000
 
@@ -655,7 +656,7 @@ class TestSegmentSamplingSamplerGat( GatTest ):
     check_uniform_coverage = True
 
     # check segment size distribution
-    # turned off as segment length will vary 
+    # turned off as segment length will v ary 
     # in testFullWorkspace
     check_length = False
 
@@ -1093,7 +1094,7 @@ class TestSegmentSamplingSamplerGat( GatTest ):
     #                             10.0,
     #                             places = 0 )
 
-class TestSegmentSamplingSamplerSegments( TestSegmentSamplingSamplerGat ):
+class TestSegmentSamplingSamplerSegments( TestSegmentSamplingSamplerAnnotator ):
 
     check_nucleotides = False
     check_average_coverage = False
@@ -1102,7 +1103,7 @@ class TestSegmentSamplingSamplerSegments( TestSegmentSamplingSamplerGat ):
     def setUp(self):
         self.sampler = gat.SamplerSegments()
 
-class TestSegmentSamplingSamplerBruteForce( TestSegmentSamplingSamplerGat ):
+class TestSegmentSamplingSamplerBruteForce( TestSegmentSamplingSamplerAnnotator ):
 
     check_nucleotides = True
     check_average_coverage = True
@@ -1111,7 +1112,7 @@ class TestSegmentSamplingSamplerBruteForce( TestSegmentSamplingSamplerGat ):
     def setUp(self):
         self.sampler = gat.SamplerBruteForce()
 
-class TestSegmentSamplingSamplerLocalPermutation( TestSegmentSamplingSamplerGat ):
+class TestSegmentSamplingSamplerLocalPermutation( TestSegmentSamplingSamplerAnnotator ):
 
     check_nucleotides = True
     check_average_coverage = True
@@ -1120,7 +1121,7 @@ class TestSegmentSamplingSamplerLocalPermutation( TestSegmentSamplingSamplerGat 
     def setUp(self):
         self.sampler = gat.SamplerLocalPermutation()
 
-class TestSegmentSamplingSamplerGlobalPermutation( TestSegmentSamplingSamplerGat ):
+class TestSegmentSamplingSamplerGlobalPermutation( TestSegmentSamplingSamplerAnnotator ):
 
     check_nucleotides = True
     check_average_coverage = True
@@ -1129,7 +1130,7 @@ class TestSegmentSamplingSamplerGlobalPermutation( TestSegmentSamplingSamplerGat
     def setUp(self):
         self.sampler = gat.SamplerGlobalPermutation()
 
-class TestSegmentSamplingSamplerUniform( TestSegmentSamplingSamplerGat ):
+class TestSegmentSamplingSamplerUniform( TestSegmentSamplingSamplerAnnotator ):
 
     check_nucleotides = False
     check_average_coverage = False
@@ -1138,7 +1139,7 @@ class TestSegmentSamplingSamplerUniform( TestSegmentSamplingSamplerGat ):
     def setUp(self):
         self.sampler = gat.SamplerUniform( increment = 1 )
 
-class TestSegmentSamplingSamplerShift( TestSegmentSamplingSamplerGat ):
+class TestSegmentSamplingSamplerShift( TestSegmentSamplingSamplerAnnotator ):
 
     check_nucleotides = False
     check_average_coverage = False
@@ -1147,7 +1148,7 @@ class TestSegmentSamplingSamplerShift( TestSegmentSamplingSamplerGat ):
     def setUp(self):
         self.sampler = gat.SamplerShift( radius = 5 )
 
-class TestSegmentSamplingTheAnnotator( TestSegmentSamplingSamplerGat ):
+class TestSegmentSamplingSamplerTheAnnotator( TestSegmentSamplingSamplerAnnotator ):
     '''use annotator to sample segments.'''
 
     def getSamples( self, 
@@ -1166,6 +1167,8 @@ class TestSegmentSamplingTheAnnotator( TestSegmentSamplingSamplerGat ):
                                "-seed %i" % random.getrandbits(16),
                                "-dumpsegments",
                                "-iterations %i" % self.ntests,
+                               # increment to avoid removing results with P=1.0
+                               "-baseline 1.01", 
                                "-annotation %s" % nannotations,
                                "-segments %s" % nsegments,
                                "-workspace %s" % nworkspace ) )
@@ -1586,6 +1589,7 @@ class TestStatsGat( GatTest ):
         dist_mean, dist_pvalue, dist_std = [], [], []
 
         annos = sorted(annotations.keys())
+
         for annotation in annos:
             r = [ x for x in annotator_results if x.annotation == annotation ]
             assert len(r) == 1
@@ -1913,6 +1917,8 @@ class TestStatsTheAnnotator( TestStatsGat ):
                                "-iterations %i" % self.sample_size,
                                "-annotation %s" % nannotations,
                                "-segments %s" % nsegments,
+                               # increment to avoid removing results with P=1.0
+                               "-baseline 1.01", 
                                "-workspace %s" % nworkspace ) )
 
         process = subprocess.Popen(  statement,
@@ -1942,7 +1948,6 @@ class TestStatsTheAnnotator( TestStatsGat ):
         keep = False
         for line in stdout.split("\n"):
             
-            # print line
             if line.startswith("#"): continue
             if line.startswith("Z"): 
                 keep = True

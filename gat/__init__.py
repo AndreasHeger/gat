@@ -217,6 +217,7 @@ class UnconditionalSampler:
                         self.samples_outfile.write( "%s\t%i\t%i\n" % (isochore, start, end))
 
             # re-combine isochores
+            # adjacent intervals are merged.
             sample.fromIsochores()
             
             for counter_id, counter in enumerate(counters):

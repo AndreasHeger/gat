@@ -4,36 +4,33 @@ Benchmarking
 
 This section contains quality control plots from the unit testing.
 
-Notes
-=====
+Position sampling
+==================
 
-Coverage of bases by sampled segments is not uniform. For example,
-if a large segments overlaps a workspace at the end:
-
-
-    
-
-
-
-Sampling
-========
-
-The following plots benchmark the segment sampling behaviour of GAT and Annotator.
-The tests below sample from a segment list *10* segments with each segment of size *100*.
+The following section looks at the position sampling algorithms.
 
 .. toctree::
    :maxdepth: 2
 
-   testingSamplerSamplerGat.rst
+   testingPosition.rst
+
+Segment sampling algorithms
+===========================
+
+The following plots benchmark the segment sampling behaviour of the
+various segment sampling algorithms implemented in GAT.
+
+.. toctree::
+   :maxdepth: 2
+
+   testingSamplerSamplerAnnotator.rst
    testingSamplerSamplerSegments.rst
    testingSamplerSamplerUniform.rst
    testingSamplerSamplerLocalPermutation.rst
    testingSamplerSamplerGlobalPermutation.rst
    testingSamplerSamplerBruteForce.rst
    testingSamplerSamplerShift.rst
-   testingSamplerSamplerAnnotator.rst
-   testingSamplerAnnotator.rst
-   testingPosition.rst
+   testingSamplerSamplerTheAnnotator.rst
 
 Statistics
 ==========
