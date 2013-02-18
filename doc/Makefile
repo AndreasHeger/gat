@@ -13,7 +13,7 @@ ALLSPHINXOPTS   = -d _build/doctrees $(PAPEROPT_$(PAPER)) $(SPHINXOPTS) .
 
 PUBLISH_DIR=/ifs/home/andreas/public_html/documentation/gat
 
-SAMPLERS=SamplerGat SamplerSegments SamplerUniform \
+SAMPLERS=SamplerAnnotator SamplerSegments SamplerUniform \
 	SamplerLocalPermutation SamplerGlobalPermutation \
 	SamplerBruteForce SamplerShift \
 	SamplerTheAnnotator 

@@ -68,10 +68,15 @@ Indices and tables
    * parallel computation of samples 
    * profile and tune
    * add GFF/GTF support
-   * add additional samplers
    * add additional counters:
       Distance between segment and annotation
       1. Closest distance of segment to annotation
       2. Closest distance of annotation to segment
       3. Fix Segment density counter
-
+   * benchmarking - add diagrams for experiment setup 
+   * benchmarking - number of segment distributions
+   * compute summarry statistics on workspaces, segments and
+     annotations in order to detect excessive fragmentation.
+     Benchmark this.
+   * add galaxy interface.
+     

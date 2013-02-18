@@ -1,6 +1,32 @@
 Sampler - %%%
 -------------------------------------------
 
+The aim of the plots in this section is to detect
+any systematic biases within samplers. The test case
+employ different configurations of workspaces and segments
+and plot coverage data, segment start points, number of
+segments in order to display any biases. The plots 
+have four sections. From the top:
+
+1. First plot: Coverage of nucleotides within the workspace by
+sampled segments over *n* samples. The default expectation is 
+that nucleotides should be equally covered. Gaps within the
+workspace have been removed for display purposes. The lines 
+show a smoothed coverage curve, the expectation of uniform
+coverage with 10% boundaries.
+
+2. Second plot: Segment size distribution. The plot shows summary
+statistics for the distribution of segment sizes per sample. The x-axis is 
+the sample number. The samples have been sorted by the standard deviation.
+
+3. Third plot: Distribution of segment start and end points. The
+x-axis is the same workspace as in the top figure.
+
+4. Fourth plot: The number of segments simulated within each sample.
+The plot shows the number of segments input as a dashed line. The
+x-axis is the sample number. The samples have been sorted by the
+number of segments returned.
+
 Continuous workspaces
 +++++++++++++++++++++
 
