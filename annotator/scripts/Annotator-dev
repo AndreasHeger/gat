@@ -1,0 +1,4 @@
+#java=/net/cpp-group/bin/java5
+java=java
+libdir=`dirname $0`/../lib
+$java -Xmx250M -cp $libdir/commons-cli-1.0.jar:$libdir/Annotator-dev.jar app.Annotator $*
