@@ -443,6 +443,20 @@ def run( segments,
     ##################################################
     ##################################################
     ##################################################
+    # computing summary statistics for segments and
+    # annotations
+    E.info( "computing summary stats for segments/annotations" )
+    observed_counts = []
+    for ntrack, track in enumerate(segments.tracks):
+        segs = segments[track]
+        for isochore, ss in segments:
+            print isochore
+    
+        sys.exit(0)
+
+    ##################################################
+    ##################################################
+    ##################################################
     # collect observed counts from segments
     E.info( "collecting observed counts" )
     observed_counts = []
