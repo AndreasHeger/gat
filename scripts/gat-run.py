@@ -172,14 +172,14 @@ def fromSegments( options, args ):
     ##################################################
     ##################################################
     ##################################################
-    ## open sample stats outfile
+    ## open various additional output files
     ##################################################
-    if "sample" in options.output_stats or \
+    outfiles = {}
+    for section in ("sample", "segment_metrics"):
+        if section in options.output_stats or \
             "all" in options.output_stats or \
-                len( [ x for x in options.output_stats if re.search( x, "sample" ) ] ) > 0:
-        outfile_sample_stats = E.openOutputFile( "sample_stats" )
-    else:
-        outfile_sample_stats = None
+                len( [ x for x in options.output_stats if re.search( x, "section" ) ] ) > 0:
+            outfiles[section] = E.openOutputFile(section)
 
     ##################################################
     ##################################################
@@ -194,7 +194,7 @@ def fromSegments( options, args ):
                                  workspace_generator = workspace_generator,
                                  num_samples = options.num_samples,
                                  cache = options.cache,
-                                 outfile_sample_stats = outfile_sample_stats,
+                                 outfiles = outfiles,
                                  output_counts_pattern = options.output_counts_pattern,
                                  output_samples_pattern = options.output_samples_pattern,
                                  sample_files = options.sample_files,
@@ -313,6 +313,22 @@ def main( argv = None ):
                        help="output pattern for samples. Samples are stored in bed format, one for "
                             " each segment [default=%default]" )
 
+    parser.add_option( "--output-stats", dest="output_stats", type="choice", action="append",
+                       choices = ( "all", 
+                                   "annotations", "segments", 
+                                   "workspaces", "isochores",
+                                   "overlap", 
+                                   "sample",
+                                   "segment_metrics"),
+                       help="output overlap summary stats [default=%default]."  )
+
+    parser.add_option( "--output-bed", dest="output_bed", type="choice", action="append",
+                       choices = ( "all", 
+                                   "annotations", "segments", 
+                                   "workspaces", "isochores",
+                                   "overlap" ),
+                       help="output bed files [default=%default]."  )
+    
     parser.add_option( "--descriptions", dest="input_filename_descriptions", type="string", 
                        help="filename mapping annotation terms to descriptions. "
                             " if given, the output table will contain additional columns "
@@ -324,20 +340,6 @@ def main( argv = None ):
     parser.add_option( "--nbuckets", dest="nbuckets", type="int", 
                        help="number of bins for histogram of segment lengths [default=%default]" )
 
-    parser.add_option( "--output-stats", dest="output_stats", type="choice", action="append",
-                       choices = ( "all", 
-                                   "annotations", "segments", 
-                                   "workspaces", "isochores",
-                                   "overlap" ),
-                       help="output overlap summary stats [default=%default]."  )
-
-    parser.add_option( "--output-bed", dest="output_bed", type="choice", action="append",
-                       choices = ( "all", 
-                                   "annotations", "segments", 
-                                   "workspaces", "isochores",
-                                   "overlap" ),
-                       help="output bed files [default=%default]."  )
-    
     parser.add_option( "--ignore-segment-tracks", dest="ignore_segment_tracks", action="store_true", 
                        help="ignore segment tracks - all segments belong to one track [default=%default]" )
 

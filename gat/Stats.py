@@ -340,9 +340,9 @@ class Summary( Result ):
             self.counts = len(n)
             self.min = min(n)
             self.max = max(n)
-            self.mean = scipy.mean( n )
-            self.median = scipy.median( n )
-            self.samplestd = scipy.std( n )
+            self.mean = numpy.mean( n )
+            self.median = numpy.median( n )
+            self.samplestd = numpy.std( n )
             self.sum = reduce( lambda x, y: x+y, n )
 
     def getHeaders( self ):

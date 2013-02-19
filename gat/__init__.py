@@ -36,8 +36,27 @@ def readFromBedOld( filenames, name = "track" ):
     return segment_lists
 
 class SegmentsSummary:
+    '''summarize segments in a workspace.
+    '''
+    header = ("all_segments",
+              "all_nucleotides",
+              "segments_overlapping_workspace",
+              "nucleotides_overlapping_workspace",
+              "segments_outside_workspace",
+              "nucleotides_outside_workspace",
+              "truncated_segments",
+              "truncated_nucleotides",
+              "density_workspace",
+              "proportion_truncated_segments",
+              "proportion_extending_nucleotides",
+              "summary_all_segments",
+              "summary_segments_overlapping_workspace",
+              "summary_truncated_segments" )
+                            
+
     def __init__(self):
         pass
+
     def update( self, segments, workspace ):
         '''compute summary statistics between two segments lists *segments* and *workspace*.
         This method computes:
@@ -439,14 +458,14 @@ def run( segments,
     output_samples_pattern
        if given, output samles to these files, one per segment
 
-    outfile_sample_stats
-       output filename with sample stats
-
     sample_files
        if given, read samples from these files.
 
     fdr
        method to compute qvalues
+
+    outfiles
+       dictionary of optional additional output files.
 
     pseudo_count
        pseudo_count to add to observed and expected values
@@ -463,7 +482,7 @@ def run( segments,
     pseudo_count = kwargs.get( "pseudo_count", 1.0 )
     reference = kwargs.get( "reference", None )
     output_samples_pattern = kwargs.get( "output_samples_pattern", None )
-    outfile_sample_stats = kwargs.get( "outfile_sample_stats", None )
+    outfiles = kwargs.get( "outfiles", {} )
     num_threads = kwargs.get( "num_threads", 1 )
 
     ##################################################
@@ -471,29 +490,34 @@ def run( segments,
     ##################################################
     # computing summary statistics for segments and
     # annotations
-    E.info( "computing summary stats for segments/annotations" )
-    observed_counts = []
-    for ntrack, track in enumerate(segments.tracks):
-        segs = segments[track]
-        stats_per_isochore = []
-        for isochore, ss in segs.iteritems():
-            stats = SegmentsSummary()
-            stats.update( ss, workspace[isochore] )
-            stats_per_isochore.append( stats )
-            
-        for attribute in ("all_segments", "all_nucleotides",
-                          "segments_overlapping_workspace",
-                          "nucleotides_overlapping_workspace",
-                          "nucleotides_outside_workspace",
-                          "truncated_segments",
-                          "truncated_nucleotides",
-                          "density_workspace",
-                          "proportion_truncated_segments",
-                          "proportion_extending_nucleotides",
-                          ):
-            values = [ getattr( x, attribute ) for x in stats_per_isochore ]
-            # print attribute, Stats.Summary( values )
-            # TODO: save to file
+    if "segment_metrics" in outfiles:
+        outfile = outfiles["segment_metrics"]
+        E.info( "computing summary metrics for segments" )
+    
+        outfile.write( "metric\t%s\n" % "\t".join(Stats.Summary().getHeaders() ))
+        observed_counts = []
+        for ntrack, track in enumerate(segments.tracks):
+            segs = segments[track]
+            stats_per_isochore = []
+            for isochore, ss in segs.iteritems():
+                stats = SegmentsSummary()
+                stats.update( ss, workspace[isochore] )
+                stats_per_isochore.append( stats )
+
+            for attribute in ("all_segments", "all_nucleotides",
+                              "segments_overlapping_workspace",
+                              "nucleotides_overlapping_workspace",
+                              "nucleotides_outside_workspace",
+                              "truncated_segments",
+                              "truncated_nucleotides",
+                              "density_workspace",
+                              "proportion_truncated_segments",
+                              "proportion_extending_nucleotides",
+                              ):
+                values = [ getattr( x, attribute ) for x in stats_per_isochore ]
+                outfile.write("%s\t%s\n" % (attribute, Stats.Summary( values )) )
+        outfile.flush()
+        E.info( "wrote summary metrics for segments to %s" % str(outfile))
 
     ##################################################
     ##################################################
@@ -559,7 +583,7 @@ def run( segments,
             outer_sampler = ConditionalSampler( num_samples, 
                                                 samples, 
                                                 samples_outfile, 
-                                                outfile_sample_stats,
+                                                outfiles.get( "sample_stats", None ),
                                                 sampler,
                                                 workspace_generator, 
                                                 counters,
@@ -568,7 +592,7 @@ def run( segments,
             outer_sampler = UnconditionalSampler( num_samples, 
                                                   samples, 
                                                   samples_outfile, 
-                                                  outfile_sample_stats,
+                                                  outfiles.get( "sample_stats", None ),
                                                   sampler,
                                                   workspace_generator, 
                                                   counters,

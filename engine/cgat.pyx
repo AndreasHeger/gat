@@ -502,7 +502,6 @@ cdef class SamplerAnnotator(Sampler):
         # This method does not truncate.
         working_segments = csegmentlist.SegmentList( clone = segments )
         working_segments.filter( workspace )
-
         if len(working_segments) == 0:
             return intersected_segments
 
