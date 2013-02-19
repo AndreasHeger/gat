@@ -848,7 +848,7 @@ cdef class SegmentList:
         self.allocated = allocated
         return self
 
-    cdef SegmentList summarize( self ):
+    cpdef summarize( self ):
         '''returns summary statistics for segments.'''
         
         cdef int idx
@@ -856,9 +856,10 @@ cdef class SegmentList:
         cdef Position total_length
         cdef Segment * s
 
-        min_length = 0
+        min_length = 10000000000
         # TODO: use maximum integer for Position
-        max_length = 1000000000
+        max_length = 0
+        total_length = 0
 
         for idx from 0 <= idx < self.nsegments:
             s = & self.segments[idx] 
@@ -869,7 +870,7 @@ cdef class SegmentList:
 
         cdef double mean_length = <double>total_length / self.nsegments
                            
-        return min_length, max_length, total_length, mean_length
+        return mean_length, min_length, max_length, total_length
 
     cpdef SegmentList getFilledSegmentsFromStart( self, Position start, PositionDifference remainder ):
         '''start filling segment from *start* until *remainder*

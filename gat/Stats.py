@@ -7,6 +7,7 @@ statistical functions
 
 import math
 import numpy
+import types
 
 try:
     import scipy.interpolate
@@ -239,3 +240,136 @@ def adjustPValues( pvalues, method = 'fdr', n = None ):
         p0 = p
 
     return numpy.minimum( p0, numpy.ones( len(p0) ) )
+
+class Result(object):
+    '''allow both member and dictionary access.'''
+    slots=("_data")
+    def __init__(self):
+        object.__setattr__(self, "_data", dict())
+    def fromR( self, take, r_result ):
+        '''convert from an *r_result* dictionary using map *take*.
+
+        *take* is a list of tuples mapping a field to the corresponding
+        field in *r_result*.
+        '''
+        for x,y in take:
+            if y:
+                self._data[x] = r_result.rx(y)[0][0]
+            else:
+                self._data[x] = r_result.rx(x)[0][0]
+
+            # if y:
+            #     self._data[x] = r_result[y]
+            # else:
+            #     self._data[x] = r_result[x]
+
+        return self
+    def __getattr__(self, key):
+        if not key.startswith("_"):
+            try: return object.__getattribute__(self,"_data")[key]
+            except KeyError: pass
+        return getattr( self._data, key )
+    def keys(self): return self._data.keys()
+    def values(self): return self._data.values()
+    def __len__(self): return self._data.__len__()
+    def __str__(self):
+        return str(self._data)
+    def __contains__(self,key):
+        return key in self._data
+    def __getitem__(self, key ):
+        return self._data[key]
+    def __delitem__(self, key ):
+        del self._data[key]
+    def __setitem__(self, key, value ):
+        self._data[key] = value
+    def __setattr__(self, key, value):
+        if not key.startswith("_"):
+            self._data[key] = value
+        else:
+            object.__setattr__(self,key,value)
+
+class Summary( Result ):
+    """a collection of distributional parameters. Available properties
+    are:
+
+    mean, median, min, max, samplestd, sum, counts
+    """
+
+    fields = ("nval", "min", "max", "mean", "median", "stddev", "sum", "q1", "q3")
+
+    def __init__(self, values = None, 
+                 format = "%6.4f", mode="float",
+                 allow_empty = True ):
+
+        Result.__init__(self)
+        self._format = format
+        self._mode = mode
+
+        # note that this determintes the order of the fields at output
+        self.counts, self.min, self.max, self.mean, self.median, self.samplestd, self.sum, self.q1, self.q3 = \
+                    (0, 0, 0, 0, 0, 0, 0, 0, 0)
+        
+        if values != None:
+
+            values = [x for x in values if x != None ]
+
+            if len(values) == 0:
+                if allow_empty: return
+                else: raise ValueError( "no data for statistics" )
+
+            # convert
+            self._nerrors = 0
+            if type(values[0]) not in (types.IntType, types.FloatType):
+                n = []
+                for x in values:
+                    try:
+                        n.append( float(x) )
+                    except ValueError:
+                        self._nerrors += 1
+            else:
+                n = values
+
+            ## use a non-sort algorithm?
+            n.sort()
+            if len(n):
+                self.q1 = n[len(n) / 4]
+                self.q3 = n[len(n) * 3 / 4]
+            else:
+                self.q1 = self.q3 = 0 
+
+            self.counts = len(n)
+            self.min = min(n)
+            self.max = max(n)
+            self.mean = scipy.mean( n )
+            self.median = scipy.median( n )
+            self.samplestd = scipy.std( n )
+            self.sum = reduce( lambda x, y: x+y, n )
+
+    def getHeaders( self ):
+        """returns header of column separated values."""
+        return self.fields
+
+    def getHeader( self ):
+        """returns header of column separated values."""
+        return "\t".join( self.getHeaders())
+
+    def __str__( self ):
+        """return string representation of data."""
+        
+        if self._mode == "int":
+            format_vals = "%i"
+            format_median = "%.1f"
+        else:
+            format_vals = self._format
+            format_median = self._format
+
+        return "\t".join( ( "%i" % self.counts,
+                            format_vals % self.min,
+                            format_vals % self.max,
+                            self._format % self.mean,
+                            format_median % self.median,
+                            self._format % self.samplestd,                                      
+                            format_vals % self.sum,
+                            format_vals % self.q1,
+                            format_vals % self.q3,                            
+                            ) )

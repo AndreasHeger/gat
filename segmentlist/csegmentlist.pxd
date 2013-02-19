@@ -121,6 +121,7 @@ cdef class SegmentList:
     cdef int is_normalized
     cdef int chunk_size
 
+    # C and Python methods
     cpdef sort( self )
     cpdef SegmentList extend( self, SegmentList other )
     cpdef add( self, Position start, Position end )
@@ -145,7 +146,9 @@ cdef class SegmentList:
     cpdef Position max( self )
     cpdef Position min( self )
     cpdef clear( self )
+    cpdef summarize( self )
 
+    # C only methods
     cdef _add( self, Segment segment )
     cdef _resize( self, int nsegments )
     cdef insert( self, int idx, Segment seg )
@@ -153,4 +156,4 @@ cdef class SegmentList:
     cdef Position overlap( self, Segment other )
     cdef SegmentList getOverlappingSegments( self, Segment other )
     cdef SegmentList truncate( self, Segment other )
-    cdef SegmentList summarize( self )
+

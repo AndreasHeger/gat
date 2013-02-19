@@ -35,7 +35,7 @@ def readFromBedOld( filenames, name = "track" ):
 
     return segment_lists
 
-class SegmentSummary:
+class SegmentsSummary:
     def __init__(self):
         pass
     def update( self, segments, workspace ):
@@ -53,29 +53,53 @@ class SegmentSummary:
         self.all_nucleotides = segments.sum()
 
         # build segments overlapping workspace
-        segments_overlapping_workspace = segments.clone()
+        segments_overlapping_workspace = csegmentlist.SegmentList( clone = segments )
         segments_overlapping_workspace.filter( workspace )
 
         # build segments truncated by workspace
-        truncated_segments = segments_overlapping_workspace.clone()
+        truncated_segments = csegmentlist.SegmentList( clone = segments_overlapping_workspace )
         truncated_segments.intersect( workspace )
 
-        segments_extending_workspace = segments.clone()
+        segments_extending_workspace = csegmentlist.SegmentList( clone = segments )
         segments_extending_workspace.subtract( segments_overlapping_workspace )
 
         # compute numbers
         self.segments_overlapping_workspace = len( truncated_segments )
-        self.nucleotides_overlapping_workspace = sum( truncated_segments )
+        self.nucleotides_overlapping_workspace = truncated_segments.sum()
 
         self.segments_outside_workspace = self.all_segments - self.segments_overlapping_workspace
-        self.nucleotides_outside_workspace = self.all_nucleotides - self.nucloetides_overlapping_workspace
+        self.nucleotides_outside_workspace = self.all_nucleotides - self.nucleotides_overlapping_workspace
 
-        self.truncated_segments = len(self.segments_extending_workspace )
-        
+        self.truncated_segments = len(segments_extending_workspace )
+        self.truncated_nucleotides = segments_extending_workspace.sum()
+
         self.summary_all_segments = segments.summarize()
         self.summary_segments_overlapping_workspace = segments_overlapping_workspace.summarize()
         self.summary_truncated_segments = truncated_segments.summarize()
 
+        workspace_size = workspace.sum()
+
+        # some quality metrics
+        self.density_workspace = float(self.nucleotides_overlapping_workspace) / workspace_size
+        self.proportion_truncated_segments = float(self.truncated_segments) / self.segments_overlapping_workspace
+        self.proportion_extending_nucleotides = float(self.truncated_nucleotides) / segments_overlapping_workspace.sum()
+
+    def __str__(self):
+        return "\t".join( [ "%i" % self.all_segments,
+                            "%i" % self.all_nucleotides,
+                            "%i" % self.segments_overlapping_workspace,
+                            "%i" % self.nucleotides_overlapping_workspace,
+                            "%i" % self.segments_outside_workspace,
+                            "%i" % self.nucleotides_outside_workspace,
+                            "%i" % self.truncated_segments,
+                            "%i" % self.truncated_nucleotides,
+                            "%f" % self.density_workspace,
+                            "%f" % self.proportion_truncated_segments,
+                            "%f" % self.proportion_extending_nucleotides,
+                            "%s" % str(self.summary_all_segments),
+                            "%s" % str(self.summary_segments_overlapping_workspace),
+                            "%s" % str(self.summary_truncated_segments) ] )
+                            
 
 def iterator_results( annotator_results ):
     '''iterate over all results.'''
@@ -139,7 +163,8 @@ def computeSample( args ):
     '''
 
     ( sample_id, track, sampler, 
-      segs, annotations,
+      segs, 
+      annotations, contig_annotations,
       workspace, contig_workspace,
       counts, counters,
       samples_outfile) = args
@@ -185,7 +210,7 @@ def computeSample( args ):
         for annotation in annotations.tracks:
             counts_per_track[counter_id][annotation] = sum( [
                     counter( sample[contig],
-                             annotations[annotation][contig],
+                             contig_annotations[annotation][contig],
                              contig_workspace[contig])
                     for contig in sample.keys() ] )
 
@@ -279,6 +304,7 @@ class UnconditionalSampler:
 
         work = [ (x, track, self.sampler,
                   temp_segs, 
+                  annotations,
                   contig_annotations,
                   temp_workspace,
                   contig_workspace,
@@ -449,10 +475,25 @@ def run( segments,
     observed_counts = []
     for ntrack, track in enumerate(segments.tracks):
         segs = segments[track]
-        for isochore, ss in segments:
-            print isochore
-    
-        sys.exit(0)
+        stats_per_isochore = []
+        for isochore, ss in segs.iteritems():
+            stats = SegmentsSummary()
+            stats.update( ss, workspace[isochore] )
+            stats_per_isochore.append( stats )
+            
+        for attribute in ("all_segments", "all_nucleotides",
+                          "segments_overlapping_workspace",
+                          "nucleotides_overlapping_workspace",
+                          "nucleotides_outside_workspace",
+                          "truncated_segments",
+                          "truncated_nucleotides",
+                          "density_workspace",
+                          "proportion_truncated_segments",
+                          "proportion_extending_nucleotides",
+                          ):
+            values = [ getattr( x, attribute ) for x in stats_per_isochore ]
+            # print attribute, Stats.Summary( values )
+            # TODO: save to file
 
     ##################################################
     ##################################################
