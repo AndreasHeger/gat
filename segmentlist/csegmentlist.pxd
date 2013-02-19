@@ -138,6 +138,7 @@ cdef class SegmentList:
     cpdef SegmentList getFilledSegmentsFromEnd( self, Position end, PositionDifference remainder )
     cpdef SegmentList filter( self, SegmentList other )
     cpdef SegmentList intersect( self, SegmentList other )
+    cpdef SegmentList subtract( self, SegmentList other )
     cpdef extend_segments( self, int extension )
     cpdef expand_segments( self, double expansion )
     cpdef Position sum( self )
@@ -152,3 +153,4 @@ cdef class SegmentList:
     cdef Position overlap( self, Segment other )
     cdef SegmentList getOverlappingSegments( self, Segment other )
     cdef SegmentList truncate( self, Segment other )
+    cdef SegmentList summarize( self )

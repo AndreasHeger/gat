@@ -8,6 +8,8 @@ import gat.IOTools as IOTools
 import gat.Experiment as E
 import gat.Stats as Stats
 
+import multiprocessing.pool
+
 def readFromBedOld( filenames, name = "track" ):
     '''read Segment Lists from one or more bed files.
 
@@ -32,6 +34,48 @@ def readFromBedOld( filenames, name = "track" ):
             segment_lists[name][bed.contig].add( bed.start, bed.end )
 
     return segment_lists
+
+class SegmentSummary:
+    def __init__(self):
+        pass
+    def update( self, segments, workspace ):
+        '''compute summary statistics between two segments lists *segments* and *workspace*.
+        This method computes:
+            * number of segments/nucleotides
+            * number of segments/nucleotides overlapping workspace
+            * number of segments split by a boundary
+            * number of nucleotides extending outside boundary
+            * segment size distribution untruncated at boundaries (min, max, mean, media, q1, q3)
+            * segment size distributino truncated at boundaries
+        '''
+
+        self.all_segments = len(segments)
+        self.all_nucleotides = segments.sum()
+
+        # build segments overlapping workspace
+        segments_overlapping_workspace = segments.clone()
+        segments_overlapping_workspace.filter( workspace )
+
+        # build segments truncated by workspace
+        truncated_segments = segments_overlapping_workspace.clone()
+        truncated_segments.intersect( workspace )
+
+        segments_extending_workspace = segments.clone()
+        segments_extending_workspace.subtract( segments_overlapping_workspace )
+
+        # compute numbers
+        self.segments_overlapping_workspace = len( truncated_segments )
+        self.nucleotides_overlapping_workspace = sum( truncated_segments )
+
+        self.segments_outside_workspace = self.all_segments - self.segments_overlapping_workspace
+        self.nucleotides_outside_workspace = self.all_nucleotides - self.nucloetides_overlapping_workspace
+
+        self.truncated_segments = len(self.segments_extending_workspace )
+        
+        self.summary_all_segments = segments.summarize()
+        self.summary_segments_overlapping_workspace = segments_overlapping_workspace.summarize()
+        self.summary_truncated_segments = truncated_segments.summarize()
+
 
 def iterator_results( annotator_results ):
     '''iterate over all results.'''
@@ -88,6 +132,65 @@ class DummyAnnotatorResult:
                            self.format_pvalue % self.qvalue ) )
 
 
+def computeSample( args ):
+    '''perform a simple sample
+
+    Unconditional sampling.
+    '''
+
+    ( sample_id, track, sampler, 
+      segs, annotations,
+      workspace, contig_workspace,
+      counts, counters,
+      samples_outfile) = args
+
+    sample_id = str(sample_id)
+    counts_per_isochore = collections.defaultdict( list )
+
+    if samples_outfile: 
+        samples_outfile.write("track name=%s\n" % sample_id)
+
+    sample = IntervalDictionary()
+
+    for isochore in segs.keys():
+
+        counts.pairs += 1
+
+        # skip empty isochores
+        if workspace[isochore].isEmpty or segs[isochore].isEmpty: 
+            counts.skipped += 1
+            continue
+
+        counts.sampled += 1
+        r = sampler.sample( segs[isochore], workspace[isochore] )
+
+        # TODO : activate
+        # self.outputSampleStats( sample_id, isochore, r )
+
+        sample.add( isochore, r )
+
+        # save sample
+        if samples_outfile: 
+            for start, end in r:
+                samples_outfile.write( "%s\t%i\t%i\n" % (isochore, start, end))
+
+    # re-combine isochores
+    # adjacent intervals are merged.
+    sample.fromIsochores()
+
+    counts_per_track = [ collections.defaultdict(float) for x in counters ]
+    # compute counts for each counter
+    for counter_id, counter in enumerate(counters):
+        # TODO: choose aggregator
+        for annotation in annotations.tracks:
+            counts_per_track[counter_id][annotation] = sum( [
+                    counter( sample[contig],
+                             annotations[annotation][contig],
+                             contig_workspace[contig])
+                    for contig in sample.keys() ] )
+
+    return counts_per_track
+
 class UnconditionalSampler:
 
     def __init__(self,         
@@ -96,7 +199,8 @@ class UnconditionalSampler:
                  outfile_sample_stats,
                  sampler,
                  workspace_generator, 
-                 counters ):
+                 counters,
+                 num_threads = 1 ):
         self.num_samples = num_samples
         self.samples = samples
         self.samples_outfile = samples_outfile
@@ -111,6 +215,7 @@ class UnconditionalSampler:
 
         self.last_sample_id = None
         self.all_lengths = []
+        self.num_threads = num_threads
 
     def outputSampleStats( self, sample_id, isochore, sample ):
 
@@ -172,63 +277,30 @@ class UnconditionalSampler:
             E.warn( "empty workspace - no computation performed" )
             return counts_per_track
 
-        # compute samples unconditionally
-        for x in xrange( self.num_samples ):
-            # use textual sample ids to avoid parsing from dumped samples
-            sample_id = str(x)
-            E.debug( "progress: %s: %i/%i %i isochores" % (track, x+1, self.num_samples, len(segs.keys())))
-            counts_per_isochore = collections.defaultdict( list )
+        work = [ (x, track, self.sampler,
+                  temp_segs, 
+                  contig_annotations,
+                  temp_workspace,
+                  contig_workspace,
+                  counts, counters,
+                  self.samples_outfile) for x in range(self.num_samples) ]
 
-            if self.samples_outfile: 
-                self.samples_outfile.write("track name=%s\n" % sample_id)
+        E.info( "sampling started" )
+        if self.num_threads == 1:
+            results = map( computeSample, work )
+        else:
+            E.info("generating processpool with %i threads" % self.num_threads )
+            threadpool = multiprocessing.pool.ThreadPool( self.num_threads )
+            results = threadpool.map( computeSample, work )
+        E.info( "sampling completed" )
 
-            sample = IntervalDictionary()
-
-            for isochore in segs.keys():
-                counts.pairs += 1
-
-                # skip empty isochores
-                if temp_workspace[isochore].isEmpty or temp_segs[isochore].isEmpty: 
-                    counts.skipped += 1
-                    # too much information
-                    # E.debug( "skipping empty isochore %s" % isochore )
-                    continue
-
-                # skip if read from cache
-                if self.samples.hasSample( track, sample_id, isochore ): 
-                    counts.loaded += 1
-                    self.samples.load( track, sample_id, isochore )
-                    r = self.samples[track][sample_id][isochore]
-                    del self.samples[track][sample_id][isochore]
-                else:
-                    counts.sampled += 1
-                    r = self.sampler.sample( temp_segs[isochore], temp_workspace[isochore] )
-                    # too much information
-                    # E.debug( "sample=%s, isochore=%s, segs=%i, sample=%i" % \
-                    #             (sample_id, isochore, segs[isochore].sum(), r.sum()) )
-
-                self.outputSampleStats( sample_id, isochore, r )
-                
-                sample.add( isochore, r )
-
-                # save sample
-                if self.samples_outfile: 
-                    for start, end in r:
-                        self.samples_outfile.write( "%s\t%i\t%i\n" % (isochore, start, end))
-
-            # re-combine isochores
-            # adjacent intervals are merged.
-            sample.fromIsochores()
-            
+        # collate results
+        for result in results:
             for counter_id, counter in enumerate(counters):
-                # TODO: choose aggregator
                 for annotation in annotations.tracks:
-                    counts_per_track[counter_id][annotation].append( sum( [
-                                counter( sample[contig],
-                                         contig_annotations[annotation][contig],
-                                         contig_workspace[contig])
-                                for contig in sample.keys() ] ) )
-                
+                    counts_per_track[counter_id][annotation].append(
+                        result[counter_id][annotation] )
+
         self.outputSampleStats( None, "", [] )
 
         return counts_per_track
@@ -366,6 +438,7 @@ def run( segments,
     reference = kwargs.get( "reference", None )
     output_samples_pattern = kwargs.get( "output_samples_pattern", None )
     outfile_sample_stats = kwargs.get( "outfile_sample_stats", None )
+    num_threads = kwargs.get( "num_threads", 1 )
 
     ##################################################
     ##################################################
@@ -410,7 +483,7 @@ def run( segments,
     ntracks = len(segments.tracks)
 
     for ntrack, track in enumerate(segments.tracks):
-
+        
         segs = segments[track]
 
         E.info( "sampling: %s: %i/%i" % (track, ntrack+1, ntracks))
@@ -429,20 +502,22 @@ def run( segments,
 
         if workspace_generator.is_conditional:
             outer_sampler = ConditionalSampler( num_samples, 
-                                          samples, 
-                                          samples_outfile, 
-                                          outfile_sample_stats,
-                                          sampler,
-                                          workspace_generator, 
-                                          counters )
+                                                samples, 
+                                                samples_outfile, 
+                                                outfile_sample_stats,
+                                                sampler,
+                                                workspace_generator, 
+                                                counters,
+                                                num_threads = num_threads )
         else:
             outer_sampler = UnconditionalSampler( num_samples, 
-                                            samples, 
-                                            samples_outfile, 
-                                            outfile_sample_stats,
-                                            sampler,
-                                            workspace_generator, 
-                                            counters )
+                                                  samples, 
+                                                  samples_outfile, 
+                                                  outfile_sample_stats,
+                                                  sampler,
+                                                  workspace_generator, 
+                                                  counters,
+                                                  num_threads = num_threads )
 
         counts_per_track = outer_sampler.sample( track, counts, counters, segs, annotations, workspace )
 

@@ -3,6 +3,9 @@
 
 import types, collections, re, os, math, random
 
+from cpython cimport PyErr_SetString, PyBytes_Check, PyUnicode_Check, PyBytes_FromStringAndSize
+from cpython.version cimport PY_MAJOR_VERSION
+
 cimport cython
 
 #####################################################
@@ -745,7 +748,7 @@ cdef class SegmentList:
         return histogram
 
     cdef SegmentList truncate( self, Segment other ):
-        '''truncate Segment list to range given by segment.'''
+        '''truncate Segment list to range given by segment *other*.'''
         
         cdef int idx
         cdef Segment * s
@@ -762,6 +765,111 @@ cdef class SegmentList:
 
         self.normalize()
         return self
+
+    cpdef SegmentList subtract( self, SegmentList other ):
+        '''subtract residues in *other* segment list with from this on.
+
+        Intervals are truncated, any residues overlapping with *other*
+        are removed.
+
+        Both this and other are assumed to have been normalized.
+
+        '''
+        assert self.is_normalized, "subtraction of a non-normalized list"
+        assert other.is_normalized, "subtraction with non-normalized list"
+
+        # if self-self comparison, clear all residues
+        if other.segments == self.segments: 
+            self.clear()
+            return self
+
+        if self.nsegments == 0: return self
+
+        cdef int this_idx, other_idx, working_idx, last_this_idx, last_other_idx
+        working_idx = this_idx = other_idx = 0
+        last_this_idx = last_other_idx = -1
+        cdef Segment this_segment = Segment(0,0)
+        cdef Segment other_segment = Segment(0,0)
+
+        cdef Segment * new_segments
+        cdef size_t allocated
+        # create new list with 10% overhead
+        allocated = int(lmax( self.nsegments, other.nsegments) * 1.1)
+
+        new_segments =<Segment*>malloc( allocated * sizeof( Segment ) )
+        if not new_segments: 
+            raise MemoryError( "out of memory when allocation %i bytes" % sizeof( allocated * sizeof( Segment ) ))
+
+        while this_idx < self.nsegments and other_idx < other.nsegments:
+
+            # re-allocated before adding
+            if working_idx >= allocated:
+                allocated *= 2
+                new_segments = <Segment*>realloc( new_segments, allocated * sizeof(Segment ) )
+                assert new_segments != NULL
+
+            # print "this=", this_idx, self.nsegments, this_segment, "other=", other_idx, other.nsegments, other.segments[other_idx]
+            if last_this_idx != this_idx:
+                this_segment = self.segments[this_idx]
+                last_this_idx = this_idx
+            if last_other_idx != other_idx:
+                other_segment = other.segments[other_idx]
+                last_other_idx = other_idx
+
+            # print this_segment, other_segment
+            # skip segments in this not overlapping other
+            if this_segment.end <= other_segment.start:
+                if this_segment.start < this_segment.end:
+                    new_segments[working_idx] = this_segment
+                    working_idx += 1
+                this_idx += 1
+            # skip segments in other not overlapping this
+            elif other_segment.end <= this_segment.start:
+                other_idx += 1
+            else:
+                # deal with overlap
+                if this_segment.start < other_segment.start:
+                    # print "adding", this_segment.start, other_segment.start
+                    new_segments[working_idx].start = this_segment.start
+                    new_segments[working_idx].end = other_segment.start
+                    working_idx += 1
+
+                this_segment.start = other_segment.end
+
+        # output last
+        if this_segment.start < this_segment.end:
+            new_segments[working_idx].start = this_segment.start
+            new_segments[working_idx].end = this_segment.end
+            working_idx += 1
+
+        free( self.segments )
+        self.segments = new_segments
+        self.nsegments = working_idx
+        self.allocated = allocated
+        return self
+
+    cdef SegmentList summarize( self ):
+        '''returns summary statistics for segments.'''
+        
+        cdef int idx
+        cdef Position min_length, max_length, length
+        cdef Position total_length
+        cdef Segment * s
+
+        min_length = 0
+        # TODO: use maximum integer for Position
+        max_length = 1000000000
+
+        for idx from 0 <= idx < self.nsegments:
+            s = & self.segments[idx] 
+            length = s.end - s.start
+            total_length += length
+            min_length = lmin( length, min_length )
+            max_length = lmax( length, max_length )
+
+        cdef double mean_length = <double>total_length / self.nsegments
+                           
+        return min_length, max_length, total_length, mean_length
 
     cpdef SegmentList getFilledSegmentsFromStart( self, Position start, PositionDifference remainder ):
         '''start filling segment from *start* until *remainder*

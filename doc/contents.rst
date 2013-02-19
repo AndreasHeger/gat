@@ -78,5 +78,21 @@ Indices and tables
    * compute summarry statistics on workspaces, segments and
      annotations in order to detect excessive fragmentation.
      Benchmark this.
+
+     Summary parameters
+     Parameters are: 
+        number of segments, number of nucleotides
+        number of segments split by a boundary, nucleotides extending outside boundary
+	segment size distribution untruncated (min, max, mean, media, q1, q3)
+	segment size distributino truncated
+
+     Count segments and annotations
+     Count per contig in the workspace, count per isochore
+
+     Optionally: do all of this for sampled segments
+
+
    * add galaxy interface.
-     
+   
+
+  

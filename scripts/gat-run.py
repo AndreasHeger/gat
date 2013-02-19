@@ -203,7 +203,8 @@ def fromSegments( options, args ):
                                  conditional = options.conditional,
                                  conditional_extension = options.conditional_extension,
                                  reference = options.reference,
-                                 pseudo_count = options.pseudo_count )
+                                 pseudo_count = options.pseudo_count,
+                                 num_threads = options.num_threads )
 
     return annotator_results
 
@@ -264,7 +265,7 @@ def main( argv = None ):
                                "local-permutation",
                                "global-permutation",
                                "uniform",
-                               "brute-force"), ),
+                               "brute-force"),
                       help="quantity to test [default=%default]."  )
 
     parser.add_option("-n", "--num-samples", dest="num_samples", type="int", 
@@ -284,6 +285,9 @@ def main( argv = None ):
     parser.add_option("-q", "--qvalue-method", dest="qvalue_method", type="choice",
                       choices = ( "storey", "BH", "bonferroni", "holm", "hommel", "hochberg", "BY", "none" ),
                       help="method to perform multiple testing correction by controlling the fdr [default=%default]."  )
+
+    parser.add_option("-t", "--num-threads", dest="num_threads", type="int",
+                      help = "number of threads to use for sampling [default=%default]" )
 
     parser.add_option( "--qvalue-lambda", dest="qvalue_lambda", type="float",
                       help="fdr computation: lambda [default=%default]."  )
@@ -417,6 +421,7 @@ def main( argv = None ):
         # pseudo count for fold change computation to avoid 0 fc
         pseudo_count = 1.0,
         null = "default",
+        num_threads = 1,
         )
 
     ## add common options (-h/--help, ...) and parse command line 
