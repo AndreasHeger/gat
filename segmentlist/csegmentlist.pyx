@@ -3,7 +3,7 @@
 
 import types, collections, re, os, math, random
 
-from cpython cimport PyErr_SetString, PyBytes_Check, PyUnicode_Check, PyBytes_FromStringAndSize
+from cpython cimport PyString_AsString, PyString_FromStringAndSize
 from cpython.version cimport PY_MAJOR_VERSION
 
 cimport cython
@@ -101,7 +101,8 @@ cdef class SegmentList:
                  int allocate = 0,
                  SegmentList clone = None,
                  iter = None,
-                 normalize = False ):
+                 normalize = False,
+                 unreduce_data = None ):
         '''create empty list of segments.
 
         
@@ -114,6 +115,16 @@ cdef class SegmentList:
 
         If *normalize* is set, the list will be normalized.
         '''
+        cdef char * p
+
+        if unreduce_data:
+            self.nsegments, self.allocated, self.is_normalized, self.chunk_size = unreduce_data[:4]
+            p = PyString_AsString(unreduce_data[4])
+            self.segments = <Segment*>malloc( self.nsegments * sizeof( Segment ) )
+            memcpy( self.segments, p, cython.sizeof( Position ) * 2 * self.nsegments )
+            return
+
+
         cdef long idx, nsegments
 
         self.segments = NULL
@@ -145,6 +156,16 @@ cdef class SegmentList:
             self.segments = <Segment*>calloc( allocate, sizeof( Segment ) )
 
         if normalize: self.normalize()
+
+    def __reduce__( self ):
+        '''pickling function - returns class contents as a tuple.'''
+
+        cdef str data = PyString_FromStringAndSize(<char*>self.segments, \
+                            self.nsegments * cython.sizeof( Position ) * 2 )
+        
+        return (buildSegmentList, ( self.nsegments, self.allocated, 
+                                    self.is_normalized, self.chunk_size, 
+                                    data) )
 
     cpdef sort( self ):
         '''sort segments.'''
@@ -727,6 +748,8 @@ cdef class SegmentList:
 
     def getLengthDistribution( self, bucket_size, nbuckets ):
         '''build histogram of segments lengths.'''
+        assert bucket_size > 0, 'bucket_size is 0'
+        assert nbuckets > 0, 'nbuckets is 0'
 
         cdef int idx, i
         cdef Position l
@@ -1226,6 +1249,13 @@ cdef class SegmentList:
             x = cmpSegmentsStartAndEnd( &self.segments[idx], &other.segments[idx] )
             if x != 0: return x
         return 0
+
+def buildSegmentList( *args ):
+    '''pickling helper function.
+    
+    Return a re-constructed SegmentList object.
+    '''
+    return SegmentList( unreduce_data = args )
 
 # SegmentTuple = collections.namedtuple( "SegmentTuple", "start, end" )
 

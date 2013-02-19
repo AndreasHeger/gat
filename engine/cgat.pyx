@@ -467,10 +467,15 @@ cdef class SamplerAnnotator(Sampler):
     cdef int nbuckets
     cdef int nunsuccessful_rounds
 
-    def __init__( self, bucket_size = 1, nbuckets = 100000 ):
+    def __init__( self, bucket_size = 1, nbuckets = 100000, nunsuccessful_rounds = 0 ):
         self.bucket_size = bucket_size
         self.nbuckets = nbuckets
-        self.nunsuccessful_rounds
+        self.nunsuccessful_rounds = nunsuccessful_rounds
+
+    def __reduce__(self):
+        return (buildSamplerAnnotator, (self.bucket_size, 
+                                        self.nbuckets, 
+                                        self.nunsuccessful_rounds ) )
 
     cpdef csegmentlist.SegmentList sample( self,
                               csegmentlist.SegmentList segments,
@@ -604,6 +609,10 @@ cdef class SamplerAnnotator(Sampler):
         assert intersected_segments.sum() > 0
         return intersected_segments
 
+def buildSamplerAnnotator( *args ):
+    '''unpickling - return a rebuild SamplerAnnotator object.'''
+    return SamplerAnnotator( *args )
+
 ########################################################
 ########################################################
 ########################################################
@@ -647,6 +656,10 @@ cdef class SamplerSegments(Sampler):
         self.bucket_size = bucket_size
         self.nbuckets = nbuckets
 
+    def __reduce__(self):
+        return (buildSamplerSegments, (self.bucket_size, 
+                                       self.nbuckets ))
+
     cpdef csegmentlist.SegmentList sample( self,
                                            csegmentlist.SegmentList segments,
                                            csegmentlist.SegmentList workspace ):
@@ -687,6 +700,10 @@ cdef class SamplerSegments(Sampler):
             sample._add( Segment( start, end ) )
 
         return sample
+
+def buildSamplerSegments( *args ):
+    '''unpickling - return a rebuild SamplerAnnotator object.'''
+    return SamplerAnnotator( *args )
 
 ########################################################
 ########################################################
@@ -731,6 +748,12 @@ cdef class SamplerBruteForce(Sampler):
         self.nbuckets = nbuckets
         self.ntries_inner = ntries_inner
         self.ntries_outer = ntries_outer
+
+    def __reduce__(self):
+        return (buildSamplerBruteForce, (self.bucket_size, 
+                                         self.nbuckets, 
+                                         self.ntries_inner,
+                                         self.ntries_outer) )
 
     cpdef csegmentlist.SegmentList sample( self,
                                            csegmentlist.SegmentList segments,
@@ -811,6 +834,10 @@ cdef class SamplerBruteForce(Sampler):
 
         return sample
 
+def buildSamplerBruteForce( *args ):
+    '''unpickling - return a rebuild SamplerAnnotator object.'''
+    return SamplerBruteForce( *args )
+
 ########################################################
 ########################################################
 ########################################################
@@ -836,7 +863,6 @@ cdef class SamplerUniform(Sampler):
     cdef Position bucket_size
     cdef Position nbuckets
     cdef Position increment
-    cdef Position start_at
     cdef Position current_workspace
     cdef Position current_position
     cdef int current_orientation
@@ -844,14 +870,25 @@ cdef class SamplerUniform(Sampler):
     def __init__( self, 
                   increment,
                   bucket_size = 1,
-                  nbuckets = 100000 ):
-        self.current_orientation = 0
-        self.current_workspace = 0
-        self.current_position = 0
+                  nbuckets = 100000,
+                  current_orientation = 0,
+                  current_workspace = 0,
+                  current_position = 0):
+        self.current_orientation = current_orientation
+        self.current_workspace = current_workspace
+        self.current_position = current_position
 
         self.bucket_size = bucket_size
         self.nbuckets = nbuckets
         self.increment = increment
+
+    def __reduce__(self):
+        return (buildSamplerUniform, (self.increment,
+                                      self.bucket_size, 
+                                      self.nbuckets, 
+                                      self.current_orientation,
+                                      self.current_workspace,
+                                      self.current_position) )
 
     cpdef csegmentlist.SegmentList sample( self,
                                            csegmentlist.SegmentList segments,
@@ -917,6 +954,10 @@ cdef class SamplerUniform(Sampler):
 
         return sample
 
+def buildSamplerUniform( *args ):
+    '''unpickling - return a rebuilt SamplerUniform object.'''
+    return SamplerUniform( *args )
+
 ########################################################
 ########################################################
 ########################################################
@@ -950,6 +991,10 @@ cdef class SamplerShift(Sampler):
         self.radius = radius
         self.extension = extension
 
+    def __reduce__(self):
+        return (buildSamplerShift, (self.radius, 
+                                    self.extension)), 
+    
     cpdef csegmentlist.SegmentList sample( self,
                                            csegmentlist.SegmentList segments,
                                            csegmentlist.SegmentList workspace ):
@@ -1027,6 +1072,10 @@ cdef class SamplerShift(Sampler):
 
         sample.normalize()
         return sample
+
+def buildSamplerShift( *args ):
+    '''unpickling - return a rebuilt SamplerShift object.'''
+    return SamplerShift( *args )
 
 ########################################################
 ########################################################

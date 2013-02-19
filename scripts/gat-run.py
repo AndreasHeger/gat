@@ -421,7 +421,7 @@ def main( argv = None ):
         # pseudo count for fold change computation to avoid 0 fc
         pseudo_count = 1.0,
         null = "default",
-        num_threads = 1,
+        num_threads = 0,
         )
 
     ## add common options (-h/--help, ...) and parse command line 

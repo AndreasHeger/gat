@@ -180,13 +180,18 @@ def computeSample( args ):
 
     Unconditional sampling.
     '''
-
-    ( sample_id, track, sampler, 
+    ( sample_id, 
+      track, 
+      sampler, 
       segs, 
-      annotations, contig_annotations,
-      workspace, contig_workspace,
-      counts, counters,
+      annotations, 
+      contig_annotations,
+      workspace, 
+      contig_workspace,
+      counters,
       samples_outfile) = args
+
+    counts = Experiment.Counter()
 
     sample_id = str(sample_id)
     counts_per_isochore = collections.defaultdict( list )
@@ -321,21 +326,41 @@ class UnconditionalSampler:
             E.warn( "empty workspace - no computation performed" )
             return counts_per_track
 
-        work = [ (x, track, self.sampler,
+        # work = [ (x, 
+        #           track, 
+        #           self.sampler,
+        #           temp_segs, 
+        #           annotations,
+        #           contig_annotations,
+        #           temp_workspace,
+        #           contig_workspace,
+        #           counts, counters,
+        #           self.samples_outfile) for x in range(self.num_samples) ]
+
+        work = [ (x, 
+                  track, 
+                  self.sampler,
                   temp_segs, 
                   annotations,
                   contig_annotations,
                   temp_workspace,
                   contig_workspace,
-                  counts, counters,
-                  self.samples_outfile) for x in range(self.num_samples) ]
+                  counters, 
+                  self.samples_outfile
+                  ) for x in range(self.num_samples) ]
 
         E.info( "sampling started" )
-        if self.num_threads == 1:
+        if self.num_threads == 0:
             results = map( computeSample, work )
         else:
             E.info("generating processpool with %i threads" % self.num_threads )
-            threadpool = multiprocessing.pool.ThreadPool( self.num_threads )
+            use_multiprocessing = True
+            if use_multiprocessing:
+                threadpool = multiprocessing.Pool( self.num_threads )
+            else:
+                threadpool = multiprocessing.pool.ThreadPool( self.num_threads )
+                
+            E.info( "starting executing" )
             results = threadpool.map( computeSample, work )
         E.info( "sampling completed" )
 

@@ -5,6 +5,7 @@ import random, tempfile, shutil, os, re, gzip, sys
 import gat
 import numpy, math
 import csegmentlist
+import pickle
 
 class GatTest( unittest.TestCase ):
     def shortDescription( self ): return None
@@ -278,6 +279,14 @@ class TestSegmentList( GatTest ):
                     self.assertEqual( f.max(), x - 5 )
                     
             self.assertEqual( s.sum(), s.getFilledSegmentsFromEnd(x, 100 ).sum() )
+
+    def testPickling( self ):
+        ss = [ (x, x + 10 ) for x in range( 0, 120, 20) ]
+        s = csegmentlist.SegmentList( iter = ss, normalize = True )
+
+        b = pickle.loads(pickle.dumps(s))
+        
+        self.assertEqual( s, b )
 
 class TestSegmentListOverlap( GatTest ):
     
