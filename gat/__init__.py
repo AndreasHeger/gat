@@ -305,6 +305,8 @@ class UnconditionalSampler:
         Return a list of counted results for each counter.
         '''
 
+        report_interval = 100
+
         # rebuild non-isochore annotations and workspace
         contig_annotations = annotations.clone()
         contig_annotations.fromIsochores()
@@ -360,7 +362,7 @@ class UnconditionalSampler:
         if self.num_threads == 0:
             for i, w in enumerate(work):
                 r = computeSample( w )
-                if i % 100 == 0:
+                if i % report_interval == 0:
                     E.info( "%i/%i done (%5.2f)" % (i, n, 100.0 * i / n ))
                 results.append( r )
         else:
@@ -375,10 +377,9 @@ class UnconditionalSampler:
             pool = multiprocessing.Pool( self.num_threads )
 
             rs = pool.map_async(computeSample, work )
-            
 
             for i, r in enumerate(pool.imap_unordered(computeSample, work)):
-                if i % 100 == 0:
+                if i % report_interval == 0:
                     E.info( "%i/%i done (%5.2f)" % (i, n, 100.0 * i / n ))
                 results.append( r )
 
