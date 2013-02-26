@@ -353,11 +353,17 @@ class UnconditionalSampler:
                   self.samples_outfile
                   ) for x in range(self.num_samples) ]
 
+        n = len(work)
+
         E.info( "sampling started" )
+        results = []
         if self.num_threads == 0:
-            results = map( computeSample, work )
+            for i, w in enumerate(work):
+                r = computeSample( w )
+                if i % 100 == 0:
+                    E.info( "%i/%i done (%5.2f)" % (i, n, 100.0 * i / n ))
+                results.append( r )
         else:
-            
             E.info("setting up shared data structures")
             annotations.share()
             contig_annotations.share()
@@ -370,8 +376,7 @@ class UnconditionalSampler:
 
             rs = pool.map_async(computeSample, work )
             
-            n = len(work)
-            results = []
+
             for i, r in enumerate(pool.imap_unordered(computeSample, work)):
                 if i % 100 == 0:
                     E.info( "%i/%i done (%5.2f)" % (i, n, 100.0 * i / n ))
