@@ -44,10 +44,11 @@ Topic :: Scientific/Engineering
 Topic :: Scientific/Engineering :: Bioinformatics
 """
 
+# link against rt for shared memory access
 segmentlist = Extension(
     "csegmentlist",                   # name of extension
     [ "segmentlist/csegmentlist.pyx", "utils/gat_utils.c" ],
-    libraries=[ "z", ],
+    libraries=[ "z", 'rt' ],
     library_dirs = [],
     include_dirs=['./utils', "/usr/lib64/python2.6/site-packages/numpy/core/include", '.'],
     language="c",

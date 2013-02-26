@@ -32,6 +32,7 @@ cdef extern from "stdio.h":
     ctypedef struct FILE
     # check 32/64 bit compatibility for large files
     ctypedef long off_t
+    ctypedef long off64_t
     ctypedef struct fpos_t:
         pass
     cdef int SEEK_SET
@@ -46,6 +47,7 @@ cdef extern from "stdio.h":
     int ferror(FILE *stream)
     int fseeko(FILE *stream, off_t offset, int whence)
     off_t ftello(FILE *stream)
+    void perror(char *)
     size_t fwrite( void *ptr,
                    size_t size,
                    size_t nmemb,
@@ -58,6 +60,36 @@ cdef extern from "stdio.h":
     int fgetpos(FILE *stream, fpos_t *pos)
     int fsetpos(FILE *stream, fpos_t *pos)
     int printf(char *format, ...)
+
+cdef extern from "errno.h":
+    cdef int errno
+
+cdef extern from "sys/stat.h":
+    ctypedef int mode_t 
+    cdef int S_IRUSR
+    cdef int S_IWUSR
+
+cdef extern from "fcntl.h":
+    cdef int O_CREAT
+    cdef int O_RDWR
+    cdef int O_RDONLY
+
+cdef extern from "sys/mman.h":
+
+    int shm_open(char *name, int oflag, mode_t mode)
+    int shm_unlink(char *name)
+    void *mmap(void *addr, size_t length, int prot, int flags,
+    	            int fd, off_t offset)
+    void *mmap64(void *addr, size_t length, int prot, int flags,
+    	            int fd, off64_t offset)
+    int munmap(void *addr, size_t length)
+    cdef void * MAP_FAILED
+    cdef int PROT_READ
+    cdef int PROT_WRITE
+    cdef int MAP_SHARED    
+
+cdef extern from "unistd.h":
+    int ftruncate(int fd, off_t length)
 
 cdef extern from "math.h":
     double floor(double x)
@@ -120,8 +152,11 @@ cdef class SegmentList:
     cdef size_t allocated
     cdef int is_normalized
     cdef int chunk_size
+    cdef int shared_fd
+    cdef key
 
     # C and Python methods
+    cpdef share( self, key )
     cpdef sort( self )
     cpdef SegmentList extend( self, SegmentList other )
     cpdef add( self, Position start, Position end )

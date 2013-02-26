@@ -288,6 +288,22 @@ class TestSegmentList( GatTest ):
         
         self.assertEqual( s, b )
 
+    def testSharing( self ):
+        
+        ss = [ (x, x + 10 ) for x in range( 0, 120, 20) ]
+        s = csegmentlist.SegmentList( iter = ss, normalize = True )
+        s.share( "/testshare" )
+        n = csegmentlist.SegmentList( share = s )
+        self.assertEqual( s, n )
+
+    def testPickledSharing( self ):
+        
+        ss = [ (x, x + 10 ) for x in range( 0, 120, 20) ]
+        s = csegmentlist.SegmentList( iter = ss, normalize = True )
+        s.share( "/testshare" )
+        b = pickle.loads(pickle.dumps(s))
+        self.assertEqual( s, b )
+
 class TestSegmentListOverlap( GatTest ):
     
     def setUp( self ):
@@ -426,6 +442,8 @@ class TestIntervalCollection( GatTest):
         self.a = gat.IntervalCollection( "a" )
         self.a.add( "track1", "contig1",
                     csegmentlist.SegmentList( iter = ( (x, x + 10 ) for x in range( 0, 1000, 100) ), normalize = True ) )
+        self.a.add( "track1", "contig2",
+                    csegmentlist.SegmentList( iter = ( (x, x + 10 ) for x in range( 0, 1000000, 100) ), normalize = True ) )
         self.a.add( "track2", "contig1",
                     csegmentlist.SegmentList( iter = ( (x, x + 10 ) for x in range( 1000, 2000, 100) ), normalize = True ) )
         
@@ -447,6 +465,9 @@ class TestIntervalCollection( GatTest):
             for x in self.a[t].keys():
                 self.assertEqual( self.a[t][x], b[t][x] )
 
+    def testSharing( self ):
+        self.a.share()
+        
 class TestToFromIsochores( GatTest ):
 
     def setUp( self ):
@@ -553,6 +574,8 @@ class TestSamples( GatTest ):
 
             # print h
 
+
+    
 
 class TestCaching( GatTest ):
 

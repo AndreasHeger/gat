@@ -1,6 +1,6 @@
 from cgat import *
 
-import os, sys, re, optparse, collections, types, gzip, pprint
+import os, sys, re, optparse, collections, types, gzip, pprint, time
 import numpy
 
 import gat.Bed as Bed
@@ -98,10 +98,13 @@ class SegmentsSummary:
 
         workspace_size = workspace.sum()
 
+        self.density_workspace, self.proportion_truncated_segments, self.proportion_extending_nucleotides = 0,0,0
         # some quality metrics
-        self.density_workspace = float(self.nucleotides_overlapping_workspace) / workspace_size
-        self.proportion_truncated_segments = float(self.truncated_segments) / self.segments_overlapping_workspace
-        self.proportion_extending_nucleotides = float(self.truncated_nucleotides) / segments_overlapping_workspace.sum()
+        if workspace_size > 0:
+            self.density_workspace = float(self.nucleotides_overlapping_workspace) / workspace_size
+        if self.segments_overlapping_workspace > 0:
+            self.proportion_truncated_segments = float(self.truncated_segments) / self.segments_overlapping_workspace
+            self.proportion_extending_nucleotides = float(self.truncated_nucleotides) / segments_overlapping_workspace.sum()
 
     def __str__(self):
         return "\t".join( [ "%i" % self.all_segments,
@@ -305,6 +308,7 @@ class UnconditionalSampler:
         # rebuild non-isochore annotations and workspace
         contig_annotations = annotations.clone()
         contig_annotations.fromIsochores()
+        contig_annotations.name = "contig_" + annotations.name
 
         contig_workspace = workspace.clone()
         contig_workspace.fromIsochores()
@@ -353,15 +357,30 @@ class UnconditionalSampler:
         if self.num_threads == 0:
             results = map( computeSample, work )
         else:
-            E.info("generating processpool with %i threads" % self.num_threads )
-            use_multiprocessing = True
-            if use_multiprocessing:
-                threadpool = multiprocessing.Pool( self.num_threads )
-            else:
-                threadpool = multiprocessing.pool.ThreadPool( self.num_threads )
-                
-            E.info( "starting executing" )
-            results = threadpool.map( computeSample, work )
+            
+            E.info("setting up shared data structures")
+            annotations.share()
+            contig_annotations.share()
+            contig_workspace.share( "contig_workspace" )
+            temp_segs.share( "generated_segments" )
+            temp_workspace.share( "generated_workspace" )
+            
+            E.info("generating processpool with %i threads for %i items" % (self.num_threads, len(work) ))
+            pool = multiprocessing.Pool( self.num_threads )
+
+            rs = pool.map_async(computeSample, work )
+            
+            n = len(work)
+            results = []
+            for i, r in enumerate(pool.imap_unordered(computeSample, work)):
+                if i % 100 == 0:
+                    E.info( "%i/%i done (%5.2f)" % (i, n, 100.0 * i / n ))
+                results.append( r )
+
+            pool.close()
+            pool.join()
+
+            # results = threadpool.map( computeSample, work )
         E.info( "sampling completed" )
 
         # collate results
@@ -386,6 +405,7 @@ class ConditionalSampler( UnconditionalSampler ):
 
         # This method needs to re-factored to remove isochores before counting
         # and to work with multiple counters
+        # also: parallel computation
         raise NotImplementedError
 
         E.info( "performing conditional sampling" )

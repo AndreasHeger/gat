@@ -7,6 +7,8 @@ from cpython cimport PyString_AsString, PyString_FromStringAndSize
 from cpython.version cimport PY_MAJOR_VERSION
 
 cimport cython
+# for UINT16_MAX
+from libc.stdint cimport *
 
 #####################################################
 #####################################################
@@ -102,45 +104,98 @@ cdef class SegmentList:
                  SegmentList clone = None,
                  iter = None,
                  normalize = False,
-                 unreduce_data = None ):
+                 SegmentList share = None,
+                 unreduce = None ):
         '''create empty list of segments.
-
         
         Creating is a lazy operation, no memory is allocated unless
-        explitely given:
+        explitely given. A SegmentList might be initialized using
+        the following options:
 
-        *allocate* - empty list, allocate slots
-        *clone* - copy an existing list
-        *iter* - initialize list from iterator
+        If *allocate* is set, create an empty list, but allocate slots
+
+        If *clone* is given, create a copy an existing list.
+
+        If *iter* is given, initialize list from iterable.
+
+        If *share* is set, the list will be a slave. It will share
+        memory with a _master_, which has been set up by calling the 
+        :meth:`share` method. Memory access for the slave is read-only.
+
+        If *unreduce* is given, the list will be re-constituted
+        from a pickled data representation (see __reduce__). Note that
+        if a _master_ has been pickled, the reconstituted object will be
+        a _slave_.
 
         If *normalize* is set, the list will be normalized.
         '''
         cdef char * p
-
-        if unreduce_data:
-            self.nsegments, self.allocated, self.is_normalized, self.chunk_size = unreduce_data[:4]
-            p = PyString_AsString(unreduce_data[4])
-            self.segments = <Segment*>malloc( self.nsegments * sizeof( Segment ) )
-            memcpy( self.segments, p, cython.sizeof( Position ) * 2 * self.nsegments )
-            return
-
-
         cdef long idx, nsegments
 
+        # initialize empty list
         self.segments = NULL
         self.nsegments = 0
         self.allocated = 0
+
         # an empty list is normalized
         self.is_normalized = 1
         self.chunk_size = 10000
 
-        if clone != None:
+        # no sharing
+        self.shared_fd = -1
+        self.key = None
+
+        # initialize list from shared memory
+        # allocated is 0
+        if share != None:
+            self.nsegments = share.nsegments
+            if self.nsegments > 0:
+                assert share.shared_fd >= 0, "sharing from a non-shared SegmentList"
+
+                self.allocated = 0
+                self.is_normalized = share.is_normalized
+                self.chunk_size = share.chunk_size
+                self.segments = <Segment*>mmap(NULL, 
+                                               self.nsegments * sizeof(Segment),
+                                               PROT_READ, 
+                                               MAP_SHARED, 
+                                               share.shared_fd, 
+                                               0);
+                if self.segments == MAP_FAILED:
+                    raise ValueError("could not read list from shared segment" )
+        
+        # create from pickled representation
+        # if a shared object is pickled, it will be re-constituted as a slave list.
+        elif unreduce:
+            self.nsegments, self.allocated, self.is_normalized, self.chunk_size, self.key = unreduce[:5]
+            if type(unreduce[5]) == int:
+                # shared memory
+                shared_fd = unreduce[5]
+                self.segments = <Segment*>mmap(NULL, 
+                                               self.nsegments * sizeof(Segment),
+                                               PROT_READ, 
+                                               MAP_SHARED, 
+                                               shared_fd, 
+                                               0);
+                if self.segments == MAP_FAILED:
+                    raise ValueError( "could not unpickle as slave" )
+                # mark memory as slave - not allocated
+                self.allocated = 0
+            else:
+                p = PyString_AsString(unreduce[5])
+                self.segments = <Segment*>malloc( self.nsegments * sizeof( Segment ) )
+                memcpy( self.segments, p, cython.sizeof( Position ) * 2 * self.nsegments )
+
+        # clone from another list
+        elif clone != None:
             self.nsegments = self.allocated = clone.nsegments
             self.segments = <Segment*>calloc( clone.nsegments, sizeof( Segment ) )
             memcpy( self.segments,
                     clone.segments,
                     clone.nsegments * sizeof(Segment ) )
             self.is_normalized = clone.is_normalized
+
+        # create from an iterable
         elif iter:
             a = tuple(iter)
             nsegments = len(a)
@@ -151,6 +206,8 @@ cdef class SegmentList:
                 self.segments[idx] = Segment( start, end )
                 idx += 1
             self.is_normalized = 0
+
+        # allocated memory, list remains empty
         elif allocate:
             self.allocated = allocate
             self.segments = <Segment*>calloc( allocate, sizeof( Segment ) )
@@ -160,12 +217,74 @@ cdef class SegmentList:
     def __reduce__( self ):
         '''pickling function - returns class contents as a tuple.'''
 
-        cdef str data = PyString_FromStringAndSize(<char*>self.segments, \
-                            self.nsegments * cython.sizeof( Position ) * 2 )
+        cdef str data
+
+        if self.shared_fd >= 0:
+            return (buildSegmentList, ( self.nsegments, self.allocated, 
+                                        self.is_normalized, self.chunk_size, 
+                                        self.key,
+                                        self.shared_fd) )
+
+        else:
+            data = PyString_FromStringAndSize(<char*>self.segments, \
+                                                   self.nsegments * cython.sizeof( Position ) * 2 )
         
-        return (buildSegmentList, ( self.nsegments, self.allocated, 
-                                    self.is_normalized, self.chunk_size, 
-                                    data) )
+            return (buildSegmentList, ( self.nsegments, self.allocated, 
+                                        self.is_normalized, self.chunk_size, 
+                                        self.key,
+                                        data) )
+
+    cpdef share( self, key ):
+        '''share data as a memory map.
+        
+        The data is shared under 'key'.
+
+        Returns file descriptor of shared memory.
+        '''
+        assert self.is_normalized, "sharing in non-normalized list"
+        assert key.startswith( "/" )
+        assert self.shared_fd == -1, "SegmentList already shared"
+        
+        if self.nsegments == 0:
+            # do not share empty objects
+            return
+
+        cdef int fd
+        fd = shm_open( key, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR)
+        if fd == -1:
+            raise OSError( "could not create shared memory at %s" % key )
+
+        cdef off_t nbytes = sizeof(Segment) * self.nsegments
+        # save file descriptor
+        self.shared_fd = fd
+        cdef int error
+        if ftruncate(fd, nbytes) == -1:
+            error = errno
+            raise OSError( "could not resize memory at %s; ERRNO=%i" % (key, error) )
+        
+        # open as memory map
+        cdef Segment * p
+        p = <Segment*>mmap(NULL, nbytes,
+                           PROT_READ | PROT_WRITE, 
+                           MAP_SHARED, 
+                           fd, 
+                           0);
+        
+        if p == MAP_FAILED:
+            raise ValueError("could not create memory mapped file" )
+        
+        # copy data to shared memory location
+        memcpy( p, self.segments, nbytes)
+        self.key = key
+
+    def unshare( self ):
+        '''
+        '''
+        cdef int fd
+        
+        fd = shm_unlink( self.key )
+        if fd == -1:
+            raise OSError( "could not unlink shared memory" )
 
     cpdef sort( self ):
         '''sort segments.'''
@@ -879,8 +998,11 @@ cdef class SegmentList:
         cdef Position total_length
         cdef Segment * s
 
-        min_length = 10000000000
+        if self.nsegments == 0:
+            return 0, 0, 0, 0
+
         # TODO: use maximum integer for Position
+        min_length = UINT32_MAX
         max_length = 0
         total_length = 0
 
@@ -1212,8 +1334,11 @@ cdef class SegmentList:
         return self.nsegments
 
     def __dealloc__(self):
-        if self.segments != NULL:
+        # for shared memory objects
+        if self.segments != NULL and self.allocated > 0:
             free( self.segments )
+        if self.shared_fd >= 0:
+            self.unshare()
 
     def __str__(self):
         return str(self.asList())
@@ -1255,7 +1380,7 @@ def buildSegmentList( *args ):
     
     Return a re-constructed SegmentList object.
     '''
-    return SegmentList( unreduce_data = args )
+    return SegmentList( unreduce = args )
 
 # SegmentTuple = collections.namedtuple( "SegmentTuple", "start, end" )
 

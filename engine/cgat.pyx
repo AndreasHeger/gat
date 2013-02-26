@@ -2603,6 +2603,12 @@ class IntervalDictionary( object ):
                 
         self.intervals = new
 
+    def share( self, key ):
+        '''setup dictionary for sharing.'''
+        
+        for isochore, segmentlist in self.intervals.items():
+            segmentlist.share( "/%s_%s" % (key, isochore) )
+
 #####################################################################
 #####################################################################
 #####################################################################
@@ -2813,6 +2819,11 @@ class IntervalCollection(object):
             for contig, segmentlist in v.iteritems():
                 new.add( track, contig, csegmentlist.SegmentList( clone = segmentlist) )
         return new
+
+    def share( self ):
+        '''setup collection for sharing.'''
+        for track, vv in self.intervals.iteritems():
+            vv.share( self.name + "-" + track )
 
     @property
     def tracks(self): return self.intervals.keys()
