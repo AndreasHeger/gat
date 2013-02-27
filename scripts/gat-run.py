@@ -76,12 +76,36 @@ def fromSegments( options, args ):
 
     tstart = time.time()
 
+    ##################################################
+    ##################################################
+    ##################################################
+    ## build segments
     segments, annotations, workspaces, isochores = IO.buildSegments( options )
 
     E.info( "intervals loaded in %i seconds" % (time.time() - tstart) )
 
+    ##################################################
+    ##################################################
+    ##################################################
+    ## open various additional output files
+    ##################################################
+    outfiles = {}
+    for section in ("sample", 
+                    "segment_metrics" ):
+        if section in options.output_stats or \
+            "all" in options.output_stats or \
+                len( [ x for x in options.output_stats if re.search( x, "section" ) ] ) > 0:
+            outfiles[section] = E.openOutputFile(section)
+
     # filter segments by workspace
-    workspace = IO.applyIsochores( segments, annotations, workspaces, options, isochores )
+    workspace = IO.applyIsochores( segments, 
+                                   annotations, 
+                                   workspaces,
+                                   options, 
+                                   isochores,
+                                   truncate_segments_to_workspace = options.truncate_segments_to_workspace,
+                                   truncate_workspace_to_annotations = options.truncate_workspace_to_annotations,
+                                   restrict_workspace = options.restrict_workspace )
 
     ##################################################
     ##################################################
@@ -145,9 +169,14 @@ def fromSegments( options, args ):
     elif options.conditional == "cooccurance":
         workspace_generator = gat.ConditionalWorkspaceCooccurance()
     elif options.conditional == "annotation-centered":
+        if options.conditional_extension == options.conditional_expansion == None:
+            raise ValueError( "please specify either --conditional-expansion or --conditional-extension" )
         workspace_generator = gat.ConditionalWorkspaceAnnotationCentered( options.conditional_extension,
                                                                           options.conditional_expansion )
     elif options.conditional == "segment-centered":
+        if options.conditional_extension == options.conditional_expansion == None:
+            raise ValueError( "please specify either --conditional-expansion or --conditional-extension" )
+
         workspace_generator = gat.ConditionalWorkspaceSegmentCentered( options.conditional_extension,
                                                                        options.conditional_expansion )
     else:
@@ -169,17 +198,6 @@ def fromSegments( options, args ):
                 if annotation not in r:
                     raise ValueError("missing annotation '%s' in annotations for track='%s'" % (annotation, track ))
 
-    ##################################################
-    ##################################################
-    ##################################################
-    ## open various additional output files
-    ##################################################
-    outfiles = {}
-    for section in ("sample", "segment_metrics"):
-        if section in options.output_stats or \
-            "all" in options.output_stats or \
-                len( [ x for x in options.output_stats if re.search( x, "section" ) ] ) > 0:
-            outfiles[section] = E.openOutputFile(section)
 
     ##################################################
     ##################################################
@@ -367,6 +385,9 @@ def main( argv = None ):
     parser.add_option( "--truncate-workspace-to-annotations", dest="truncate_workspace_to_annotations", action="store_true", 
                        help="truncate workspace with annotations [default=%default]" )
 
+    parser.add_option( "--truncate-segments-to-workspace", dest = "truncate_segments_to_workspace", action="store_true",
+                       help = "truncate segments to workspace before sampling [default=%default]" )
+
     parser.add_option( "--shift-extension", dest="shift_extension", type="float",
                       help="if the sampling method is 'shift', create a segment of size # anound the segment"
                        " to determine the size of the region for shifthing [default=%default]."  )
@@ -414,6 +435,7 @@ def main( argv = None ):
         conditional_extension = None,
         conditional_expansion = None,
         restrict_workspace = False,
+        truncate_segments_to_workspace = False,
         truncate_workspace_to_annotations = False,
         enable_split_tracks = False,
         shift_expansion = 2.0,

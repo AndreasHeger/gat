@@ -35,93 +35,6 @@ def readFromBedOld( filenames, name = "track" ):
 
     return segment_lists
 
-class SegmentsSummary:
-    '''summarize segments in a workspace.
-    '''
-    header = ("all_segments",
-              "all_nucleotides",
-              "segments_overlapping_workspace",
-              "nucleotides_overlapping_workspace",
-              "segments_outside_workspace",
-              "nucleotides_outside_workspace",
-              "truncated_segments",
-              "truncated_nucleotides",
-              "density_workspace",
-              "proportion_truncated_segments",
-              "proportion_extending_nucleotides",
-              "summary_all_segments",
-              "summary_segments_overlapping_workspace",
-              "summary_truncated_segments" )
-                            
-
-    def __init__(self):
-        pass
-
-    def update( self, segments, workspace ):
-        '''compute summary statistics between two segments lists *segments* and *workspace*.
-        This method computes:
-            * number of segments/nucleotides
-            * number of segments/nucleotides overlapping workspace
-            * number of segments split by a boundary
-            * number of nucleotides extending outside boundary
-            * segment size distribution untruncated at boundaries (min, max, mean, media, q1, q3)
-            * segment size distributino truncated at boundaries
-        '''
-
-        self.all_segments = len(segments)
-        self.all_nucleotides = segments.sum()
-
-        # build segments overlapping workspace
-        segments_overlapping_workspace = csegmentlist.SegmentList( clone = segments )
-        segments_overlapping_workspace.filter( workspace )
-
-        # build segments truncated by workspace
-        truncated_segments = csegmentlist.SegmentList( clone = segments_overlapping_workspace )
-        truncated_segments.intersect( workspace )
-
-        segments_extending_workspace = csegmentlist.SegmentList( clone = segments )
-        segments_extending_workspace.subtract( segments_overlapping_workspace )
-
-        # compute numbers
-        self.segments_overlapping_workspace = len( truncated_segments )
-        self.nucleotides_overlapping_workspace = truncated_segments.sum()
-
-        self.segments_outside_workspace = self.all_segments - self.segments_overlapping_workspace
-        self.nucleotides_outside_workspace = self.all_nucleotides - self.nucleotides_overlapping_workspace
-
-        self.truncated_segments = len(segments_extending_workspace )
-        self.truncated_nucleotides = segments_extending_workspace.sum()
-
-        self.summary_all_segments = segments.summarize()
-        self.summary_segments_overlapping_workspace = segments_overlapping_workspace.summarize()
-        self.summary_truncated_segments = truncated_segments.summarize()
-
-        workspace_size = workspace.sum()
-
-        self.density_workspace, self.proportion_truncated_segments, self.proportion_extending_nucleotides = 0,0,0
-        # some quality metrics
-        if workspace_size > 0:
-            self.density_workspace = float(self.nucleotides_overlapping_workspace) / workspace_size
-        if self.segments_overlapping_workspace > 0:
-            self.proportion_truncated_segments = float(self.truncated_segments) / self.segments_overlapping_workspace
-            self.proportion_extending_nucleotides = float(self.truncated_nucleotides) / segments_overlapping_workspace.sum()
-
-    def __str__(self):
-        return "\t".join( [ "%i" % self.all_segments,
-                            "%i" % self.all_nucleotides,
-                            "%i" % self.segments_overlapping_workspace,
-                            "%i" % self.nucleotides_overlapping_workspace,
-                            "%i" % self.segments_outside_workspace,
-                            "%i" % self.nucleotides_outside_workspace,
-                            "%i" % self.truncated_segments,
-                            "%i" % self.truncated_nucleotides,
-                            "%f" % self.density_workspace,
-                            "%f" % self.proportion_truncated_segments,
-                            "%f" % self.proportion_extending_nucleotides,
-                            "%s" % str(self.summary_all_segments),
-                            "%s" % str(self.summary_segments_overlapping_workspace),
-                            "%s" % str(self.summary_truncated_segments) ] )
-                            
 
 def iterator_results( annotator_results ):
     '''iterate over all results.'''
@@ -298,14 +211,47 @@ class UnconditionalSampler:
             l = sample.asLengths()
             self.all_lengths.extend( l  )
             _write( sample_id, isochore, numpy.sort( numpy.array( l )))
-                        
+
+    def computeSamples( self, work, report_interval = 100 ):
+        '''compute samples according to work.
+
+        returns a list of results.
+        '''
+        
+        n = len(work)
+
+        results = []
+
+        if self.num_threads == 0:
+            for i, w in enumerate(work):
+                r = computeSample( w )
+                if i % report_interval == 0:
+                    E.info( "%i/%i done (%5.2f)" % (i, n, 100.0 * i / n ))
+                results.append( r )
+        else:
+            E.info("generating processpool with %i threads for %i items" % (self.num_threads, len(work) ))
+            pool = multiprocessing.Pool( self.num_threads )
+
+            rs = pool.map_async(computeSample, work )
+
+            for i, r in enumerate(pool.imap_unordered(computeSample, work)):
+                if i % report_interval == 0:
+                    E.info( "%i/%i done (%5.2f)" % (i, n, 100.0 * i / n ))
+                results.append( r )
+
+            pool.close()
+            pool.join()
+
+        return results
+
     def sample( self, track, counts, counters, segs, annotations, workspace ):
         '''sample and return counts.
 
         Return a list of counted results for each counter.
         '''
 
-        report_interval = 100
+        E.info( "performing unconditional sampling" )
+        counts_per_track = [ collections.defaultdict( list ) for x in counters ]
 
         # rebuild non-isochore annotations and workspace
         contig_annotations = annotations.clone()
@@ -314,9 +260,6 @@ class UnconditionalSampler:
 
         contig_workspace = workspace.clone()
         contig_workspace.fromIsochores()
-        
-        E.info( "performing unconditional sampling" )
-        counts_per_track = [ collections.defaultdict( list ) for x in counters ]
 
         E.info( "workspace without conditioning: %i segments, %i nucleotides" % \
                     (workspace.counts(),
@@ -332,17 +275,6 @@ class UnconditionalSampler:
             E.warn( "empty workspace - no computation performed" )
             return counts_per_track
 
-        # work = [ (x, 
-        #           track, 
-        #           self.sampler,
-        #           temp_segs, 
-        #           annotations,
-        #           contig_annotations,
-        #           temp_workspace,
-        #           contig_workspace,
-        #           counts, counters,
-        #           self.samples_outfile) for x in range(self.num_samples) ]
-
         work = [ (x, 
                   track, 
                   self.sampler,
@@ -355,38 +287,16 @@ class UnconditionalSampler:
                   self.samples_outfile
                   ) for x in range(self.num_samples) ]
 
-        n = len(work)
+    
+        E.info("setting up shared data for multi-processing")
+        annotations.share()
+        contig_annotations.share()
+        contig_workspace.share( "contig_workspace" )
+        temp_segs.share( "generated_segments" )
+        temp_workspace.share( "generated_workspace" )
 
         E.info( "sampling started" )
-        results = []
-        if self.num_threads == 0:
-            for i, w in enumerate(work):
-                r = computeSample( w )
-                if i % report_interval == 0:
-                    E.info( "%i/%i done (%5.2f)" % (i, n, 100.0 * i / n ))
-                results.append( r )
-        else:
-            E.info("setting up shared data structures")
-            annotations.share()
-            contig_annotations.share()
-            contig_workspace.share( "contig_workspace" )
-            temp_segs.share( "generated_segments" )
-            temp_workspace.share( "generated_workspace" )
-            
-            E.info("generating processpool with %i threads for %i items" % (self.num_threads, len(work) ))
-            pool = multiprocessing.Pool( self.num_threads )
-
-            rs = pool.map_async(computeSample, work )
-
-            for i, r in enumerate(pool.imap_unordered(computeSample, work)):
-                if i % report_interval == 0:
-                    E.info( "%i/%i done (%5.2f)" % (i, n, 100.0 * i / n ))
-                results.append( r )
-
-            pool.close()
-            pool.join()
-
-            # results = threadpool.map( computeSample, work )
+        results = self.computeSamples( work )
         E.info( "sampling completed" )
 
         # collate results
@@ -409,14 +319,21 @@ class ConditionalSampler( UnconditionalSampler ):
         return dictionary with counts per track
         '''
 
-        # This method needs to re-factored to remove isochores before counting
-        # and to work with multiple counters
-        # also: parallel computation
-        raise NotImplementedError
-
         E.info( "performing conditional sampling" )
+        counts_per_track = [ collections.defaultdict( list ) for x in counters ]
 
-        counts_per_annotation = collections.defaultdict( list )
+        # rebuild non-isochore annotations and workspace
+        contig_annotations = annotations.clone()
+        contig_annotations.fromIsochores()
+        contig_annotations.name = "contig_" + annotations.name
+
+        contig_workspace = workspace.clone()
+        contig_workspace.fromIsochores()
+
+        E.info("setting up shared data for multi-processing")
+        annotations.share()
+        contig_annotations.share()
+        contig_workspace.share( "contig_workspace" )
 
         E.info( "workspace without conditioning: %i segments, %i nucleotides" % \
                      (workspace.counts(),
@@ -426,61 +343,43 @@ class ConditionalSampler( UnconditionalSampler ):
             E.warn( "empty workspace - no computation performed" )
             return counts_per_track
 
-        # compute samples conditionally
+        # compute samples conditionally - need to proceed by annotation
         for annoid, annotation in enumerate(annotations.tracks):
 
             annos = annotations[annotation]
 
             temp_segs, temp_annotations, temp_workspace = self.workspace_generator( segs, annos, workspace )
+            
+            # set up sharing
+            temp_segs.share( "generated_segments" )
+            temp_workspace.share( "generated_workspace" )
 
             E.info( "workspace for annotation %s: %i segments, %i nucleotides" % \
                         (annotation,
                          temp_workspace.counts(),
                          temp_workspace.sum() ) )
 
-            for x in xrange( self.num_samples ):
-                # use textual sample ids to avoid parsing from dumped samples
-                sample_id = str(x)
-                E.debug( "progress: %s: %i/%i %i/%i %i isochores" % (track, annoid+1, 
-                                                                     len(annotations.tracks),
-                                                                     x+1, self.num_samples, len(temp_segs.keys())))
+            work = [ (annoid, 
+                      track, 
+                      self.sampler,
+                      temp_segs, 
+                      annotations,
+                      contig_annotations,
+                      temp_workspace,
+                      contig_workspace,
+                      counters, 
+                      self.samples_outfile
+                      ) for x in range(self.num_samples) ]
+            
+            E.info( "sampling for annotation '%s' started" % annotation)
+            results = self.computeSamples( work )
+            E.info( "sampling for annotation '%s' completed" % annotation)
 
-                counts_per_isochore = []
+            for result in results:
+                for counter_id, counter in enumerate(counters):
+                    counts_per_track[counter_id][annotation].append( result[counter_id][annotation] )
 
-                if self.samples_outfile: 
-                    self.samples_outfile.write("track name=%s-%s\n" % (annotation, sample_id))
-
-                for isochore in temp_segs.keys():
-                    counts.pairs += 1
-
-                    # skip empty isochores
-                    if temp_workspace[isochore].isEmpty or temp_segs[isochore].isEmpty: 
-                        counts.skipped += 1
-                        continue
-
-                    counts.sampled += 1
-                    r = self.sampler.sample( temp_segs[isochore], temp_workspace[isochore] )
-                    counts_per_isochore.append( self.counter( r, 
-                                                              temp_annotations[isochore], 
-                                                              temp_workspace[isochore] ) )
-
-
-                    # save sample
-                    if self.samples_outfile: 
-                        for start, end in r:
-                            self.samples_outfile.write( "%s\t%i\t%i\n" % (isochore, start, end))
-                            
-                    self.outputSampleStats( sample_id, isochore, r )
-
-                # add sample to counts
-                # TODO: choose aggregator
-                sample_counts = sum( counts_per_isochore )
-                counts_per_annotation[annotation].append( sample_counts )
-
-            self.outputSampleStats( None, "", [] )
-
-        return counts_per_annotation
-    
+        return counts_per_track
 
 def run( segments, 
          annotations, 
@@ -539,36 +438,10 @@ def run( segments,
     ##################################################
     ##################################################
     ##################################################
-    # computing summary statistics for segments and
-    # annotations
+    # computing summary metrics for segments
     if "segment_metrics" in outfiles:
-        outfile = outfiles["segment_metrics"]
-        E.info( "computing summary metrics for segments" )
-    
-        outfile.write( "metric\t%s\n" % "\t".join(Stats.Summary().getHeaders() ))
-        observed_counts = []
-        for ntrack, track in enumerate(segments.tracks):
-            segs = segments[track]
-            stats_per_isochore = []
-            for isochore, ss in segs.iteritems():
-                stats = SegmentsSummary()
-                stats.update( ss, workspace[isochore] )
-                stats_per_isochore.append( stats )
-
-            for attribute in ("all_segments", "all_nucleotides",
-                              "segments_overlapping_workspace",
-                              "nucleotides_overlapping_workspace",
-                              "nucleotides_outside_workspace",
-                              "truncated_segments",
-                              "truncated_nucleotides",
-                              "density_workspace",
-                              "proportion_truncated_segments",
-                              "proportion_extending_nucleotides",
-                              ):
-                values = [ getattr( x, attribute ) for x in stats_per_isochore ]
-                outfile.write("%s\t%s\n" % (attribute, Stats.Summary( values )) )
-        outfile.flush()
-        E.info( "wrote summary metrics for segments to %s" % str(outfile))
+        IO.outputMetrics(  outfiles["segment_metrics"],
+                           segments, workspace )
 
     ##################################################
     ##################################################

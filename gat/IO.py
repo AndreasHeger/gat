@@ -3,7 +3,9 @@ import sys, re, os, glob
 import gat
 import gat.IOTools as IOTools
 import gat.Experiment as E
+import gat.Stats as Stats
 import numpy
+import csegmentlist
 
 try:
     import matplotlib.pyplot as plt
@@ -49,7 +51,6 @@ def buildSegments( options ):
 
     returns segments, annotations and workspace.
     '''
-
         
     options.segment_files = expandGlobs( options.segment_files )
     options.annotation_files = expandGlobs( options.annotation_files )
@@ -113,26 +114,41 @@ def buildSegments( options ):
 
     else:
         isochores = None
-    
+
     return segments, annotations, workspaces, isochores
 
-def applyIsochores( segments, annotations, workspaces, options, isochores = None ):
-    '''apply isochores to segments, annotations.
+def applyIsochores( segments, annotations, workspaces, 
+                    options, 
+                    isochores = None,
+                    truncate_segments_to_workspace = False,
+                    truncate_workspace_to_annotations= False,
+                    restrict_workspace = False,
+                    ):
+    '''apply isochores to segments and annotations.
 
-    Segments and annotations are filtered and truncated to keep 
+    Segments and annotations are filtered in place to keep 
     only those overlapping the workspace.
 
-    If no isochores are given, isochores are not applied.
+    If *isochores* are given, isochores are applied.
 
-    returns workspace divided into isochores.
+    If *truncate_segments_to_workspace*, truncate segments
+    to workspace.
+
+    If *restrict_workspace* is set, the workspace is confined
+    to those parts that overlap both a segment and an annotation.
+
+    If *truncate_workspace_to_annotations* is set, the workspace
+    is truncated to keep only those parts that overlap annotations.
+
+    returns a workspace divided into isochores.
     '''
 
     if isochores:
         # intersect isochores and workspaces, segments and annotations
         E.info( "adding isochores to workspace" )
-        workspaces.toIsochores( isochores )
-        annotations.toIsochores( isochores )
-        segments.toIsochores( isochores )
+        workspaces.toIsochores( isochores, truncate = options.truncate_segments_to_workspace )
+        annotations.toIsochores( isochores, truncate = options.truncate_segments_to_workspace )
+        segments.toIsochores( isochores, truncate = options.truncate_segments_to_workspace )
         
         if workspaces.sum() == 0:
             raise ValueError( "isochores and workspaces do not overlap" )
@@ -152,15 +168,19 @@ def applyIsochores( segments, annotations, workspaces, options, isochores = None
     else:
         # intersect workspace and segments/annotations
         # annotations and segments are truncated by workspace
+        if options.truncate_segments_to_workspace:
+            segments.intersect( workspaces["collapsed"] )
+        else:
+            segments.filter( workspaces["collapsed"] )
+
         annotations.intersect( workspaces["collapsed"] )
-        segments.intersect( workspaces["collapsed"] )
         
         dumpStats( annotations, "stats_annotations_truncated", options )
         dumpStats( segments, "stats_segments_truncated", options )
 
     workspace = workspaces["collapsed"] 
 
-    if options.restrict_workspace:
+    if restrict_workspace:
 
         E.info( "restricting workspace" )
         # this is very cumbersome - refactor merge and collapse
@@ -176,7 +196,7 @@ def applyIsochores( segments, annotations, workspaces, options, isochores = None
 
         dumpStats( workspaces, "stats_workspaces_restricted", options )
         
-    if options.truncate_workspace_to_annotations:
+    if truncate_workspace_to_annotations:
 
         E.info( "truncating workspace to annotations" )
         annotations.merge()
@@ -225,6 +245,123 @@ def readDescriptions( options ):
             ( description_width, len(description_header), options.input_filename_descriptions)
 
     return description_header, descriptions, description_width
+
+class SegmentsSummary:
+    '''summarize segments in a workspace.
+    '''
+    header = ("all_segments",
+              "all_nucleotides",
+              "segments_overlapping_workspace",
+              "nucleotides_overlapping_workspace",
+              "segments_outside_workspace",
+              "nucleotides_outside_workspace",
+              "truncated_segments",
+              "truncated_nucleotides",
+              "density_workspace",
+              "proportion_truncated_segments",
+              "proportion_extending_nucleotides",
+              "summary_all_segments",
+              "summary_segments_overlapping_workspace",
+              "summary_truncated_segments" )
+                            
+
+    def __init__(self):
+        pass
+
+    def update( self, segments, workspace ):
+        '''compute summary statistics between two segments lists *segments* and *workspace*.
+        This method computes:
+            * number of segments/nucleotides
+            * number of segments/nucleotides overlapping workspace
+            * number of segments split by a boundary
+            * number of nucleotides extending outside boundary
+            * segment size distribution untruncated at boundaries (min, max, mean, media, q1, q3)
+            * segment size distributino truncated at boundaries
+        '''
+
+        self.all_segments = len(segments)
+        self.all_nucleotides = segments.sum()
+
+        # build segments overlapping workspace
+        segments_overlapping_workspace = csegmentlist.SegmentList( clone = segments )
+        segments_overlapping_workspace.filter( workspace )
+
+        # build segments truncated by workspace
+        truncated_segments = csegmentlist.SegmentList( clone = segments_overlapping_workspace )
+        truncated_segments.intersect( workspace )
+
+        segments_extending_workspace = csegmentlist.SegmentList( clone = segments )
+        segments_extending_workspace.subtract( truncated_segments )
+
+        # compute numbers
+        self.segments_overlapping_workspace = len( truncated_segments )
+        self.nucleotides_overlapping_workspace = truncated_segments.sum()
+
+        self.segments_outside_workspace = self.all_segments - self.segments_overlapping_workspace
+        self.nucleotides_outside_workspace = self.all_nucleotides - self.nucleotides_overlapping_workspace
+
+        self.truncated_segments = len(segments_extending_workspace )
+        self.truncated_nucleotides = segments_extending_workspace.sum()
+
+        self.summary_all_segments = segments.summarize()
+        self.summary_segments_overlapping_workspace = segments_overlapping_workspace.summarize()
+        self.summary_truncated_segments = truncated_segments.summarize()
+
+        workspace_size = workspace.sum()
+
+        self.density_workspace, self.proportion_truncated_segments, self.proportion_extending_nucleotides = 0,0,0
+        # some quality metrics
+        if workspace_size > 0:
+            self.density_workspace = float(self.nucleotides_overlapping_workspace) / workspace_size
+        if self.segments_overlapping_workspace > 0:
+            self.proportion_truncated_segments = float(self.truncated_segments) / self.segments_overlapping_workspace
+            self.proportion_extending_nucleotides = float(self.truncated_nucleotides) / segments_overlapping_workspace.sum()
+
+    def __str__(self):
+        return "\t".join( [ "%i" % self.all_segments,
+                            "%i" % self.all_nucleotides,
+                            "%i" % self.segments_overlapping_workspace,
+                            "%i" % self.nucleotides_overlapping_workspace,
+                            "%i" % self.segments_outside_workspace,
+                            "%i" % self.nucleotides_outside_workspace,
+                            "%i" % self.truncated_segments,
+                            "%i" % self.truncated_nucleotides,
+                            "%f" % self.density_workspace,
+                            "%f" % self.proportion_truncated_segments,
+                            "%f" % self.proportion_extending_nucleotides,
+                            "%s" % str(self.summary_all_segments),
+                            "%s" % str(self.summary_segments_overlapping_workspace),
+                            "%s" % str(self.summary_truncated_segments) ] )
+                            
+def outputMetrics( outfile, segments, workspace ):
+    '''output summary metrics.'''
+
+    E.info( "computing summary metrics for segments" )
+
+    outfile.write( "metric\t%s\n" % "\t".join(Stats.Summary().getHeaders() ))
+    observed_counts = []
+    for ntrack, track in enumerate(segments.tracks):
+        segs = segments[track]
+        stats_per_isochore = []
+        for isochore, ss in segs.iteritems():
+            stats = SegmentsSummary()
+            stats.update( ss, workspace[isochore] )
+            stats_per_isochore.append( stats )
+
+        for attribute in ("all_segments", "all_nucleotides",
+                          "segments_overlapping_workspace",
+                          "nucleotides_overlapping_workspace",
+                          "nucleotides_outside_workspace",
+                          "truncated_segments",
+                          "truncated_nucleotides",
+                          "density_workspace",
+                          "proportion_truncated_segments",
+                          "proportion_extending_nucleotides",
+                          ):
+            values = [ getattr( x, attribute ) for x in stats_per_isochore ]
+            outfile.write("%s\t%s\n" % (attribute, Stats.Summary( values )) )
+    outfile.flush()
+    E.info( "wrote summary metrics for segments to %s" % str(outfile))
 
 def outputResults( results, 
                    options, 

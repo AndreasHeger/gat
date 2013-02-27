@@ -2573,12 +2573,21 @@ class IntervalDictionary( object ):
             else:
                 del self.intervals[contig]
 
-    def toIsochores( self, isochores ):
-        '''split contigs into isochores.'''
+    def toIsochores( self, isochores, truncate = False ):
+        '''split per-contig segmentlists into per-isochore segmentlist.
+
+        If *truncate* is given, the segments are truncated at isochore
+        boundaries.
+
+        The IntervalDictionary is modified in-place.
+        '''
         for contig, segmentlist in self.intervals.items():
             for other_track, other_vv in isochores.iteritems():
                 newlist = csegmentlist.SegmentList( clone = segmentlist )
-                newlist.intersect( other_vv[contig] )
+                if truncate:
+                    newlist.intersect( other_vv[contig] )
+                else:
+                    newlist.filter( other_vv[contig] )
                 isochore = "%s.%s" % (contig, other_track)
                 self.intervals[isochore] = newlist
             del self.intervals[contig]
@@ -2802,10 +2811,16 @@ class IntervalCollection(object):
             if track not in r:
                 del self.intervals[track]
 
-    def toIsochores( self, isochores ):
-        '''split contigs in each track into isochores.'''
+    def toIsochores( self, isochores, truncate = False ):
+        '''split per-contig segmentlists into per-isochore segmentlist.
+
+        If *truncate* is given, the segments are truncated at isochore
+        boundaries.
+
+        The IntervalCollection is modified in-place.
+        '''
         for track, vv in self.intervals.iteritems():
-            vv.toIsochores( isochores )
+            vv.toIsochores( isochores, truncate )
 
     def fromIsochores( self ):
         '''merge isochores together.'''

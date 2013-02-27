@@ -436,6 +436,13 @@ class TestSegmentListSubtract( GatTest):
         c = [(10L, 15L), (110L, 115L), (210L, 215L), (310L, 315L), (410L, 415L), (510L, 515L), (610L, 615L), (710L, 715L), (810L, 815L), (910L, 915L)]
         self.assertEqual( r.asList(), c )
 
+
+    def testSingleSegmentSubtraction( self ):
+        a = csegmentlist.SegmentList( iter = [ (0,12000)], normalize = True )
+        b = csegmentlist.SegmentList( iter = [ (0,10000)], normalize = True )
+        r = a.subtract( b )
+        self.assertEqual( r.asList(), [(10000,12000)] )
+
 class TestIntervalCollection( GatTest):
 
     def setUp( self ):
@@ -574,9 +581,6 @@ class TestSamples( GatTest ):
 
             # print h
 
-
-    
-
 class TestCaching( GatTest ):
 
     sample_size = 10
@@ -637,7 +641,6 @@ class TestCaching( GatTest ):
                 for isochore in segs.keys():
                     self.assertEqual( saved_samples[(track,x,isochore)].asList(),
                                       insamples[track][x][isochore].asList() )
-
 
 class TestStats( GatTest ):
 
@@ -727,8 +730,6 @@ class TestStats( GatTest ):
         gat.computeFDR( results )
         for r in results: 
             self.assert_( r.qvalue > 0.5, "%f" % r.qvalue  )
-
-
 
 if __name__ == '__main__':
     unittest.main()

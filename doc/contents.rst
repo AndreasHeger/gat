@@ -93,6 +93,8 @@ Indices and tables
 
 
    * add galaxy interface.
-   
+   * reorganize package structure
+   * check pip installation
+   * check requirements   
 
   

@@ -39,15 +39,33 @@ against one more other genomic annotations.
 GREAT says that a segment overlaps an annotation if the midpoint
 of the segment overlaps the annotation.
 
+The GREAT analysis is done on a per-isochore basis and overall.
+For the overall analysis, there is no isochore correction
+as the union of all isochores is treated as a single workspace.
 
+This script implies several counters (``--counter`` option):
 
+binom
+    binomial model (as implemented by GREAT). Returns the probability
+    of a certain number of segments overlapping (mid-point overlap) 
+    an annotation
+
+hyperg
+    hypergeometric model. Returns the probabibility of a certain
+    number of nucleotides within segments overlapping an annotation.
+    Conceptually, all genomic positions are treated independently and 
+    segments are fragmented into a collection of single bases that are
+    placed indepently. This is valid for point intervals such as SNPs,
+    but of course ignores segment size, though it might be used as a
+    guide towards the expected fold enrichment, that can be computed
+    more accurately using :mod:`gat-run.py`
 
 Usage
 -----
 
 Example::
 
-   python gatrun.py 
+   python gat-run.py 
       --segment-file=segments.bed.gz 
       --workspace-file=workspace.bed.gz 
       --annotation-file=annotations_architecture.bed.gz  
@@ -82,11 +100,15 @@ GREAT_RESULT = collections.namedtuple( "GREAT",
                                        ("track",
                                         "annotation",
                                         "isochore",
+                                        "counter",
                                         "observed", # nsegments_overlapping_annotations
                                         "expected",
                                         "nsegments_in_workspace",
                                         "nannotations_in_workspace",
+                                        "nsegments_overlapping_annotation",
                                         "nannotations_overlapping_segments",
+                                        "basecoverage_intersection",
+                                        "basecoverage_segments",
                                         "basecoverage_annotation",
                                         "basecoverage_workspace",
                                         "fraction_coverage_annotation",
@@ -153,20 +175,27 @@ def main( argv ):
                                    "overlap" ),
                        help="output overlap summary stats [default=%default]."  )
 
+    parser.add_option( "--restrict-workspace", dest="restrict_workspace", action="store_true", 
+                       help="restrict workspace to those segments that contain both track"
+                       " and annotations [default=%default]" )
+
+    parser.add_option( "--counter", dest="counters", type="choice", action="append",
+                       choices = ( "binom", "hyperg" ),
+                       help="counter to use [default=%default]."  )
+
+    parser.add_option( "--output-tables-pattern", dest="output_tables_pattern", type="string", 
+                      help="output pattern for result tables. Used if there are multiple counters used [default=%default]."  )
+
     parser.set_defaults(
         annotation_files = [],
         segment_files = [],
         workspace_files = [],  
         sample_files = [],
-        num_samples = 1000,
-        nbuckets = 100000,
-        bucket_size = 1,
-        counter = "nucleotide-overlap",
+        counters = [],
         output_stats = [],
         output_bed = [],
-        output_filename_counts = None,
+        output_tables_pattern = "%s.tsv.gz",
         output_order = "fold",
-        cache = None,
         input_filename_counts = None,
         input_filename_results = None,
         pvalue_method = "empirical",
@@ -175,7 +204,6 @@ def main( argv ):
         qvalue_method = "storey",
         qvalue_lambda = None,
         qvalue_pi0_method = "smoother",
-        sampler = "annotator",
         ignore_segment_tracks = False,
         input_filename_descriptions = None,
         conditional = "unconditional",
@@ -193,6 +221,9 @@ def main( argv ):
     (options, args) = E.Start( parser, argv = argv, add_output_options = True )
 
     tstart = time.time()
+
+    if len(options.counters) == 0:
+        options.counters.append("binom")
 
     ############################################
     segments, annotations, workspaces, isochores = IO.buildSegments( options )
@@ -227,16 +258,21 @@ def main( argv ):
     E.info( "computing counts per isochore" )
     # results per isochore 
     def emptyResult( segment, annotation, isochore, 
+                     counter,
                      nsegments_in_workspace,
                      basecoverage_annotation,
                      basecoverage_workspace):
         return GREAT_RESULT._make( (
                 segment, annotation, isochore, 
+                counter,
                 0, # observed
                 0, # expected
                 nsegments_in_workspace,
                 0, # nannotations_in_workspace
+                0, # nsegments_overlapping_annotation
                 0, # nannotations_overlapping_segments
+                0, # basecoverage_intersection
+                0, # basecoverage_segments
                 basecoverage_annotation,
                 basecoverage_workspace,
                 0.0,
@@ -259,6 +295,8 @@ def main( argv ):
             except KeyError:
                 ss = None
 
+            basecoverage_segments = segments_in_workspace.sum()
+
             for annotation, annotationdict in annotations.iteritems():
                 
                 # if annotation != "GO:0030957": continue
@@ -275,10 +313,13 @@ def main( argv ):
                     basecoverage_annotation = 0
 
                 if ss == None or aa == None:
-                    results_per_contig[(segment,annotation)].append( emptyResult(segment, annotation,isochore, 
-                                                                                 nsegments_in_workspace,
-                                                                                 basecoverage_annotation,
-                                                                                 basecoverage_workspace ) )
+                    for counter in options.counters:
+                        results_per_contig[(counter,segment,annotation)].append( emptyResult(segment, annotation,
+                                                                                             isochore, 
+                                                                                             counter,
+                                                                                             nsegments_in_workspace,
+                                                                                             basecoverage_annotation,
+                                                                                             basecoverage_workspace ) )
                     continue
                 
                 # select segments overlapping annotation
@@ -288,67 +329,86 @@ def main( argv ):
                 nsegments_overlapping_annotation = ss.intersectionWithSegments( annotations[annotation][isochore],
                                                                                 mode = options.overlap_mode )
                                          
+                # number of nucleotides at the intersection of segments, annotation and workspace
+                basecoverage_intersection = segments_overlapping_annotation.sum()
+
                 annotations_overlapping_segments = csegmentlist.SegmentList( clone = aa )
                 annotations_overlapping_segments.intersect( ss )
                 nannotations_overlapping_segments = len( annotations_overlapping_segments )
 
                 nannotations_in_workspace = len( aa )
                 if nannotations_in_workspace == 0: 
-                    results_per_contig[(segment,annotation)].append( emptyResult(segment, annotation, isochore, 
-                                                                                 nsegments_in_workspace,
-                                                                                 basecoverage_annotation,
-                                                                                 basecoverage_workspace ) )
+                    for counter in options.counters:
+                        results_per_contig[(counter,segment,annotation)].append( emptyResult(segment, 
+                                                                                             annotation, 
+                                                                                             isochore, 
+                                                                                             counter,
+                                                                                             nsegments_in_workspace,
+                                                                                             basecoverage_annotation,
+                                                                                             basecoverage_workspace ) )
                     continue
 
                 fraction_coverage_annotation = basecoverage_annotation / float( basecoverage_workspace )
                 fraction_hit_annotation = float(nannotations_overlapping_segments) / nannotations_in_workspace
+                
+                for counter in options.counters:
+                    if counter.startswith( "binom" ):
+                        # GREAT binomial probability over "regions"
+                        # n = number of genomic regions = nannotations_in_workspace
+                        # ppi = fraction of genome annotated by annotation = fraction_coverage_annotation
+                        # kpi = genomic regions with annotation hit by segments = nannotations_in_segments
+                        # sf = survival functions = 1 -cdf
+                        # probability of observing >kpi in a sample of n where the probabily of succes is
+                        # ppi.
+                        pvalue = scipy.stats.binom.sf( nsegments_overlapping_annotation - 1, 
+                                                       nsegments_in_workspace, 
+                                                       fraction_coverage_annotation )
+                        
+                        expected = fraction_coverage_annotation * nsegments_in_workspace
+                        observed = nsegments_overlapping_annotation 
 
-                # GREAT binomial probability over "regions"
-                # n = number of genomic regions = nannotations_in_workspace
-                # ppi = fraction of genome annotated by annotation = fraction_coverage_annotation
-                # kpi = genomic regions with annotation hit by segments = nannotations_in_segments
-                # sf = survival functions = 1 -cdf
-                # probability of observing >kpi in a sample of n where the probabily of succes is
-                # ppi.
-                p_great = scipy.stats.binom.sf( nsegments_overlapping_annotation - 1, 
-                                                nsegments_in_workspace, 
-                                                fraction_coverage_annotation )
+                    elif counter.startswith( "hyperg" ):
+                        
+                        # hypergeometric probability over nucleotides
+                        # Sampling without replacement
+                        # x,M,n,M
+                        # x = observed number of nucleotides in overlap of segments,annotations and workspace
+                        # M = number of nucleotides in workspace
+                        # n = number of nucleotides in annotations (and workspace)
+                        # N = number of nucleotides in segments (and workspace)
+                        # P-value of obtaining >x number of nucleotides overlapping.
+                        rv = scipy.stats.hypergeom( basecoverage_workspace,
+                                                    basecoverage_annotation,
+                                                basecoverage_segments )
+                    
+                        pvalue = rv.sf( basecoverage_intersection )
+                        expected = rv.mean()
+                        observed = basecoverage_intersection
 
-                expected = fraction_coverage_annotation * nsegments_in_workspace
-                if expected != 0:
-                    fold = nsegments_overlapping_annotation / expected
-                else:
-                    fold = 1.0
+                    if expected != 0:
+                        fold = float(observed) / expected
+                    else:
+                        fold = 1.0
 
-                # hypergeometric probability over "genes"
-                #
-                # overall total
-                # N   = number of genes in genome
-                # Kpi = number of genes carrying annotation = nannotations_in_workspace
-                # once for each segment set
-                # n   = number of genes selected by segments = nannotations_in_segments
-                # kpi = number of genes selected by segments and with annotation
-
-                # hypergeometric probability - (annotations need to be non-overlapping!!!)
-                # p_hyper = numpy.random.hypergeom( nannotations_in_segments, 
-                #                                   nannotations_in_workspace,
-                #                                   nsegments_in_workspace )
-                r = GREAT_RESULT._make( (
+                    r = GREAT_RESULT._make( (
                             segment, annotation, isochore,
-                            nsegments_overlapping_annotation,
+                            counter,
+                            observed,
                             expected,
                             nsegments_in_workspace,
                             nannotations_in_workspace,
+                            nsegments_overlapping_annotation,
                             nannotations_overlapping_segments,
+                            basecoverage_intersection,
+                            basecoverage_segments,
                             basecoverage_annotation,
                             basecoverage_workspace,
                             fraction_coverage_annotation,
                             fold,
-                            p_great,
+                            pvalue,
                             1.0 ))
-                # print "\t".join( map(str, r))
-
-                results_per_contig[ (segment,annotation) ].append( r )
+                    # print "\t".join( map(str, r))
+                    results_per_contig[ (counter,segment,annotation) ].append( r )
 
     E.info( "merging counts per isochore" )
 
@@ -357,7 +417,7 @@ def main( argv ):
     
     for niteration, pair in enumerate(results_per_contig.iteritems()):
 
-        segment, annotation = pair[0]
+        counter, segment, annotation = pair[0]
         data = pair[1]
             
         nsegments_in_workspace = sum( [x.nsegments_in_workspace for x in data ] )
@@ -365,34 +425,50 @@ def main( argv ):
         nannotations_in_workspace = sum( [x.nannotations_in_workspace for x in data ] )
         nannotations_overlapping_segments = sum( [x.nannotations_overlapping_segments for x in data ] )
 
+        basecoverage_intersection = sum( [x.basecoverage_intersection for x in data ] )
+        basecoverage_segments = sum( [x.basecoverage_segments for x in data ] )
         basecoverage_annotation = sum( [x.basecoverage_annotation for x in data ] )
-
         basecoverage_workspace = sum( [x.basecoverage_workspace for x in data ] )
 
         fraction_coverage_annotation = basecoverage_annotation / float( basecoverage_workspace )
 
-        p_great = scipy.stats.binom.sf( nsegments_overlapping_annotation-1, 
-                                        nsegments_in_workspace, 
-                                        fraction_coverage_annotation )
+        if counter.startswith( "binom" ):
+            pvalue = scipy.stats.binom.sf( nsegments_overlapping_annotation-1, 
+                                            nsegments_in_workspace, 
+                                            fraction_coverage_annotation )
+            expected = fraction_coverage_annotation * nsegments_in_workspace
+            observed = nsegments_overlapping_annotation 
+        elif counter.startswith( "hyperg" ):
+            rv = scipy.stats.hypergeom( basecoverage_workspace,
+                                        basecoverage_annotation,
+                                        basecoverage_segments )
+            
+            pvalue = rv.sf( basecoverage_intersection )
+            expected = rv.mean()
+            observed = basecoverage_intersection
 
-        expected = fraction_coverage_annotation * nsegments_in_workspace
+
         if expected != 0:
-            fold = nsegments_overlapping_annotation / expected
+            fold = float(observed) / expected
         else:
             fold = 1.0
 
         r = GREAT_RESULT._make( (
                 segment, annotation, "all",
-                nsegments_overlapping_annotation,
+                counter,
+                observed,
                 expected,
                 nsegments_in_workspace,
                 nannotations_in_workspace,
+                nsegments_overlapping_annotation,
                 nannotations_overlapping_segments,
+                basecoverage_intersection,
+                basecoverage_segments,
                 basecoverage_annotation,
                 basecoverage_workspace,
                 fraction_coverage_annotation,
                 fold,
-                p_great,
+                pvalue,
                 1.0 ))
 
         results.append( r )
