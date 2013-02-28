@@ -333,35 +333,31 @@ class SegmentsSummary:
                             "%s" % str(self.summary_segments_overlapping_workspace),
                             "%s" % str(self.summary_truncated_segments) ] )
                             
-def outputMetrics( outfile, segments, workspace ):
-    '''output summary metrics.'''
+def outputMetrics( outfile, segments, workspace, track, section ):
+    '''output summary metrics
 
-    E.info( "computing summary metrics for segments" )
+    Outputs summary metrics for segments in workspace. 
+    .'''
 
-    outfile.write( "metric\t%s\n" % "\t".join(Stats.Summary().getHeaders() ))
-    observed_counts = []
-    for ntrack, track in enumerate(segments.tracks):
-        segs = segments[track]
-        stats_per_isochore = []
-        for isochore, ss in segs.iteritems():
-            stats = SegmentsSummary()
-            stats.update( ss, workspace[isochore] )
-            stats_per_isochore.append( stats )
+    stats_per_isochore = []
+    for isochore, ss in segments.iteritems():
+        stats = SegmentsSummary()
+        stats.update( ss, workspace[isochore] )
+        stats_per_isochore.append( stats )
 
-        for attribute in ("all_segments", "all_nucleotides",
-                          "segments_overlapping_workspace",
-                          "nucleotides_overlapping_workspace",
-                          "nucleotides_outside_workspace",
-                          "truncated_segments",
-                          "truncated_nucleotides",
-                          "density_workspace",
-                          "proportion_truncated_segments",
-                          "proportion_extending_nucleotides",
-                          ):
-            values = [ getattr( x, attribute ) for x in stats_per_isochore ]
-            outfile.write("%s\t%s\n" % (attribute, Stats.Summary( values )) )
+    for attribute in ("all_segments", "all_nucleotides",
+                      "segments_overlapping_workspace",
+                      "nucleotides_overlapping_workspace",
+                      "nucleotides_outside_workspace",
+                      "truncated_segments",
+                      "truncated_nucleotides",
+                      "density_workspace",
+                      "proportion_truncated_segments",
+                      "proportion_extending_nucleotides",
+                      ):
+        values = [ getattr( x, attribute ) for x in stats_per_isochore ]
+        outfile.write("%s\t%s\t%s\t%s\n" % (track, section, attribute, Stats.Summary( values )) )
     outfile.flush()
-    E.info( "wrote summary metrics for segments to %s" % str(outfile))
 
 def outputResults( results, 
                    options, 

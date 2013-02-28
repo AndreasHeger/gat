@@ -67,6 +67,7 @@ import gat
 import gat.Experiment as E
 import gat.IOTools as IOTools
 import gat.IO as IO
+import gat.Stats as Stats
 
 def fromSegments( options, args ):
     '''run analysis from segment files. 
@@ -91,11 +92,16 @@ def fromSegments( options, args ):
     ##################################################
     outfiles = {}
     for section in ("sample", 
-                    "segment_metrics" ):
+                    "segment_metrics",
+                    "sample_metrics",
+                    ):
         if section in options.output_stats or \
             "all" in options.output_stats or \
                 len( [ x for x in options.output_stats if re.search( x, "section" ) ] ) > 0:
             outfiles[section] = E.openOutputFile(section)
+
+    if 'sample_metrics' in outfiles:
+        outfiles['sample_metrics'].write( "track\tsection\tmetric\t%s\n" % "\t".join(Stats.Summary().getHeaders() ))
 
     # filter segments by workspace
     workspace = IO.applyIsochores( segments, 

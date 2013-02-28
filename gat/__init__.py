@@ -62,18 +62,18 @@ class DummyAnnotatorResult:
             map(float, data[2:10] )
         if len(data) > 10:
             (track_nsegments,
-            track_size,
-            track_density,
-            annotation_nsegments,
-            annotation_size,
-            annotation_density,
-            overlap_nsegments,
-            overlap_size,
-            overlap_density,
-            percent_overlap_nsegments_track,
-            percent_overlap_size_track,
-            percent_overlap_nsegments_annotation,
-            percent_overlap_size_annotation) = map(float, data[10:23])
+             track_size,
+             track_density,
+             annotation_nsegments,
+             annotation_size,
+             annotation_density,
+             overlap_nsegments,
+             overlap_size,
+             overlap_density,
+             percent_overlap_nsegments_track,
+             percent_overlap_size_track,
+             percent_overlap_nsegments_annotation,
+             percent_overlap_size_annotation) = map(float, data[10:23])
             
 
         return x
@@ -96,8 +96,8 @@ def computeSample( args ):
 
     Unconditional sampling.
     '''
-    ( sample_id, 
-      track, 
+    ( track,
+      sample_id,
       sampler, 
       segs, 
       annotations, 
@@ -105,7 +105,8 @@ def computeSample( args ):
       workspace, 
       contig_workspace,
       counters,
-      samples_outfile) = args
+      samples_outfile,
+      metrics_outfile) = args
 
     counts = Experiment.Counter()
 
@@ -143,6 +144,9 @@ def computeSample( args ):
     # adjacent intervals are merged.
     sample.fromIsochores()
 
+    if metrics_outfile:
+        IO.outputMetrics( metrics_outfile, sample, workspace, track, sample_id )
+        
     counts_per_track = [ collections.defaultdict(float) for x in counters ]
     # compute counts for each counter
     for counter_id, counter in enumerate(counters):
@@ -161,10 +165,10 @@ class UnconditionalSampler:
     def __init__(self,         
                  num_samples, samples, 
                  samples_outfile, 
-                 outfile_sample_stats,
                  sampler,
                  workspace_generator, 
                  counters,
+                 outfiles,
                  num_threads = 1 ):
         self.num_samples = num_samples
         self.samples = samples
@@ -172,8 +176,10 @@ class UnconditionalSampler:
         self.sampler = sampler
         self.workspace_generator = workspace_generator
         self.counters = counters
-        self.outfile_sample_stats = outfile_sample_stats
         
+        self.outfile_sample_stats = outfiles.get( "sample_stats", None )
+        self.outfile_sample_metrics = outfiles.get( "sample_metrics", None )
+
         if self.outfile_sample_stats:
             E.debug( "sample stats go to %s" % outfile_sample_stats)
             self.outfile_sample_stats.write( "sample\tisochore\tnsegments\tnnucleotides\tmean\tstd\tmin\tq1\tmedian\tq3\tmax\n" )
@@ -244,7 +250,7 @@ class UnconditionalSampler:
 
         return results
 
-    def sample( self, track, counts, counters, segs, annotations, workspace ):
+    def sample( self, track, counts, counters, segs, annotations, workspace, outfiles ):
         '''sample and return counts.
 
         Return a list of counted results for each counter.
@@ -275,8 +281,8 @@ class UnconditionalSampler:
             E.warn( "empty workspace - no computation performed" )
             return counts_per_track
 
-        work = [ (x, 
-                  track, 
+        work = [ (track, 
+                  x, 
                   self.sampler,
                   temp_segs, 
                   annotations,
@@ -284,7 +290,8 @@ class UnconditionalSampler:
                   temp_workspace,
                   contig_workspace,
                   counters, 
-                  self.samples_outfile
+                  self.samples_outfile,
+                  self.outfile_sample_metrics,
                   ) for x in range(self.num_samples) ]
 
     
@@ -312,7 +319,7 @@ class UnconditionalSampler:
 
 class ConditionalSampler( UnconditionalSampler ):
     
-    def sample( self, track, counts, counters, segs, annotations, workspace ):
+    def sample( self, track, counts, counters, segs, annotations, workspace, outfiles ):
         '''conditional sampling - sample using only those 
         segments that contain both a segment and an annotation.
 
@@ -359,8 +366,8 @@ class ConditionalSampler( UnconditionalSampler ):
                          temp_workspace.counts(),
                          temp_workspace.sum() ) )
 
-            work = [ (annoid, 
-                      track, 
+            work = [ ('_'.join( (track,anno_id)),
+                      x,
                       self.sampler,
                       temp_segs, 
                       annotations,
@@ -368,7 +375,8 @@ class ConditionalSampler( UnconditionalSampler ):
                       temp_workspace,
                       contig_workspace,
                       counters, 
-                      self.samples_outfile
+                      self.samples_outfile,
+                      self.outfile_sample_metrics,
                       ) for x in range(self.num_samples) ]
             
             E.info( "sampling for annotation '%s' started" % annotation)
@@ -440,8 +448,18 @@ def run( segments,
     ##################################################
     # computing summary metrics for segments
     if "segment_metrics" in outfiles:
-        IO.outputMetrics(  outfiles["segment_metrics"],
-                           segments, workspace )
+        E.info( "computing summary metrics for segments" )
+        outfile = outfiles["segment_metrics"]
+        outfile.write( "track\tsection\tmetric\t%s\n" % "\t".join(Stats.Summary().getHeaders() ))
+        for track in segments.tracks:
+            IO.outputMetrics(  outfile,
+                               segments[track], 
+                               workspace,
+                               track,
+                               'segments',
+                               )
+        E.info( "wrote summary metrics for segments to %s" % str(outfile))
+
 
     ##################################################
     ##################################################
@@ -507,22 +525,22 @@ def run( segments,
             outer_sampler = ConditionalSampler( num_samples, 
                                                 samples, 
                                                 samples_outfile, 
-                                                outfiles.get( "sample_stats", None ),
                                                 sampler,
                                                 workspace_generator, 
                                                 counters,
+                                                outfiles,
                                                 num_threads = num_threads )
         else:
             outer_sampler = UnconditionalSampler( num_samples, 
                                                   samples, 
                                                   samples_outfile, 
-                                                  outfiles.get( "sample_stats", None ),
                                                   sampler,
                                                   workspace_generator, 
                                                   counters,
+                                                  outfiles,
                                                   num_threads = num_threads )
 
-        counts_per_track = outer_sampler.sample( track, counts, counters, segs, annotations, workspace )
+        counts_per_track = outer_sampler.sample( track, counts, counters, segs, annotations, workspace, outfiles )
 
         if samples_outfile: samples_outfile.close()
 
