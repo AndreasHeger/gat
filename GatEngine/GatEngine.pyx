@@ -11,11 +11,9 @@ cimport cython
 
 ######################################################
 # import segmentlist
-cimport csegmentlist
-import csegmentlist
-ctypedef csegmentlist.PositionDifference PositionDifference
-ctypedef csegmentlist.Segment Segment
-ctypedef csegmentlist.Position Position
+cimport GatSegmentList
+import GatSegmentList
+from GatSegmentList cimport SegmentList, PositionDifference, Segment, Position
 
 #####################################################
 ## Numpy import
@@ -105,11 +103,11 @@ cdef int cmpDouble( const_void_ptr s1, const_void_ptr s2 ):
 
 cdef class SegmentListSamplerSlow:
 
-    cdef csegmentlist.SegmentList segment_list
+    cdef SegmentList segment_list
     cdef numpy.ndarray  cdf
     cdef Position total_size
 
-    def __init__(self, csegmentlist.SegmentList segment_list ):
+    def __init__(self, SegmentList segment_list ):
 
         assert len(segment_list) > 0, "sampling from empty segment list"
 
@@ -144,12 +142,12 @@ cdef class SegmentListSamplerSlow:
 
 cdef class SegmentListSamplerWithEdgeEffects:
 
-    cdef csegmentlist.SegmentList segment_list
+    cdef SegmentList segment_list
     cdef Position * cdf
     cdef Position total_size
     cdef Position nsegments
 
-    def __init__(self, csegmentlist.SegmentList segment_list ):
+    def __init__(self, SegmentList segment_list ):
         cdef Position i, totsize
         assert len(segment_list) > 0, "sampling from empty segment list"
 
@@ -224,12 +222,12 @@ cdef class SegmentListSampler:
     sampled again.
     '''
 
-    cdef csegmentlist.SegmentList segment_list
+    cdef SegmentList segment_list
     cdef Position * cdf
     cdef Position total_size
     cdef int nsegments
 
-    def __init__(self, csegmentlist.SegmentList segment_list ):
+    def __init__(self, SegmentList segment_list ):
         cdef Position i, totsize
         assert len(segment_list) > 0, "sampling from empty segment list"
         assert segment_list.is_normalized
@@ -477,9 +475,9 @@ cdef class SamplerAnnotator(Sampler):
                                         self.nbuckets, 
                                         self.nunsuccessful_rounds ) )
 
-    cpdef csegmentlist.SegmentList sample( self,
-                              csegmentlist.SegmentList segments,
-                              csegmentlist.SegmentList workspace ):
+    cpdef SegmentList sample( self,
+                              SegmentList segments,
+                              SegmentList workspace ):
         '''return a sampled list of segments.'''
 
         cdef PositionDifference remaining
@@ -490,35 +488,35 @@ cdef class SamplerAnnotator(Sampler):
         cdef int max_unsuccessful_rounds
         cdef Position start, end
         cdef Segment segment, sampled_segment
-        cdef csegmentlist.SegmentList sampled_segments
-        cdef csegmentlist.SegmentList unintersected_segments
-        cdef csegmentlist.SegmentList intersected_segments
-        cdef csegmentlist.SegmentList working_segments
-        cdef csegmentlist.SegmentList tmp_segments
+        cdef SegmentList sampled_segments
+        cdef SegmentList unintersected_segments
+        cdef SegmentList intersected_segments
+        cdef SegmentList working_segments
+        cdef SegmentList tmp_segments
         cdef SegmentListSampler sls, temp_sampler
 
         assert segments.is_normalized, "segment list is not normalized"
         assert workspace.is_normalized, "workspace is not normalized"
 
-        unintersected_segments = csegmentlist.SegmentList()
-        intersected_segments = csegmentlist.SegmentList()
+        unintersected_segments = SegmentList()
+        intersected_segments = SegmentList()
 
         # collect all segments in workspace
         # This method does not truncate.
-        working_segments = csegmentlist.SegmentList( clone = segments )
+        working_segments = SegmentList( clone = segments )
         working_segments.filter( workspace )
         if len(working_segments) == 0:
             return intersected_segments
 
         # get nucleotides that need to be sampled
         # only count overlap within workspace
-        tmp_segments = csegmentlist.SegmentList( clone = working_segments )
+        tmp_segments = SegmentList( clone = working_segments )
         tmp_segments.intersect( workspace )
         ltotal = tmp_segments.sum()        
 
         # create space for sampled segments, add additional 10%
         # safety margin to avoid realloc calls
-        sampled_segments = csegmentlist.SegmentList( allocate = int(1.1 * len(segments)) )
+        sampled_segments = SegmentList( allocate = int(1.1 * len(segments)) )
 
         # build a segment length histogram
         histogram = working_segments.getLengthDistribution( self.bucket_size,
@@ -555,7 +553,7 @@ cdef class SamplerAnnotator(Sampler):
 
                 ############################################
                 # compute overlap with workspace
-                intersected_segments = csegmentlist.SegmentList( clone = unintersected_segments )
+                intersected_segments = SegmentList( clone = unintersected_segments )
                 intersected_segments.intersect( workspace )
 
                 assert intersected_segments.sum() <= unintersected_segments.sum()
@@ -600,7 +598,7 @@ cdef class SamplerAnnotator(Sampler):
         self.nunsuccessful_rounds = nunsuccessful_rounds
 
         # merge overlapping/adjacent
-        intersected_segments = csegmentlist.SegmentList( clone = unintersected_segments )
+        intersected_segments = SegmentList( clone = unintersected_segments )
         intersected_segments.merge( 0 )
 
         # remove all segments outside workspace
@@ -660,21 +658,21 @@ cdef class SamplerSegments(Sampler):
         return (buildSamplerSegments, (self.bucket_size, 
                                        self.nbuckets ))
 
-    cpdef csegmentlist.SegmentList sample( self,
-                                           csegmentlist.SegmentList segments,
-                                           csegmentlist.SegmentList workspace ):
+    cpdef SegmentList sample( self,
+                                           SegmentList segments,
+                                           SegmentList workspace ):
         '''return a sampled list of segments.'''
 
         cdef Position length
         cdef SegmentListSampler sls
-        cdef csegmentlist.SegmentList sample
+        cdef SegmentList sample
 
         assert workspace.is_normalized, "workspace is not normalized"
 
-        sample = csegmentlist.SegmentList( allocate = len(segments) )
+        sample = SegmentList( allocate = len(segments) )
     
         # collect all segments in workspace
-        working_segments = csegmentlist.SegmentList( clone = segments )
+        working_segments = SegmentList( clone = segments )
         working_segments.filter( workspace )
 
         if len(working_segments) == 0:
@@ -755,21 +753,21 @@ cdef class SamplerBruteForce(Sampler):
                                          self.ntries_inner,
                                          self.ntries_outer) )
 
-    cpdef csegmentlist.SegmentList sample( self,
-                                           csegmentlist.SegmentList segments,
-                                           csegmentlist.SegmentList workspace ):
+    cpdef SegmentList sample( self,
+                                           SegmentList segments,
+                                           SegmentList workspace ):
         '''return a sampled list of segments.'''
 
         cdef Position start, end, length
         cdef SegmentListSampler sls
-        cdef csegmentlist.SegmentList sample
+        cdef SegmentList sample
     
         assert workspace.is_normalized, "workspace is not normalized"
 
-        sample = csegmentlist.SegmentList( allocate = len(segments) )
+        sample = SegmentList( allocate = len(segments) )
 
         # collect all segments in workspace
-        working_segments = csegmentlist.SegmentList( clone = segments )
+        working_segments = SegmentList( clone = segments )
         working_segments.filter( workspace )
 
         if len(working_segments) == 0:
@@ -890,24 +888,24 @@ cdef class SamplerUniform(Sampler):
                                       self.current_workspace,
                                       self.current_position) )
 
-    cpdef csegmentlist.SegmentList sample( self,
-                                           csegmentlist.SegmentList segments,
-                                           csegmentlist.SegmentList workspace ):
+    cpdef SegmentList sample( self,
+                                           SegmentList segments,
+                                           SegmentList workspace ):
         '''return a sampled list of segments.'''
         assert workspace.is_normalized, "workspace is not normalized"
 
-        cdef csegmentlist.SegmentList sample
+        cdef SegmentList sample
         cdef SegmentListSampler sls
         cdef Position increment = self.increment
         cdef Position start, end, x, length, i, added, nsegments, nworkspaces
         cdef Position current_offset, current_workspace
 
         # collect all segments in workspace
-        working_segments = csegmentlist.SegmentList( clone = segments )
+        working_segments = SegmentList( clone = segments )
         working_segments.filter( workspace )
 
         # allocate sample large enough
-        sample = csegmentlist.SegmentList( allocate = (len(workspace) / increment + workspace.sum() ) )
+        sample = SegmentList( allocate = (len(workspace) / increment + workspace.sum() ) )
 
         if len(working_segments) == 0:
             return sample
@@ -918,7 +916,7 @@ cdef class SamplerUniform(Sampler):
 
         hs = HistogramSampler( histogram, self.bucket_size )
 
-        sample = csegmentlist.SegmentList( allocate = increment )
+        sample = SegmentList( allocate = increment )
 
         added = 0
 
@@ -995,9 +993,9 @@ cdef class SamplerShift(Sampler):
         return (buildSamplerShift, (self.radius, 
                                     self.extension)), 
     
-    cpdef csegmentlist.SegmentList sample( self,
-                                           csegmentlist.SegmentList segments,
-                                           csegmentlist.SegmentList workspace ):
+    cpdef SegmentList sample( self,
+                                           SegmentList segments,
+                                           SegmentList workspace ):
         '''create a random sample of segments.
 
         *segments* - a list of segments
@@ -1010,7 +1008,7 @@ cdef class SamplerShift(Sampler):
         assert workspace.is_normalized, "workspace is not normalized"
 
         cdef Segment segment
-        cdef csegmentlist.SegmentList sample, working_segments
+        cdef SegmentList sample, working_segments
         cdef Position length, direction, extended_length
         cdef Position x, midpoint
         cdef PositionDifference shift, start, end, ws_start, ws_end, shift_area
@@ -1018,15 +1016,15 @@ cdef class SamplerShift(Sampler):
         cdef double half_radius = self.radius / 2
         cdef PositionDifference half_extension = self.extension // 2
         cdef Segment * _working_segments
-        cdef csegmentlist.SegmentList ws
+        cdef SegmentList ws
 
         # collect all segments in workspace
-        working_segments = csegmentlist.SegmentList( clone = segments )
+        working_segments = SegmentList( clone = segments )
         working_segments.filter( workspace )
         _working_segments = working_segments.segments
 
         # allocate sample large enough
-        sample = csegmentlist.SegmentList( len(working_segments) * 2 )
+        sample = SegmentList( len(working_segments) * 2 )
 
         if len(working_segments) == 0:
             return sample
@@ -1111,9 +1109,9 @@ cdef class SamplerLocalPermutation(Sampler):
     def __init__( self ):
         pass
 
-    cpdef csegmentlist.SegmentList sample( self,
-                                           csegmentlist.SegmentList segments,
-                                           csegmentlist.SegmentList workspace ):
+    cpdef SegmentList sample( self,
+                                           SegmentList segments,
+                                           SegmentList workspace ):
         '''create a random sample of segments.
 
         .. note::
@@ -1130,12 +1128,12 @@ cdef class SamplerLocalPermutation(Sampler):
         assert workspace.is_normalized, "workspace is not normalized"
 
         cdef Segment segment
-        cdef csegmentlist.SegmentList working_segments
+        cdef SegmentList working_segments
         cdef PositionDifference work_start, work_end, start, end, last
         cdef PositionDifference total_length, free_length
         cdef Segment* _working_segments
         cdef PositionDifference shift
-        cdef csegmentlist.SegmentList sample = csegmentlist.SegmentList()
+        cdef SegmentList sample = SegmentList()
         
         for work_start, work_end in workspace:
 
@@ -1227,9 +1225,9 @@ cdef class SamplerGlobalPermutation(Sampler):
     def __init__( self ):
         pass
 
-    cpdef csegmentlist.SegmentList sample( self,
-                                           csegmentlist.SegmentList segments,
-                                           csegmentlist.SegmentList workspace ):
+    cpdef SegmentList sample( self,
+                                           SegmentList segments,
+                                           SegmentList workspace ):
         '''create a random sample of segments.
 
         .. note::
@@ -1245,21 +1243,21 @@ cdef class SamplerGlobalPermutation(Sampler):
         assert workspace.is_normalized, "workspace is not normalized"
 
         cdef Segment segment
-        cdef csegmentlist.SegmentList working_segments, working_workspace
+        cdef SegmentList working_segments, working_workspace
         cdef PositionDifference work_start, work_end, start, end, last_end
         cdef PositionDifference total_length, free_length
         
-        cdef csegmentlist.SegmentList sample = csegmentlist.SegmentList()
+        cdef SegmentList sample = SegmentList()
 
         # collect all segments in workspace
         # This method does not truncate.
-        working_segments = csegmentlist.SegmentList( clone = segments )
+        working_segments = SegmentList( clone = segments )
         working_segments.filter( workspace )
 
         if len(working_segments) == 0: return sample
         
         # create a copy of the workspace
-        working_workspace = csegmentlist.SegmentList( clone = workspace )
+        working_workspace = SegmentList( clone = workspace )
         
         # extend workspace segments with segments
         working_workspace.extend( working_segments )
@@ -1361,13 +1359,13 @@ cdef class SamplerDummy(Sampler):
         returns a copy of the observed data.
         '''
 
-    cpdef csegmentlist.SegmentList sample( self,
-                              csegmentlist.SegmentList segments,
-                              csegmentlist.SegmentList workspace ):
+    cpdef SegmentList sample( self,
+                              SegmentList segments,
+                              SegmentList workspace ):
         '''return a sampled list of segments.'''
 
-        cdef csegmentlist.SegmentList sample
-        sample = csegmentlist.SegmentList( clone = segments )
+        cdef SegmentList sample
+        sample = SegmentList( clone = segments )
         return sample
 
 ############################################################
@@ -1383,14 +1381,14 @@ cdef class Counter:
 cdef class CounterNucleotideOverlap(Counter):
     name = "nucleotide-overlap"
 
-    def __call__(self, csegmentlist.SegmentList segments, csegmentlist.SegmentList annotations, csegmentlist.SegmentList workspace = None ):
+    def __call__(self, SegmentList segments, SegmentList annotations, SegmentList workspace = None ):
         '''return number of nucleotides overlapping between segments and annotations.'''
         return annotations.overlapWithSegments( segments )
 
 cdef class CounterNucleotideDensity(Counter):
     name = "nucleotide-density"
 
-    def __call__(self, csegmentlist.SegmentList segments, csegmentlist.SegmentList annotations, csegmentlist.SegmentList workspace ):
+    def __call__(self, SegmentList segments, SegmentList annotations, SegmentList workspace ):
         '''return number of nucleotides overlapping between segments and annotations.
         divided by the size of the workspace
         '''
@@ -2412,7 +2410,7 @@ class bed_iterator(tsv_iterator):
         return BedProxy( self.track )
 
 def _genie():
-    return IntervalCollection(csegmentlist.SegmentList)
+    return IntervalCollection(SegmentList)
 
 def readFromBed( filenames, allow_multiple = False ):
     '''read Segment Lists from one or more bed files.
@@ -2427,7 +2425,7 @@ def readFromBed( filenames, allow_multiple = False ):
     unless *allow_multiple* is ``True``.
     
     '''
-    cdef csegmentlist.SegmentList l
+    cdef SegmentList l
     cdef BedProxy bed
     cdef Position lineno
 
@@ -2487,7 +2485,7 @@ class IntervalDictionary( object ):
     '''
 
     def __init__(self ):
-        self.intervals = collections.defaultdict( csegmentlist.SegmentList )
+        self.intervals = collections.defaultdict( SegmentList )
 
     def sum( self ):
         '''return sum of all segment lists.'''
@@ -2562,7 +2560,7 @@ class IntervalDictionary( object ):
         '''return a copy of the data.'''
         r = IntervalDictionary()
         for contig, segmentlist in self.intervals.iteritems():
-            r[contig] = csegmentlist.SegmentList( clone = segmentlist )
+            r[contig] = SegmentList( clone = segmentlist )
         return r
 
     def filter( self, other ):
@@ -2583,7 +2581,7 @@ class IntervalDictionary( object ):
         '''
         for contig, segmentlist in self.intervals.items():
             for other_track, other_vv in isochores.iteritems():
-                newlist = csegmentlist.SegmentList( clone = segmentlist )
+                newlist = SegmentList( clone = segmentlist )
                 if truncate:
                     newlist.intersect( other_vv[contig] )
                 else:
@@ -2594,7 +2592,7 @@ class IntervalDictionary( object ):
 
     def fromIsochores( self ):
         '''merge isochores into contigs'''
-        new = collections.defaultdict( csegmentlist.SegmentList )
+        new = collections.defaultdict( SegmentList )
         normalize = False
         # isochores might or might not be present
         for isochore, segmentlist in self.intervals.items():
@@ -2738,7 +2736,7 @@ class IntervalCollection(object):
             for contig, segmentlist in vv.iteritems():
                 if contig not in shared_contigs: continue
                 if contig not in result:
-                    result[contig] = csegmentlist.SegmentList( clone = segmentlist )
+                    result[contig] = SegmentList( clone = segmentlist )
                 else:
                     result[contig].intersect( segmentlist )
                     
@@ -2832,7 +2830,7 @@ class IntervalCollection(object):
         new = IntervalCollection( self.name )
         for track,v in self.intervals.iteritems():
             for contig, segmentlist in v.iteritems():
-                new.add( track, contig, csegmentlist.SegmentList( clone = segmentlist) )
+                new.add( track, contig, SegmentList( clone = segmentlist) )
         return new
 
     def share( self ):
@@ -3010,7 +3008,7 @@ cdef class SamplesCached( Samples ):
 
         Samples.add( self, track, sample_id, isochore, segmentlist )
 
-        cdef csegmentlist.SegmentList seglist
+        cdef SegmentList seglist
         seglist = segmentlist
         cdef off_t pos
         cdef char * key
@@ -3056,14 +3054,14 @@ cdef class SamplesCached( Samples ):
     def load( self, track, sample_id, isochore ):
         '''load data into memory'''
         cdef off_t pos
-        cdef csegmentlist.SegmentList seglist
+        cdef SegmentList seglist
         cdef Position nsegments
 
         tempkey = self.toKey( track, sample_id, isochore )
         pos = self.index[tempkey]
         fseeko( self.fcache, pos, SEEK_SET )
         fread( &nsegments, sizeof(Position), 1, self.fcache )
-        seglist = csegmentlist.SegmentList( allocate = nsegments )
+        seglist = SegmentList( allocate = nsegments )
         seglist.nsegments = nsegments
         fromCompressedFile( <unsigned char*> seglist.segments,
                              sizeof( Segment) * seglist.nsegments,

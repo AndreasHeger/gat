@@ -24,12 +24,16 @@ try:
 except ImportError:
     # no Cython available - use existing C code
     cmdclass = { }
-    GatSegmentList_sources = ['GatSegmentList/csegmentlist.c', 'utils/gat_utils.c']
-    GatEngine_sources = ['GatEngine/cgat.c', 'utils/gat_utils.c' ]
+    GatSegmentList_sources = ['GatSegmentList/GatSegmentList.c', 
+                              'utils/gat_utils.c']
+    GatEngine_sources = ['GatEngine/GatEngine.c', 
+                         'utils/gat_utils.c' ]
 else:
     cmdclass = { 'build_ext' : build_ext }
-    GatSegmentList_sources = ['GatSegmentList/csegmentlist.pyx', 'utils/gat_utils.c']
-    GatEngine_sources = ['GatEngine/cgat.pyx', 'utils/gat_utils.c' ]
+    GatSegmentList_sources = ['GatSegmentList/GatSegmentList.pyx', 
+                              'utils/gat_utils.c']
+    GatEngine_sources = ['GatEngine/GatEngine.pyx', 
+                         'utils/gat_utils.c' ]
 
 name = "gat"
 version = "0.1"
@@ -49,7 +53,7 @@ Topic :: Scientific/Engineering :: Bioinformatics
 
 # link against rt for shared memory access
 GatSegmentList = Extension(
-   "csegmentlist",                   # name of extension
+   "GatSegmentList",                   # name of extension
    GatSegmentList_sources,
    libraries=[ "z", 'rt' ],
    library_dirs = [],
@@ -59,7 +63,7 @@ GatSegmentList = Extension(
    )
 
 GatEngine = Extension(
-    "cgat",                   # name of extension
+    "GatEngine",                   # name of extension
     GatEngine_sources,
     libraries=[ "z" ],
     library_dirs = [],

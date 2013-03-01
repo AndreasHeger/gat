@@ -3,12 +3,14 @@
 
 import unittest
 import random, tempfile, shutil, os, re, gzip, sys, subprocess, collections
-import gat
 import numpy, math
 import matplotlib.pyplot as plt
-import csegmentlist
+
+from GatSegmentList import SegmentList
+import GatEngine
+import gat
  
-ANNOTATOR_DIR = "/ifs/devel/gat/annotator"
+ANNOTATOR_DIR = "../annotator"
 ANNOTATOR_CMD = '''java -Xmx8000M -cp %s/lib/commons-cli-1.0.jar:%s/lib/Annotator.jar app.Annotator -verbose 4''' % (ANNOTATOR_DIR, ANNOTATOR_DIR)
 
 def smooth(x,window_len=11,window='hanning'):
@@ -188,11 +190,11 @@ def getAnnotatorSamples( segments,
 
     annotator_results = []
 
-    intersection = csegmentlist.SegmentList( clone = segments["default"]["chr1"] )
+    intersection = SegmentList( clone = segments["default"]["chr1"] )
     intersection.intersect( workspace["chr1"] )
     segment_size = intersection.sum()
 
-    # intersection = csegmentlist.SegmentList( clone = annotations["default"]["chr1"] )
+    # intersection = SegmentList( clone = annotations["default"]["chr1"] )
     # intersection.intersect( workspace["chr1"] )
     # annotation_size = intersection.sum()
     # print "segment_size", segment_size, annotation_size
@@ -218,7 +220,7 @@ def getAnnotatorSamples( segments,
         except ZeroDivisionError:
             fold = 0.0
 
-        r = gat.DummyAnnotatorResult()
+        r = GatEngine.DummyAnnotatorResult()
         r.track = "default"
         r.observed = observed * segment_size
         r.expected = expected * segment_size
@@ -256,7 +258,7 @@ class TestSamplerLength( GatTest ):
         if not self.sampler: return
 
         # create normaly distributed lengths of mean 100.0 and sigma = 10.0
-        self.segments = csegmentlist.SegmentList( iter = [ (x, x + numpy.random.randn() * 10.0 + 100.0  ) \
+        self.segments = SegmentList( iter = [ (x, x + numpy.random.randn() * 10.0 + 100.0  ) \
                                                       for x in range(0, 1000 * self.nsegments, 1000) ],
                                          normalize = True )
 
@@ -276,7 +278,7 @@ class TestSamplerLength( GatTest ):
         if not self.sampler: return
 
         # create normaly distributed lengths of mean 100.0 and sigma = 10.0
-        self.segments = csegmentlist.SegmentList( iter = [ (x, x + 1  ) \
+        self.segments = SegmentList( iter = [ (x, x + 1  ) \
                                                       for x in range(0, 1000 * self.nsegments, 1000) ],
                                          normalize = True )
 
@@ -296,11 +298,11 @@ class TestSamplerLength( GatTest ):
     
 class TestSamplerLengthFast( TestSamplerLength ):
 
-    sampler = gat.HistogramSampler
+    sampler = GatEngine.HistogramSampler
 
 class TestSamplerLengthSlow( TestSamplerLength ):
 
-    sampler = gat.HistogramSamplerSlow
+    sampler = GatEngine.HistogramSamplerSlow
 
 ##############################################################################        
 ##############################################################################        
@@ -314,7 +316,7 @@ class TestSegmentTrimming( GatTest ):
     def trim( self, segment_list, amount ):
         '''trim amount from segment list.'''
 
-        temp_sampler = gat.SegmentListSampler( segment_list )
+        temp_sampler = GatEngine.SegmentListSampler( segment_list )
 
         # sample a position from current list of sampled segments
         start, end, overlap = temp_sampler.sample( 1 )
@@ -330,7 +332,7 @@ class TestSegmentTrimming( GatTest ):
         samples = []
         starts = []
         for x in range( self.ntests):
-            s = csegmentlist.SegmentList( clone = segment_list )
+            s = SegmentList( clone = segment_list )
             start = self.trim( s, amount )
             samples.append( s )
             starts.append( start )
@@ -341,7 +343,7 @@ class TestSegmentTrimming( GatTest ):
                             segments,
                             amount ):
 
-        workspace = csegmentlist.SegmentList( iter = [ (segments.min(), segments.max()), ], normalize = True )
+        workspace = SegmentList( iter = [ (segments.min(), segments.max()), ], normalize = True )
 
         nsegments = len(segments)
         workspace_size = workspace.sum()
@@ -381,7 +383,7 @@ class TestSegmentTrimming( GatTest ):
         nsegments = 3
         amount = 4
 
-        segments = csegmentlist.SegmentList( iter = [ (x, x + segment_size) for x in \
+        segments = SegmentList( iter = [ (x, x + segment_size) for x in \
                                                  xrange( 0, 
                                                          nsegments * (segment_size + space),
                                                          segment_size + space ) ],
@@ -448,10 +450,10 @@ class TestPositionSampling( GatTest ):
         workspace_size = 10000
         sample_length = 4
 
-        workspace = csegmentlist.SegmentList( iter = [ (0,workspace_size) ],
+        workspace = SegmentList( iter = [ (0,workspace_size) ],
                                      normalize = True )
 
-        sampler = gat.SegmentListSampler( workspace )
+        sampler = GatEngine.SegmentListSampler( workspace )
         
         counts_within_workspace = self.getWorkspaceCounts( workspace, 
                                                            sampler, 
@@ -465,10 +467,10 @@ class TestPositionSampling( GatTest ):
         workspace_size = 12
         sample_length = 4
 
-        workspace = csegmentlist.SegmentList( iter = [ (0,workspace_size) ],
+        workspace = SegmentList( iter = [ (0,workspace_size) ],
                                      normalize = True )
 
-        sampler = gat.SegmentListSampler( workspace )
+        sampler = GatEngine.SegmentListSampler( workspace )
         
         counts_within_workspace = self.getWorkspaceCounts( workspace, sampler, sample_length )
 
@@ -477,10 +479,10 @@ class TestPositionSampling( GatTest ):
         and bases are overlapped uniformly.
         '''
 
-        workspace = csegmentlist.SegmentList( iter = [ (0,1000), (9000,10000) ],
+        workspace = SegmentList( iter = [ (0,1000), (9000,10000) ],
                                      normalize = True )
 
-        sampler = gat.SegmentListSampler( workspace )
+        sampler = GatEngine.SegmentListSampler( workspace )
         
         counts_within_workspace = self.getWorkspaceCounts( workspace, sampler, 10 )
 
@@ -492,10 +494,10 @@ class TestPositionSampling( GatTest ):
 
         # note if the the space is too small, there are problems
         # in counting the expected overlap.
-        workspace = csegmentlist.SegmentList( iter = [ (0,100), (200,300) ],
+        workspace = SegmentList( iter = [ (0,100), (200,300) ],
                                      normalize = True )
 
-        sampler = gat.SegmentListSampler( workspace )
+        sampler = GatEngine.SegmentListSampler( workspace )
 
         counts_within_workspace = self.getWorkspaceCounts( workspace, 
                                                            sampler, 
@@ -507,10 +509,10 @@ class TestPositionSampling( GatTest ):
         and bases are overlapped uniformly.
         '''
 
-        workspace = csegmentlist.SegmentList( iter = ( (x, x + 100 ) for x in range( 0, 10000, 1000) ),
+        workspace = SegmentList( iter = ( (x, x + 100 ) for x in range( 0, 10000, 1000) ),
                                     normalize = True )
 
-        sampler = gat.SegmentListSampler( workspace )
+        sampler = GatEngine.SegmentListSampler( workspace )
 
         counts_within_workspace = self.getWorkspaceCounts( workspace, sampler, 10 )        
 
@@ -518,10 +520,10 @@ class TestPositionSampling( GatTest ):
         '''
         test if we sample the exactly right amount of nucleoutides.'''
 
-        workspace = csegmentlist.SegmentList( iter = ( (x, x + 100 ) for x in range( 0, 10000, 1000) ),
+        workspace = SegmentList( iter = ( (x, x + 100 ) for x in range( 0, 10000, 1000) ),
                                     normalize = True )
 
-        sampler = gat.SegmentListSampler( workspace )
+        sampler = GatEngine.SegmentListSampler( workspace )
 
         counts_within_workspace = self.getWorkspaceCounts( workspace, sampler, 1 )        
 
@@ -679,7 +681,7 @@ class TestSegmentSamplingSamplerAnnotator( GatTest ):
     check_length = False
 
     def setUp(self):
-        self.sampler = gat.SamplerAnnotator()
+        self.sampler = GatEngine.SamplerAnnotator()
 
     def getSample( self, segments, workspace ):
         '''return a single sample'''
@@ -718,7 +720,7 @@ class TestSegmentSamplingSamplerAnnotator( GatTest ):
         '''sanity check on segments.'''
         
         for i, sample in enumerate( samples ):
-            s = csegmentlist.SegmentList( clone = sample )
+            s = SegmentList( clone = sample )
             s.filter( workspace )
             self.assertEqual( len(s), len(sample), "sample %i contains segments outside of workspace %s: %s" % (i, workspace, sample))
 
@@ -744,7 +746,7 @@ class TestSegmentSamplingSamplerAnnotator( GatTest ):
         # modifier: 
         # can be simplified
         nsegments = float(len(segments))
-        tmp = csegmentlist.SegmentList( clone = workspace )
+        tmp = SegmentList( clone = workspace )
         tmp.intersect( segments )
         # number of nucleotides in segments overlapping the workspace
         segment_overlap = tmp.sum()
@@ -770,7 +772,7 @@ class TestSegmentSamplingSamplerAnnotator( GatTest ):
 
         if self.check_nucleotides:
             for x, s in enumerate(samples):
-                tmp = csegmentlist.SegmentList( clone = workspace, normalize = True )
+                tmp = SegmentList( clone = workspace, normalize = True )
                 s.normalize()
                 tmp.intersect( s )
                 ovl = tmp.sum()
@@ -807,11 +809,11 @@ class TestSegmentSamplingSamplerAnnotator( GatTest ):
         nsegments = 10
         segment_size = 100
 
-        workspace = csegmentlist.SegmentList( iter = ( (x, x + 990 ) \
+        workspace = SegmentList( iter = ( (x, x + 990 ) \
                                                   for x in range( 0, 1000 * nsegments, 1000) ), 
                                      normalize = True )
 
-        segments = csegmentlist.SegmentList( iter = ( (x,  x + segment_size)   \
+        segments = SegmentList( iter = ( (x,  x + segment_size)   \
                                                  for x in range( 0, 1000 * nsegments, 1000) ),
                                     normalize = True )
 
@@ -832,13 +834,13 @@ class TestSegmentSamplingSamplerAnnotator( GatTest ):
         segment_size = 100
 
         half = segment_size // 2
-        workspace = csegmentlist.SegmentList( iter = ( (x, x + segment_size ) \
+        workspace = SegmentList( iter = ( (x, x + segment_size ) \
                                               for x in range( half,
                                                               nsegments * segment_size, 
                                                               2 * segment_size) ),
                                      normalize = True )
 
-        segments = csegmentlist.SegmentList( iter = ( (x,  x + segment_size)   \
+        segments = SegmentList( iter = ( (x,  x + segment_size)   \
                                                  for x in range( 0, 
                                                                  nsegments * 2 * segment_size, 
                                                                  2 * segment_size) ),
@@ -860,10 +862,10 @@ class TestSegmentSamplingSamplerAnnotator( GatTest ):
         nsegments = 1
         segment_size = 50
 
-        workspace = csegmentlist.SegmentList( iter = ( (0, 1 * segment_size ),
+        workspace = SegmentList( iter = ( (0, 1 * segment_size ),
                                               (int(1.5 * segment_size), 2 * segment_size ) ),
                                      normalize = True )
-        segments = csegmentlist.SegmentList( iter = ( (x,  x + segment_size)   \
+        segments = SegmentList( iter = ( (x,  x + segment_size)   \
                                                  for x in range( 0, 10 * nsegments, 20) ),
                                     normalize = True )
         
@@ -883,10 +885,10 @@ class TestSegmentSamplingSamplerAnnotator( GatTest ):
         nsegments = 1
         segment_size = 50
         gap = 5
-        workspace = csegmentlist.SegmentList( iter = ( (0, segment_size ),
+        workspace = SegmentList( iter = ( (0, segment_size ),
                                               (segment_size + gap, 2 * segment_size + gap  ) ),
                                      normalize = True )
-        segments = csegmentlist.SegmentList( iter = ( (x,  x + segment_size)   \
+        segments = SegmentList( iter = ( (x,  x + segment_size)   \
                                                  for x in range( 0, 10 * nsegments, 20) ),
                                     normalize = True )
         
@@ -907,10 +909,10 @@ class TestSegmentSamplingSamplerAnnotator( GatTest ):
         segment_size = 5
         gap = 5
         half = nsegments * segment_size
-        workspace = csegmentlist.SegmentList( iter = ( (0, half ),
+        workspace = SegmentList( iter = ( (0, half ),
                                               (half + gap, 2 * half + gap  ) ),
                                      normalize = True )
-        segments = csegmentlist.SegmentList( iter = ( (x,  x + segment_size)   \
+        segments = SegmentList( iter = ( (x,  x + segment_size)   \
                                                  for x in range( 0, half, 2 * segment_size) ),
                                     normalize = True )
         
@@ -926,11 +928,11 @@ class TestSegmentSamplingSamplerAnnotator( GatTest ):
         '''
         nsegments = 10
         segment_size = 100
-        workspace = csegmentlist.SegmentList( iter = ( (x, x + 900 ) \
+        workspace = SegmentList( iter = ( (x, x + 900 ) \
                                                   for x in range( 0, 1000 * nsegments, 1000) ), 
                                      normalize = True )
 
-        segments = csegmentlist.SegmentList( iter = ( (x,  x + segment_size)   \
+        segments = SegmentList( iter = ( (x,  x + segment_size)   \
                                                  for x in range( 0, 1000 * nsegments, 1000) ),
                                     normalize = True )
         
@@ -945,10 +947,10 @@ class TestSegmentSamplingSamplerAnnotator( GatTest ):
         segment_size = 100
         workspace_size = 10000
 
-        workspace = csegmentlist.SegmentList( iter = [ (0, workspace_size) ],
+        workspace = SegmentList( iter = [ (0, workspace_size) ],
                                      normalize = True )
 
-        segments = csegmentlist.SegmentList( iter = ( (x,  x + segment_size)   \
+        segments = SegmentList( iter = ( (x,  x + segment_size)   \
                                                  for x in range( 0, 1000 * nsegments, 1000) ),
                                     normalize = True )
         
@@ -964,10 +966,10 @@ class TestSegmentSamplingSamplerAnnotator( GatTest ):
         workspace_size = 10000
         offset = 10000
 
-        workspace = csegmentlist.SegmentList( iter = [ (offset, offset + workspace_size) ],
+        workspace = SegmentList( iter = [ (offset, offset + workspace_size) ],
                                      normalize = True )
 
-        segments = csegmentlist.SegmentList( iter = ( (x,  x + segment_size)   \
+        segments = SegmentList( iter = ( (x,  x + segment_size)   \
                                                  for x in range( offset, offset + 1000 * nsegments, 1000) ),
                                     normalize = True )
         
@@ -982,10 +984,10 @@ class TestSegmentSamplingSamplerAnnotator( GatTest ):
         segment_size = 1000
         workspace_size = 10000
 
-        workspace = csegmentlist.SegmentList( iter = [ (0, workspace_size) ],
+        workspace = SegmentList( iter = [ (0, workspace_size) ],
                                      normalize = True )
 
-        segments = csegmentlist.SegmentList( iter = [ (workspace_size // 2 - segment_size // 2, 
+        segments = SegmentList( iter = [ (workspace_size // 2 - segment_size // 2, 
                                               workspace_size // 2  + segment_size // 2)],
                                     normalize = True )
 
@@ -1004,10 +1006,10 @@ class TestSegmentSamplingSamplerAnnotator( GatTest ):
         segment_size = 200
         offset = 1
 
-        workspace = csegmentlist.SegmentList( iter = [ (0, 100) ],
+        workspace = SegmentList( iter = [ (0, 100) ],
                                      normalize = True )
 
-        segments = csegmentlist.SegmentList( iter = ( (x,  x + segment_size)   \
+        segments = SegmentList( iter = ( (x,  x + segment_size)   \
                                                  for x in range( 0, offset * nsegments, offset) ),
                                     normalize = True )
         
@@ -1023,10 +1025,10 @@ class TestSegmentSamplingSamplerAnnotator( GatTest ):
         segment_size = 50
         offset = 1
 
-        workspace = csegmentlist.SegmentList( iter = [ (0, 100) ],
+        workspace = SegmentList( iter = [ (0, 100) ],
                                      normalize = True )
 
-        segments = csegmentlist.SegmentList( iter = ( (x,  x + segment_size)   \
+        segments = SegmentList( iter = ( (x,  x + segment_size)   \
                                                  for x in range( 0, offset * nsegments, offset) ),
                                     normalize = True )
         
@@ -1043,10 +1045,10 @@ class TestSegmentSamplingSamplerAnnotator( GatTest ):
         segment_size = 4
         offset = 1
 
-        workspace = csegmentlist.SegmentList( iter = [ (0, 12) ],
+        workspace = SegmentList( iter = [ (0, 12) ],
                                      normalize = True )
 
-        segments = csegmentlist.SegmentList( iter = ( (x,  x + segment_size)   \
+        segments = SegmentList( iter = ( (x,  x + segment_size)   \
                                                  for x in range( 0, offset * nsegments, offset) ),
                                     normalize = True )
         
@@ -1061,10 +1063,10 @@ class TestSegmentSamplingSamplerAnnotator( GatTest ):
         nsegments = 10
         segment_size = 5
 
-        workspace = csegmentlist.SegmentList( iter = [ (0, 100) ],
+        workspace = SegmentList( iter = [ (0, 100) ],
                                      normalize = True )
 
-        segments = csegmentlist.SegmentList( iter = ( (x,  x + segment_size)   \
+        segments = SegmentList( iter = ( (x,  x + segment_size)   \
                                                  for x in range( 0, segment_size * nsegments * 2, 2 * segment_size) ),
                                     normalize = True )
         
@@ -1080,10 +1082,10 @@ class TestSegmentSamplingSamplerAnnotator( GatTest ):
         nsegments = 10 
         segment_size = 100
 
-        workspace = csegmentlist.SegmentList( iter = ( (x, x + 2 * segment_size )
+        workspace = SegmentList( iter = ( (x, x + 2 * segment_size )
                                               for x in range( 0, 1000 * nsegments, 1000) ), 
                                      normalize = True )
-        segments = csegmentlist.SegmentList( iter = ( (x, x + segment_size ) 
+        segments = SegmentList( iter = ( (x, x + segment_size ) 
                                              for x in range( 0, 1000 * nsegments, 1000) ),
                                     normalize = True )
 
@@ -1095,12 +1097,12 @@ class TestSegmentSamplingSamplerAnnotator( GatTest ):
         
     #     nsegments = 10000
     #     # create normaly distributed lengths of mean 100.0 and sigma = 10.0
-    #     segments = csegmentlist.SegmentList( iter = [ (x, x + numpy.random.randn() * 10.0 + 100.0  ) \
+    #     segments = SegmentList( iter = [ (x, x + numpy.random.randn() * 10.0 + 100.0  ) \
     #                                              for x in range(0, 1000 * nsegments, 1000) ],
     #                                 normalize = True )
 
     #     histogram = segments.getLengthDistribution( 1, 1000 * nsegments )
-    #     hs = gat.HistogramSampler( histogram, 1 )
+    #     hs = GatEngine.HistogramSampler( histogram, 1 )
 
     #     samples = [hs.sample() for x in range(0, 1 * nsegments )]
 
@@ -1119,7 +1121,7 @@ class TestSegmentSamplingSamplerSegments( TestSegmentSamplingSamplerAnnotator ):
     check_uniform_coverage = False
 
     def setUp(self):
-        self.sampler = gat.SamplerSegments()
+        self.sampler = GatEngine.SamplerSegments()
 
 class TestSegmentSamplingSamplerBruteForce( TestSegmentSamplingSamplerAnnotator ):
 
@@ -1128,7 +1130,7 @@ class TestSegmentSamplingSamplerBruteForce( TestSegmentSamplingSamplerAnnotator 
     check_uniform_coverage = True
 
     def setUp(self):
-        self.sampler = gat.SamplerBruteForce()
+        self.sampler = GatEngine.SamplerBruteForce()
 
 class TestSegmentSamplingSamplerLocalPermutation( TestSegmentSamplingSamplerAnnotator ):
 
@@ -1137,7 +1139,7 @@ class TestSegmentSamplingSamplerLocalPermutation( TestSegmentSamplingSamplerAnno
     check_uniform_coverage = True
 
     def setUp(self):
-        self.sampler = gat.SamplerLocalPermutation()
+        self.sampler = GatEngine.SamplerLocalPermutation()
 
 class TestSegmentSamplingSamplerGlobalPermutation( TestSegmentSamplingSamplerAnnotator ):
 
@@ -1146,7 +1148,7 @@ class TestSegmentSamplingSamplerGlobalPermutation( TestSegmentSamplingSamplerAnn
     check_uniform_coverage = True
 
     def setUp(self):
-        self.sampler = gat.SamplerGlobalPermutation()
+        self.sampler = GatEngine.SamplerGlobalPermutation()
 
 class TestSegmentSamplingSamplerUniform( TestSegmentSamplingSamplerAnnotator ):
 
@@ -1155,7 +1157,7 @@ class TestSegmentSamplingSamplerUniform( TestSegmentSamplingSamplerAnnotator ):
     check_uniform_coverage = False
 
     def setUp(self):
-        self.sampler = gat.SamplerUniform( increment = 1 )
+        self.sampler = GatEngine.SamplerUniform( increment = 1 )
 
 class TestSegmentSamplingSamplerShift( TestSegmentSamplingSamplerAnnotator ):
 
@@ -1164,7 +1166,7 @@ class TestSegmentSamplingSamplerShift( TestSegmentSamplingSamplerAnnotator ):
     check_uniform_coverage = False
 
     def setUp(self):
-        self.sampler = gat.SamplerShift( radius = 5 )
+        self.sampler = GatEngine.SamplerShift( radius = 5 )
 
 class TestSegmentSamplingSamplerTheAnnotator( TestSegmentSamplingSamplerAnnotator ):
     '''use annotator to sample segments.'''
@@ -1210,7 +1212,7 @@ class TestSegmentSamplingSamplerTheAnnotator( TestSegmentSamplingSamplerAnnotato
             data = line.split("\t")[2:]
             coords = [ map(int, x[1:-1].split(",")) for x in data ]
             # print "annotator", coords
-            samples.append( csegmentlist.SegmentList( iter = coords ) )
+            samples.append( SegmentList( iter = coords ) )
 
         os.unlink( nsegments )
         os.unlink( nworkspace )
@@ -1234,10 +1236,10 @@ class TestStatsSNPSampling( GatTest ):
 
         workspace_size = workspace["chr1"].sum()
         
-        sampler = gat.SamplerAnnotator( bucket_size = 1, nbuckets = workspace_size )
+        sampler = GatEngine.SamplerAnnotator( bucket_size = 1, nbuckets = workspace_size )
 
-        counters = [gat.CounterNucleotideOverlap()]
-        workspace_generator = gat.UnconditionalWorkspace()
+        counters = [GatEngine.CounterNucleotideOverlap()]
+        workspace_generator = GatEngine.UnconditionalWorkspace()
 
         #print segments["default"]["chr1"]
         #print workspace["chr1"]
@@ -1250,12 +1252,11 @@ class TestStatsSNPSampling( GatTest ):
                                      workspace_generator = workspace_generator,
                                      num_samples = self.sample_size )
         
-
         outfile = sys.stdout
 
         self.assertEqual( workspace_size, workspace["chr1"].sum() )
 
-        tmp = csegmentlist.SegmentList( clone = segments["default"]["chr1"] )
+        tmp = SegmentList( clone = segments["default"]["chr1"] )
         tmp.intersect( workspace["chr1"] )
         segment_size = tmp.sum()
 
@@ -1273,7 +1274,7 @@ class TestStatsSNPSampling( GatTest ):
             #print workspace["chr1"]
             #print annotations[annotation]["chr1"]
 
-            intersection = csegmentlist.SegmentList( clone = annotations[annotation]["chr1"] )
+            intersection = SegmentList( clone = annotations[annotation]["chr1"] )
             intersection.intersect( workspace["chr1"] )
 
             annotation_size = intersection.sum()
@@ -1304,7 +1305,7 @@ class TestStatsSNPSampling( GatTest ):
 
                 expected_std = hyper.std()
 
-                expected_pvalue = gat.getNPTwoSidedPValue( hyper, result.observed )
+                expected_pvalue = GatEngine.getNPTwoSidedPValue( hyper, result.observed )
 
                 # print "\t".join( map(str, (result, 
                 #                            expected_without,
@@ -1373,26 +1374,26 @@ class TestStatsSNPSampling( GatTest ):
     def testSingleSNP( self ):
 
         workspaces, segments, annotations = \
-            gat.IntervalCollection( "workspace" ), \
-            gat.IntervalCollection( "segment" ), \
-            gat.IntervalCollection( "annotation" )
+            GatEngine.IntervalCollection( "workspace" ), \
+            GatEngine.IntervalCollection( "segment" ), \
+            GatEngine.IntervalCollection( "annotation" )
 
         workspace_size = 1000
         nsnps = 1
 
         # workspace of size 1000000
-        workspaces.add( "default", "chr1", csegmentlist.SegmentList( iter = [(0,workspace_size),],
+        workspaces.add( "default", "chr1", SegmentList( iter = [(0,workspace_size),],
                                                             normalize = True ) )
         workspace = workspaces["default"]
 
-        segments.add( "default", "chr1", csegmentlist.SegmentList( iter = [(x,x+1) for x in range(0,nsnps)],
+        segments.add( "default", "chr1", SegmentList( iter = [(x,x+1) for x in range(0,nsnps)],
                                                           normalize = True ) )
 
         # annotations: a collection of segments with increasing density
         # all are overlapping the segments
         for y in range(1, 100, 2 ):
             annotations.add( "%03i" % y, "chr1",
-                             csegmentlist.SegmentList( iter = [(0,y),],
+                             SegmentList( iter = [(0,y),],
                                               normalize = True ) ) 
             
         self.check( workspace, annotations, segments )
@@ -1400,27 +1401,27 @@ class TestStatsSNPSampling( GatTest ):
     def testMultipleSNPsFullOverlap( self ):
 
         workspaces, segments, annotations = \
-            gat.IntervalCollection( "workspace" ), \
-            gat.IntervalCollection( "segment" ), \
-            gat.IntervalCollection( "annotation" )
+            GatEngine.IntervalCollection( "workspace" ), \
+            GatEngine.IntervalCollection( "segment" ), \
+            GatEngine.IntervalCollection( "annotation" )
 
         workspace_size = 1000
         nsnps = 10
 
         # workspace of size 1000000
-        workspaces.add( "default", "chr1", csegmentlist.SegmentList( iter = [(0,workspace_size),],
+        workspaces.add( "default", "chr1", SegmentList( iter = [(0,workspace_size),],
                                                             normalize = True ) )
         workspace = workspaces["default"]
 
         # 10 snps
-        segments.add( "default", "chr1", csegmentlist.SegmentList( iter = [(x,x+1) for x in range(0,nsnps)],
+        segments.add( "default", "chr1", SegmentList( iter = [(x,x+1) for x in range(0,nsnps)],
                                                           normalize = True ) )
 
         # annotations: a collection of segments with increasing density
         # all are overlapping the segments
         for y in range(10, 110, 5 ):
             annotations.add( "%03i" % y, "chr1",
-                             csegmentlist.SegmentList( iter = [(0,y),],
+                             SegmentList( iter = [(0,y),],
                                               normalize = True ) ) 
             
         self.check( workspace, annotations, segments )
@@ -1432,27 +1433,27 @@ class TestStatsSNPSampling( GatTest ):
         Tests if p-values are computed correctly.
         '''
         workspaces, segments, annotations = \
-            gat.IntervalCollection( "workspace" ), \
-            gat.IntervalCollection( "segment" ), \
-            gat.IntervalCollection( "annotation" )
+            GatEngine.IntervalCollection( "workspace" ), \
+            GatEngine.IntervalCollection( "segment" ), \
+            GatEngine.IntervalCollection( "annotation" )
 
         workspace_size = 1000
         nsnps = 100
 
         # workspace of size 1000000
-        workspaces.add( "default", "chr1", csegmentlist.SegmentList( iter = [(0,workspace_size),],
+        workspaces.add( "default", "chr1", SegmentList( iter = [(0,workspace_size),],
                                                             normalize = True ) )
         workspace = workspaces["default"]
 
         # 10 snps
-        segments.add( "default", "chr1", csegmentlist.SegmentList( iter = [(x,x+1) for x in range(0,nsnps)],
+        segments.add( "default", "chr1", SegmentList( iter = [(x,x+1) for x in range(0,nsnps)],
                                                           normalize = True ) )
 
         # annotations: a collection of segments.
         # overlap increases
         for y in range(0, nsnps, 1 ):
             annotations.add( "%03i" % y, "chr1",
-                             csegmentlist.SegmentList( iter = [(y,nsnps+y),],
+                             SegmentList( iter = [(y,nsnps+y),],
                                               normalize = True ) ) 
             
         self.check( workspace, annotations, segments )
@@ -1463,28 +1464,28 @@ class TestStatsSNPSampling( GatTest ):
 
         '''
         workspaces, segments, annotations = \
-            gat.IntervalCollection( "workspace" ), \
-            gat.IntervalCollection( "segment" ), \
-            gat.IntervalCollection( "annotation" )
+            GatEngine.IntervalCollection( "workspace" ), \
+            GatEngine.IntervalCollection( "segment" ), \
+            GatEngine.IntervalCollection( "annotation" )
 
         workspace_size = 1000
 
         size = 100
 
         # workspace of size 1000000
-        workspaces.add( "default", "chr1", csegmentlist.SegmentList( iter = [(0,workspace_size),],
+        workspaces.add( "default", "chr1", SegmentList( iter = [(0,workspace_size),],
                                                             normalize = True ) )
         workspace = workspaces["default"]
 
         # segment of size 10
-        segments.add( "default", "chr1", csegmentlist.SegmentList( iter = [(0,size), ],
+        segments.add( "default", "chr1", SegmentList( iter = [(0,size), ],
                                                           normalize = True ))
 
         # annotations: a collection of segments.
         # overlap increases
         for y in range(0, size):
             annotations.add( "%03i" % y, "chr1",
-                             csegmentlist.SegmentList( iter = [(y,size+y),],
+                             SegmentList( iter = [(y,size+y),],
                                               normalize = True ) ) 
             
         self.check( workspace, annotations, segments )
@@ -1502,23 +1503,23 @@ class TestStatsSNPSampling( GatTest ):
         workspace_size = 1000000
 
         workspaces, segments, annotations = \
-            gat.IntervalCollection( "workspace" ), \
-            gat.IntervalCollection( "segment" ), \
-            gat.IntervalCollection( "annotation" )
+            GatEngine.IntervalCollection( "workspace" ), \
+            GatEngine.IntervalCollection( "segment" ), \
+            GatEngine.IntervalCollection( "annotation" )
 
         # workspace of size 1000000
         workspaces.add( "default", "chr1", 
-                        csegmentlist.SegmentList( iter = [(x, x+1000) for x in xrange(0,workspace_size, 2000)],
+                        SegmentList( iter = [(x, x+1000) for x in xrange(0,workspace_size, 2000)],
                                          normalize = True ) )
 
         # SNPs every 100bp
         segments.add( "default", "chr1", 
-                      csegmentlist.SegmentList( iter = [(x,x+1) for x in xrange(0, workspace_size, 100) ],
+                      SegmentList( iter = [(x,x+1) for x in xrange(0, workspace_size, 100) ],
                                        normalize = True ))
         
         start = 0
         annotations.add( "%03i" % start, "chr1",
-                         csegmentlist.SegmentList( iter = [(0,workspace_size)],
+                         SegmentList( iter = [(0,workspace_size)],
                                           normalize = True ) ) 
             
         self.check( workspaces["default"], annotations, segments )
@@ -1528,24 +1529,24 @@ class TestStatsSNPSampling( GatTest ):
         workspace_size = 1000000
 
         workspaces, segments, annotations = \
-            gat.IntervalCollection( "workspace" ), \
-            gat.IntervalCollection( "segment" ), \
-            gat.IntervalCollection( "annotation" )
+            GatEngine.IntervalCollection( "workspace" ), \
+            GatEngine.IntervalCollection( "segment" ), \
+            GatEngine.IntervalCollection( "annotation" )
 
         # workspace of size 1000000
         workspaces.add( "default", "chr1", 
-                        csegmentlist.SegmentList( iter = [(x, x+1000) for x in xrange(0,workspace_size, 2000)],
+                        SegmentList( iter = [(x, x+1000) for x in xrange(0,workspace_size, 2000)],
                                          normalize = True ) )
 
         # SNPs every 100bp
         segments.add( "default", "chr1", 
-                      csegmentlist.SegmentList( iter = [(x,x+1) for x in xrange(0, workspace_size, 100) ],
+                      SegmentList( iter = [(x,x+1) for x in xrange(0, workspace_size, 100) ],
                                        normalize = True ))
         
         size = 1000
         for start in xrange(0, size, 100):
             annotations.add( "%03i" % start, "chr1",
-                             csegmentlist.SegmentList( iter = [(start+x,start+x+size) \
+                             SegmentList( iter = [(start+x,start+x+size) \
                                                           for x in xrange( 0, workspace_size, 2000)],
                                               normalize = True ) ) 
             
@@ -1568,11 +1569,11 @@ class TestStatsGat( GatTest ):
 
         workspace_size = workspace["chr1"].sum()
 
-        sampler = gat.SamplerAnnotator( bucket_size = 1, nbuckets = workspace_size )
+        sampler = GatEngine.SamplerAnnotator( bucket_size = 1, nbuckets = workspace_size )
 
-        counters = [ gat.CounterNucleotideOverlap() ]
+        counters = [ GatEngine.CounterNucleotideOverlap() ]
         
-        workspace_generator = gat.UnconditionalWorkspace()
+        workspace_generator = GatEngine.UnconditionalWorkspace()
 
         return gat.run( segments,
                         annotations,
@@ -1593,13 +1594,13 @@ class TestStatsGat( GatTest ):
                                              annotations,
                                              workspace )
 
-        annotator_results = gat.IOTools.flatten( annotator_results )
+        annotator_results = GatEngine.IOTools.flatten( annotator_results )
 
         outfile = sys.stdout
 
         self.assertEqual( workspace_size, workspace["chr1"].sum() )
 
-        tmp = csegmentlist.SegmentList( clone = segments["default"]["chr1"] )
+        tmp = SegmentList( clone = segments["default"]["chr1"] )
         tmp.intersect( workspace["chr1"] )
         segment_size = tmp.sum()
 
@@ -1613,7 +1614,7 @@ class TestStatsGat( GatTest ):
             assert len(r) == 1
             result = r[0]
 
-            intersection = csegmentlist.SegmentList( clone = annotations[annotation]["chr1"] )
+            intersection = SegmentList( clone = annotations[annotation]["chr1"] )
             intersection.intersect( workspace["chr1"] )
 
             annotation_size = intersection.sum()
@@ -1645,7 +1646,7 @@ class TestStatsGat( GatTest ):
 
                 expected_std = hyper.std()
 
-                expected_pvalue = gat.getNPTwoSidedPValue( hyper, result.observed )
+                expected_pvalue = GatEngine.getNPTwoSidedPValue( hyper, result.observed )
 
                 # print "\t".join( map(str, (result, 
                 #                            expected_without,
@@ -1720,25 +1721,25 @@ class TestStatsGat( GatTest ):
         '''
 
         workspaces, segments, annotations = \
-            gat.IntervalCollection( "workspace" ), \
-            gat.IntervalCollection( "segment" ), \
-            gat.IntervalCollection( "annotation" )
+            GatEngine.IntervalCollection( "workspace" ), \
+            GatEngine.IntervalCollection( "segment" ), \
+            GatEngine.IntervalCollection( "annotation" )
 
         workspace_size = 1000
 
         # workspace of size 1000000
-        workspaces.add( "default", "chr1", csegmentlist.SegmentList( iter = [(0,workspace_size),],
+        workspaces.add( "default", "chr1", SegmentList( iter = [(0,workspace_size),],
                                                             normalize = True ) )
         workspace = workspaces["default"]
 
-        segments.add( "default", "chr1", csegmentlist.SegmentList( iter = [(0,1),],
+        segments.add( "default", "chr1", SegmentList( iter = [(0,1),],
                                                           normalize = True ) )
 
         # annotations: a collection of segments with increasing density
         # all are overlapping the segments
         for y in range(1, 100, 2 ):
             annotations.add( "%03i" % y, "chr1",
-                             csegmentlist.SegmentList( iter = [(0,y),],
+                             SegmentList( iter = [(0,y),],
                                               normalize = True ) ) 
             
         self.check( workspace, annotations, segments )
@@ -1749,24 +1750,24 @@ class TestStatsGat( GatTest ):
         workspace_size = 1000
 
         workspaces, segments, annotations = \
-            gat.IntervalCollection( "workspace" ), \
-            gat.IntervalCollection( "segment" ), \
-            gat.IntervalCollection( "annotation" )
+            GatEngine.IntervalCollection( "workspace" ), \
+            GatEngine.IntervalCollection( "segment" ), \
+            GatEngine.IntervalCollection( "annotation" )
 
         # workspace of size 1000000
-        workspaces.add( "default", "chr1", csegmentlist.SegmentList( iter = [(0,workspace_size),],
+        workspaces.add( "default", "chr1", SegmentList( iter = [(0,workspace_size),],
                                                             normalize = True ) )
         workspace = workspaces["default"]
 
         # 10 snps
-        segments.add( "default", "chr1", csegmentlist.SegmentList( iter = [(x,x+1) for x in range(0,nsnps*2,2)],
+        segments.add( "default", "chr1", SegmentList( iter = [(x,x+1) for x in range(0,nsnps*2,2)],
                                                           normalize = True ) )
 
         # annotations: a collection of segments with increasing density
         # all are overlapping the segments
         for y in range(10, 110, 5 ):
             annotations.add( "%03i" % y, "chr1",
-                             csegmentlist.SegmentList( iter = [(0,y),],
+                             SegmentList( iter = [(0,y),],
                                               normalize = True ) ) 
             
         self.check( workspace, annotations, segments )
@@ -1781,25 +1782,25 @@ class TestStatsGat( GatTest ):
         nsnps = 100
 
         workspaces, segments, annotations = \
-            gat.IntervalCollection( "workspace" ), \
-            gat.IntervalCollection( "segment" ), \
-            gat.IntervalCollection( "annotation" )
+            GatEngine.IntervalCollection( "workspace" ), \
+            GatEngine.IntervalCollection( "segment" ), \
+            GatEngine.IntervalCollection( "annotation" )
 
 
         # workspace of size 1000000
-        workspaces.add( "default", "chr1", csegmentlist.SegmentList( iter = [(0,workspace_size),],
+        workspaces.add( "default", "chr1", SegmentList( iter = [(0,workspace_size),],
                                                             normalize = True ) )
         workspace = workspaces["default"]
 
         # 10 snps
-        segments.add( "default", "chr1", csegmentlist.SegmentList( iter = [(x,x+1) for x in range(0,nsnps*2, nsnps)],
+        segments.add( "default", "chr1", SegmentList( iter = [(x,x+1) for x in range(0,nsnps*2, nsnps)],
                                                           normalize = True ) )
 
         # annotations: a collection of segments.
         # overlap increases
         for y in range(0, nsnps * 2, 2 ):
             annotations.add( "%03i" % y, "chr1",
-                             csegmentlist.SegmentList( iter = [(y,nsnps+y),],
+                             SegmentList( iter = [(y,nsnps+y),],
                                               normalize = True ) ) 
             
         self.check( workspace, annotations, segments )
@@ -1813,24 +1814,24 @@ class TestStatsGat( GatTest ):
         segment_size = 100
 
         workspaces, segments, annotations = \
-            gat.IntervalCollection( "workspace" ), \
-            gat.IntervalCollection( "segment" ), \
-            gat.IntervalCollection( "annotation" )
+            GatEngine.IntervalCollection( "workspace" ), \
+            GatEngine.IntervalCollection( "segment" ), \
+            GatEngine.IntervalCollection( "annotation" )
 
         # workspace of size 1000000
-        workspaces.add( "default", "chr1", csegmentlist.SegmentList( iter = [(0,workspace_size),],
+        workspaces.add( "default", "chr1", SegmentList( iter = [(0,workspace_size),],
                                                             normalize = True ) )
         workspace = workspaces["default"]
 
         # segment of size segment_size
-        segments.add( "default", "chr1", csegmentlist.SegmentList( iter = [(0,segment_size), ],
+        segments.add( "default", "chr1", SegmentList( iter = [(0,segment_size), ],
                                                           normalize = True ))
 
         # annotations: a collection of segments.
         # overlap increases
         for y in range(0, segment_size):
             annotations.add( "%03i" % y, "chr1",
-                             csegmentlist.SegmentList( iter = [(y,segment_size+y),],
+                             SegmentList( iter = [(y,segment_size+y),],
                                               normalize = True ) ) 
             
         self.check( workspace, annotations, segments )
@@ -1848,24 +1849,24 @@ class TestStatsGat( GatTest ):
         workspace_size = 1000000
 
         workspaces, segments, annotations = \
-            gat.IntervalCollection( "workspace" ), \
-            gat.IntervalCollection( "segment" ), \
-            gat.IntervalCollection( "annotation" )
+            GatEngine.IntervalCollection( "workspace" ), \
+            GatEngine.IntervalCollection( "segment" ), \
+            GatEngine.IntervalCollection( "annotation" )
 
         # workspace of size 1000000
         workspaces.add( "default", "chr1", 
-                        csegmentlist.SegmentList( iter = [(x, x+1000) for x in xrange(0,workspace_size, 2000)],
+                        SegmentList( iter = [(x, x+1000) for x in xrange(0,workspace_size, 2000)],
                                          normalize = True ) )
 
         # SNPs every 100bp
         segments.add( "default", "chr1", 
-                      csegmentlist.SegmentList( iter = [(x,x+1) for x in xrange(0, workspace_size, 100) ],
+                      SegmentList( iter = [(x,x+1) for x in xrange(0, workspace_size, 100) ],
                                        normalize = True ))
         
         size = 1000
         for start in xrange(0, size, 100):
             annotations.add( "%03i" % start, "chr1",
-                             csegmentlist.SegmentList( iter = [(start+x,start+x+size) \
+                             SegmentList( iter = [(start+x,start+x+size) \
                                                           for x in xrange( 0, workspace_size, 2000)],
                                               normalize = True ) ) 
             
@@ -1885,18 +1886,18 @@ class TestStatsGat( GatTest ):
         segment_spacing = 1000
 
         workspaces, segments, annotations = \
-            gat.IntervalCollection( "workspace" ), \
-            gat.IntervalCollection( "segment" ), \
-            gat.IntervalCollection( "annotation" )
+            GatEngine.IntervalCollection( "workspace" ), \
+            GatEngine.IntervalCollection( "segment" ), \
+            GatEngine.IntervalCollection( "annotation" )
 
         # workspace of size 1000000
         workspaces.add( "default", "chr1", 
-                        csegmentlist.SegmentList( iter = [(0, workspace_size)],
+                        SegmentList( iter = [(0, workspace_size)],
                                          normalize = True ) )
 
         # segments every 100bp
         segments.add( "default", "chr1", 
-                      csegmentlist.SegmentList( iter = [(x,x+segment_size) for x in xrange(0, workspace_size, segment_spacing) ],
+                      SegmentList( iter = [(x,x+segment_size) for x in xrange(0, workspace_size, segment_spacing) ],
                                        normalize = True ))
         
 
@@ -1909,7 +1910,7 @@ class TestStatsGat( GatTest ):
 
         for i, y in enumerate( sizes):
             annotations.add( "size-%i" % y, "chr1",
-                             csegmentlist.SegmentList( iter = intervals[i],
+                             SegmentList( iter = intervals[i],
                                               normalize = True ) ) 
             
         self.check( workspaces["default"], annotations, segments )
@@ -1954,11 +1955,11 @@ class TestStatsTheAnnotator( TestStatsGat ):
 
         annotator_results = []
 
-        intersection = csegmentlist.SegmentList( clone = segments["default"]["chr1"] )
+        intersection = SegmentList( clone = segments["default"]["chr1"] )
         intersection.intersect( workspace["chr1"] )
         segment_size = intersection.sum()
 
-        # intersection = csegmentlist.SegmentList( clone = annotations["default"]["chr1"] )
+        # intersection = SegmentList( clone = annotations["default"]["chr1"] )
         # intersection.intersect( workspace["chr1"] )
         # annotation_size = intersection.sum()
         # print "segment_size", segment_size, annotation_size
@@ -1983,7 +1984,7 @@ class TestStatsTheAnnotator( TestStatsGat ):
             except ZeroDivisionError:
                 fold = 0.0
 
-            r = gat.DummyAnnotatorResult()
+            r = GatEngine.DummyAnnotatorResult()
             r.track = "default"
             r.observed = observed * segment_size
             r.expected = expected * segment_size
@@ -2032,7 +2033,7 @@ class TestTrimming( GatTest ):
                 for y in range( 0, npoints, 2*segment ):
                     for point in xrange( y, y+segment ):
                         ss = [ (x, x + segment ) for x in range( 0, npoints, 2 * segment) ]
-                        s = csegmentlist.SegmentList( iter = ss,
+                        s = SegmentList( iter = ss,
                                              normalize = True )
                         s.trim_ends( point, size, numpy.random.randint( 0, 2 ) )
                         for start, end in s:
@@ -2067,17 +2068,17 @@ class TestEnrichmentGat( GatTest ):
 
         workspace_size = workspace["chr1"].sum()
 
-        sampler = gat.SamplerAnnotator( bucket_size = 1, nbuckets = workspace_size )
+        sampler = GatEngine.SamplerAnnotator( bucket_size = 1, nbuckets = workspace_size )
 
         if self.counter == "NucleotideOverlap":
-            counter = gat.CounterNucleotideOverlap()
+            counter = GatEngine.CounterNucleotideOverlap()
         elif self.counter == "SegmentOverlap":
-            counter = gat.CounterSegmentOverlap()
+            counter = GatEngine.CounterSegmentOverlap()
         counters = [counter]
 
         result = []
         
-        workspace_generator = gat.UnconditionalWorkspace()
+        workspace_generator = GatEngine.UnconditionalWorkspace()
 
         for x in xrange( self.ntests ):
             result.append( 
@@ -2105,9 +2106,9 @@ class TestEnrichmentGat( GatTest ):
                                              workspace )
 
         # make into a single list
-        annotator_results = gat.IOTools.flatten( annotator_results )
+        annotator_results = GatEngine.IOTools.flatten( annotator_results )
 
-        tmp = csegmentlist.SegmentList( clone = segments["default"]["chr1"] )
+        tmp = SegmentList( clone = segments["default"]["chr1"] )
         tmp.intersect( workspace["chr1"] )
         segment_size = tmp.sum()
 
@@ -2182,12 +2183,12 @@ class TestEnrichmentGat( GatTest ):
         '''
 
         workspaces, segments, annotations = \
-            gat.IntervalCollection( "workspace" ), \
-            gat.IntervalCollection( "segment" ), \
-            gat.IntervalCollection( "annotation" )
+            GatEngine.IntervalCollection( "workspace" ), \
+            GatEngine.IntervalCollection( "segment" ), \
+            GatEngine.IntervalCollection( "annotation" )
 
         x = 0
-        workspace = csegmentlist.SegmentList()
+        workspace = SegmentList()
         intervals = collections.defaultdict( list )
         while x < workspace_size:
             for i, y in enumerate( annotation_sizes ):
@@ -2199,12 +2200,12 @@ class TestEnrichmentGat( GatTest ):
         workspaces.add( "default", "chr1", workspace )
 
         segments.add( "default", "chr1", 
-                      csegmentlist.SegmentList( iter = [(x,x+segment_size) for x in xrange(0, workspace_size, segment_spacing) ],
+                      SegmentList( iter = [(x,x+segment_size) for x in xrange(0, workspace_size, segment_spacing) ],
                                        normalize = True ))
         
         for i, y in enumerate( annotation_sizes):
             annotations.add( "anno-%i" % i, "chr1",
-                             csegmentlist.SegmentList( iter = intervals[i],
+                             SegmentList( iter = intervals[i],
                                               normalize = True ) ) 
             
         self.check( workspaces["default"], 
@@ -2265,12 +2266,12 @@ class TestEnrichmentGat( GatTest ):
         segment_spacing = 1000
 
         workspaces, segments, annotations = \
-            gat.IntervalCollection( "workspace" ), \
-            gat.IntervalCollection( "segment" ), \
-            gat.IntervalCollection( "annotation" )
+            GatEngine.IntervalCollection( "workspace" ), \
+            GatEngine.IntervalCollection( "segment" ), \
+            GatEngine.IntervalCollection( "annotation" )
 
         workspaces.add( "default", "chr1", 
-                        csegmentlist.SegmentList( iter = [(0, workspace_size)],
+                        SegmentList( iter = [(0, workspace_size)],
                                          normalize = True ) )
 
         # add segments in first half of workspace as before
@@ -2278,7 +2279,7 @@ class TestEnrichmentGat( GatTest ):
         # only add overlap with segments 0 and 2
         intervals.extend( [(x,x+segment_size) for x in xrange(workspace_size / 2, workspace_size, segment_spacing * 2) ] )
         segments.add( "default", "chr1", 
-                      csegmentlist.SegmentList( iter = intervals,
+                      SegmentList( iter = intervals,
                                        normalize = True ))
         
 
@@ -2291,7 +2292,7 @@ class TestEnrichmentGat( GatTest ):
 
         for i, y in enumerate( sizes):
             annotations.add( "anno-%i" % i, "chr1",
-                             csegmentlist.SegmentList( iter = intervals[i],
+                             SegmentList( iter = intervals[i],
                                               normalize = True ) ) 
             
         self.check( workspaces["default"], 
@@ -2340,7 +2341,7 @@ class TestSpacingGat( GatTest ):
         intervals = [ list() for x in range( 2 ) ]
         nsizes = 2
         sizes = [ p.annotation_size1, p.annotation_size2]
-        workspace = csegmentlist.SegmentList()
+        workspace = SegmentList()
         start = 0
 
         while start < self.workspace_size:
@@ -2358,7 +2359,7 @@ class TestSpacingGat( GatTest ):
         # get effective workspace size
         workspace_size = workspace.max()
 
-        segments = csegmentlist.SegmentList( iter = [(x,x+p.segment_size) \
+        segments = SegmentList( iter = [(x,x+p.segment_size) \
                                                 for x in xrange(0, workspace_size, p.segment_spacing) ],
                                     normalize = True )
         
@@ -2366,7 +2367,7 @@ class TestSpacingGat( GatTest ):
         annotations = {}
 
         for c, y in enumerate( sizes):
-            annotations["anno-%i" % c] = csegmentlist.SegmentList( iter = intervals[c], 
+            annotations["anno-%i" % c] = SegmentList( iter = intervals[c], 
                                                                    normalize = True )
         return segments, workspace, annotations
 
@@ -2376,15 +2377,15 @@ class TestSpacingGat( GatTest ):
                     annotations, 
                     nsamples ):
 
-        sampler = gat.SamplerAnnotator( bucket_size = 1, nbuckets = 100000 )
+        sampler = GatEngine.SamplerAnnotator( bucket_size = 1, nbuckets = 100000 )
 
         if self.counter == "NucleotideOverlap":
-            counter = gat.CounterNucleotideOverlap()
+            counter = GatEngine.CounterNucleotideOverlap()
         elif self.counter == "SegmentOverlap":
-            counter = gat.CounterSegmentOverlap()
+            counter = GatEngine.CounterSegmentOverlap()
 
         counters = [counter]
-        workspace_generator = gat.UnconditionalWorkspace()
+        workspace_generator = GatEngine.UnconditionalWorkspace()
 
         result = collections.defaultdict( list )
         for x in xrange( self.nsamples_sampler ):
@@ -2403,13 +2404,13 @@ class TestSpacingGat( GatTest ):
 
     def runSampler( self, segments, workspace, annotations, nsamples ):
         
-        ss = gat.IntervalCollection( "segment" )
+        ss = GatEngine.IntervalCollection( "segment" )
         ss.add( "default", "chr1", segments )
-        aa = gat.IntervalCollection( "annotation" )
+        aa = GatEngine.IntervalCollection( "annotation" )
         for key, x in annotations.iteritems():
             aa.add( key, "chr1", x )
 
-        ww = gat.IntervalCollection( "workspace" )
+        ww = GatEngine.IntervalCollection( "workspace" )
         ww.add( "default", "chr1", workspace )
 
         samples = self.getSamples( ss, ww["default"], aa, nsamples )

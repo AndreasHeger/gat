@@ -1,5 +1,3 @@
-from cgat import *
-
 import os, sys, re, optparse, collections, types, gzip, pprint, time
 import numpy
 
@@ -7,6 +5,8 @@ import gat.Bed as Bed
 import gat.IOTools as IOTools
 import gat.Experiment as E
 import gat.Stats as Stats
+
+import GatEngine
 
 import multiprocessing.pool
 
@@ -116,7 +116,7 @@ def computeSample( args ):
     if samples_outfile: 
         samples_outfile.write("track name=%s\n" % sample_id)
 
-    sample = IntervalDictionary()
+    sample = GatEngine.IntervalDictionary()
 
     for isochore in segs.keys():
 
@@ -294,13 +294,13 @@ class UnconditionalSampler:
                   self.outfile_sample_metrics,
                   ) for x in range(self.num_samples) ]
 
-    
-        E.info("setting up shared data for multi-processing")
-        annotations.share()
-        contig_annotations.share()
-        contig_workspace.share( "contig_workspace" )
-        temp_segs.share( "generated_segments" )
-        temp_workspace.share( "generated_workspace" )
+        if self.num_threads > 0:
+            E.info("setting up shared data for multi-processing")
+            annotations.share()
+            contig_annotations.share()
+            contig_workspace.share( "contig_workspace" )
+            temp_segs.share( "generated_segments" )
+            temp_workspace.share( "generated_workspace" )
 
         E.info( "sampling started" )
         results = self.computeSamples( work )
@@ -441,7 +441,7 @@ def run( segments,
     reference = kwargs.get( "reference", None )
     output_samples_pattern = kwargs.get( "output_samples_pattern", None )
     outfiles = kwargs.get( "outfiles", {} )
-    num_threads = kwargs.get( "num_threads", 1 )
+    num_threads = kwargs.get( "num_threads", 0 )
 
     ##################################################
     ##################################################
@@ -468,13 +468,14 @@ def run( segments,
     E.info( "collecting observed counts" )
     observed_counts = []
     for counter in counters:
-        observed_counts.append( computeCounts( counter = counter,
-                                               aggregator = sum,
-                                               segments = segments,
-                                               annotations = annotations,
-                                               workspace = workspace,
-                                               workspace_generator = workspace_generator ) )
-
+        observed_counts.append( GatEngine.computeCounts( \
+                counter = counter,
+                aggregator = sum,
+                segments = segments,
+                annotations = annotations,
+                workspace = workspace,
+                workspace_generator = workspace_generator ) )
+        
     ##################################################
     ##################################################
     ##################################################
@@ -484,7 +485,7 @@ def run( segments,
 
     if cache:
         E.info( "samples are cached in %s" % cache)
-        samples = SamplesCached( filename = cache )
+        samples = GatEngine.SamplesCached( filename = cache )
     elif sample_files:
         if not output_samples_pattern:
             raise ValueError( "require output_samples_pattern if loading samples from files" )
@@ -494,7 +495,7 @@ def run( segments,
         samples = SamplesFile( filenames = sample_files,
                                regex = regex ) 
     else:
-        samples = Samples()
+        samples = GatEngine.Samples()
 
     sampled_counts = {}
     old_sampled_counts = {}
@@ -582,7 +583,7 @@ def run( segments,
                     ref = reference[track][annotation]
                 else:
                     ref = None
-                annotator_results.append( AnnotatorResultExtended( \
+                annotator_results.append( GatEngine.AnnotatorResultExtended( \
                         track = track,
                         annotation = annotation,
                         counter = counter.name,
@@ -636,7 +637,7 @@ def fromCounts( filename ):
             track, annotation, observed, counts = line[:-1].split( "\t" )
             samples = numpy.array( map(float, counts.split(",")), dtype=numpy.float )
             observed = float(observed)
-            annotator_results.append( gat.AnnotatorResult( 
+            annotator_results.append( GatEngine.AnnotatorResult( 
                 track = track,
                 annotation = annotation,
                 counter = "na",
