@@ -2619,6 +2619,12 @@ class IntervalDictionary( object ):
         for isochore, segmentlist in self.intervals.items():
             segmentlist.share( "/%s_%s" % (key, isochore) )
 
+    def unshare( self ):
+        '''revert sharing of dictionary contents.'''
+        
+        for isochore, segmentlist in self.intervals.items():
+            segmentlist.unshare()
+
 #####################################################################
 #####################################################################
 #####################################################################
@@ -2840,6 +2846,11 @@ class IntervalCollection(object):
         '''setup collection for sharing.'''
         for track, vv in self.intervals.iteritems():
             vv.share( self.name + "-" + track )
+
+    def unshare( self ):
+        '''revert sharing.'''
+        for track, vv in self.intervals.iteritems():
+            vv.unshare()
 
     @property
     def tracks(self): return self.intervals.keys()

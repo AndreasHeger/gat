@@ -308,6 +308,15 @@ class TestSegmentList( GatTest ):
         b = pickle.loads(pickle.dumps(s))
         self.assertEqual( s, b )
 
+    def testUnsharing( self ):
+        
+        ss = [ (x, x + 10 ) for x in range( 0, 120, 20) ]
+        s = SegmentList( iter = ss, normalize = True )
+        s.share( "/testshare" )
+        s.unshare()
+        s.share( "/testshare" )
+        s.unshare()
+
 class TestSegmentListOverlap( GatTest ):
     
     def setUp( self ):

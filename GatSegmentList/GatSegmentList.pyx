@@ -260,7 +260,8 @@ cdef class SegmentList:
         assert self.is_normalized, "sharing in non-normalized list"
         assert key.startswith( "/" )
         assert self.shared_fd == -1, "SegmentList already shared"
-        
+        cdef int error
+
         if self.nsegments == 0:
             # do not share empty objects
             return
@@ -268,12 +269,12 @@ cdef class SegmentList:
         cdef int fd
         fd = shm_open( key, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR)
         if fd == -1:
-            raise OSError( "could not create shared memory at %s" % key )
+            error = errno
+            raise OSError( "could not create shared memory at %s; ERRNO=%i" % (key, error ))
 
         cdef off_t nbytes = sizeof(Segment) * self.nsegments
         # save file descriptor
         self.shared_fd = fd
-        cdef int error
         if ftruncate(fd, nbytes) == -1:
             error = errno
             raise OSError( "could not resize memory at %s; ERRNO=%i" % (key, error) )
@@ -302,8 +303,14 @@ cdef class SegmentList:
     def unshare( self ):
         '''take ownership of shared data.
         '''
+        # empty lists are not shared
+        if self.nsegments == 0:
+            return
+
         cdef int fd
-        
+        if self.shared_fd == -1:
+            raise ValueError("unsharing unshared SegmentList")
+
         fd = shm_unlink( self.key )
         if fd == -1:
             raise OSError( "could not unlink shared memory" )
