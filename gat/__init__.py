@@ -108,6 +108,8 @@ def computeSample( args ):
       samples_outfile,
       metrics_outfile) = args
 
+    E.debug("track=%s, sample=%s - started" % (track, str(sample_id)))
+
     counts = Experiment.Counter()
 
     sample_id = str(sample_id)
@@ -128,7 +130,6 @@ def computeSample( args ):
             continue
 
         counts.sampled += 1
-        continue
         r = sampler.sample( segs[isochore], workspace[isochore] )
 
         # TODO : activate
@@ -158,6 +159,8 @@ def computeSample( args ):
                              contig_annotations[annotation][contig],
                              contig_workspace[contig])
                     for contig in sample.keys() ] )
+
+    E.debug("track=%s, sample=%s - completed" % (track,str(sample_id )))
 
     return counts_per_track
 
@@ -225,6 +228,8 @@ class UnconditionalSampler:
         returns a list of results.
         '''
         n = len(work)
+        
+        E.debug( 'sampling will work on %i items' % n)
 
         results = []
 
@@ -237,8 +242,6 @@ class UnconditionalSampler:
         else:
             E.info("generating processpool with %i threads for %i items" % (self.num_threads, len(work) ))
             pool = multiprocessing.Pool( self.num_threads )
-
-            rs = pool.map_async(computeSample, work )
 
             for i, r in enumerate(pool.imap_unordered(computeSample, work)):
                 if i % report_interval == 0:

@@ -132,6 +132,8 @@ cdef class SegmentList:
         cdef char * p
         cdef long idx, nsegments
         cdef void * retval
+        cdef int error_number
+        cdef char * buffer
 
         # initialize empty list
         self.segments = NULL
@@ -162,8 +164,11 @@ cdef class SegmentList:
                                         MAP_SHARED, 
                                         share.shared_fd, 
                                         0)
+
+                error_number = errno
+
                 if retval == MAP_FAILED:
-                    raise ValueError("could not read list from shared segment" )
+                    raise ValueError("could not read list from shared segment - error=%i" % error_number )
                 self.segments = <Segment *>retval
 
         # create from pickled representation
@@ -180,10 +185,12 @@ cdef class SegmentList:
                               MAP_SHARED, 
                               shared_fd, 
                               0)
-                # TODO - get error number
+
+                error_number = errno
+
                 if retval == MAP_FAILED:
-                    raise ValueError( "could not unpickle as slave - out of memory error?" )
-                
+                    raise ValueError( "could not unpickle as slave - error=%i" % error_number)
+
                 self.segments = <Segment *>retval
 
                 # mark memory as slave - not allocated
@@ -270,12 +277,12 @@ cdef class SegmentList:
             raise OSError( "could not resize memory at %s; ERRNO=%i" % (key, error) )
         
         # open as memory map
-        cdef Segment * p
-        p = <Segment*>mmap(NULL, nbytes,
-                           PROT_READ | PROT_WRITE, 
-                           MAP_SHARED, 
-                           fd, 
-                           0);
+        cdef void * p
+        p = mmap(NULL, nbytes,
+                 PROT_READ | PROT_WRITE, 
+                 MAP_SHARED, 
+                 fd, 
+                 0);
         
         if p == MAP_FAILED:
             raise ValueError("could not create memory mapped file" )
@@ -283,6 +290,12 @@ cdef class SegmentList:
         # copy data to shared memory location
         memcpy( p, self.segments, nbytes)
         self.key = key
+        
+        # free allocated private memory
+        self.allocated = 0
+        free( self.segments )
+
+        self.segments = <Segment *>p
 
     def unshare( self ):
         '''
@@ -292,6 +305,24 @@ cdef class SegmentList:
         fd = shm_unlink( self.key )
         if fd == -1:
             raise OSError( "could not unlink shared memory" )
+
+        # copy data back to unshared memory
+        cdef Segment * s
+        cdef off_t nbytes = sizeof(Segment) * self.nsegments
+        
+        s = <Segment *>malloc( nbytes )
+        if s == NULL:
+            raise ValueError( "could not allocate memory when unsharing" )
+        
+        memcpy( s, self.segments, nbytes )
+        
+        # unmap
+        if munmap( self.segments, nbytes ) == -1:
+            raise ValueError( "error while unmapping memory")
+        
+        self.segments = s
+        self.allocated = self.nsegments
+        self.shared_fd = -1
 
     cpdef sort( self ):
         '''sort segments.'''
@@ -1341,11 +1372,21 @@ cdef class SegmentList:
         return self.nsegments
 
     def __dealloc__(self):
-        # for shared memory objects
-        if self.segments != NULL and self.allocated > 0:
-            free( self.segments )
-        if self.shared_fd >= 0:
-            self.unshare()
+        cdef int fd
+
+        if self.segments != NULL:
+            # unshared memory
+            if self.allocated > 0:
+                free( self.segments )
+            else:
+                # shared memory
+                munmap( self.segments, 
+                        self.nsegments * sizeof(Segment))
+        
+        if self.shared_fd != -1:
+            fd = shm_unlink( self.key )
+            if fd == -1:
+                raise OSError( "could not unlink shared memory" )
 
     def __str__(self):
         return str(self.asList())
