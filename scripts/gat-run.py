@@ -68,6 +68,8 @@ import gat.Experiment as E
 import gat.IOTools as IOTools
 import gat.IO as IO
 import gat.Stats as Stats
+import GatSegmentList
+import GatEngine
 
 def fromSegments( options, args ):
     '''run analysis from segment files. 
@@ -127,23 +129,23 @@ def fromSegments( options, args ):
     ##################################################
     # initialize sampler
     if options.sampler == "annotator":
-        sampler = gat.SamplerAnnotator(
+        sampler = GatEngine.SamplerAnnotator(
             bucket_size = options.bucket_size,
             nbuckets = options.nbuckets )
     elif options.sampler == "shift":
-        sampler = gat.SamplerShift( 
+        sampler = GatEngine.SamplerShift( 
             radius = options.shift_expansion,
             extension = options.shift_extension )
     elif options.sampler == "segments":
-        sampler = gat.SamplerSegments()
+        sampler = GatEngine.SamplerSegments()
     elif options.sampler == "local-permutation":
-        sampler = gat.SamplerLocalPermutation()
+        sampler = GatEngine.SamplerLocalPermutation()
     elif options.sampler == "global-permutation":
-        sampler = gat.SamplerGlobalPermutation()
+        sampler = GatEngine.SamplerGlobalPermutation()
     elif options.sampler == "brute-force":
-        sampler = gat.SamplerBruteForce()
+        sampler = GatEngine.SamplerBruteForce()
     elif options.sampler == "uniform":
-        sampler = gat.SamplerUniform()
+        sampler = GatEngine.SamplerUniform()
         
     ##################################################
     ##################################################
@@ -152,17 +154,17 @@ def fromSegments( options, args ):
     counters = []
     for counter in options.counters:
         if counter == "nucleotide-overlap":
-            counters.append( gat.CounterNucleotideOverlap() )
+            counters.append( GatEngine.CounterNucleotideOverlap() )
         elif counter == "nucleotide-density":
-            counters.append( gat.CounterNucleotideDensity() )
+            counters.append( GatEngine.CounterNucleotideDensity() )
         elif counter == "segment-overlap":
-            counters.append( gat.CounterSegmentOverlap() )
+            counters.append( GatEngine.CounterSegmentOverlap() )
         elif counter == "annotations-overlap":
-            counters.append( gat.CounterAnnotationsOverlap() )
+            counters.append( GatEngine.CounterAnnotationsOverlap() )
         elif counter == "segment-midoverlap":
-            counters.append( gat.CounterSegmentMidpointOverlap() )
+            counters.append( GatEngine.CounterSegmentMidpointOverlap() )
         elif counter == "annotations-midoverlap":
-            counters.append( gat.CounterAnnotationsMidpointOverlap() )
+            counters.append( GatEngine.CounterAnnotationsMidpointOverlap() )
         else:
             raise ValueError("unknown counter '%s'" % counter )
 
@@ -171,19 +173,19 @@ def fromSegments( options, args ):
     ##################################################
     ## initialize workspace generator
     if options.conditional == "unconditional":
-        workspace_generator = gat.UnconditionalWorkspace()
+        workspace_generator = GatEngine.UnconditionalWorkspace()
     elif options.conditional == "cooccurance":
-        workspace_generator = gat.ConditionalWorkspaceCooccurance()
+        workspace_generator = GatEngine.ConditionalWorkspaceCooccurance()
     elif options.conditional == "annotation-centered":
         if options.conditional_extension == options.conditional_expansion == None:
             raise ValueError( "please specify either --conditional-expansion or --conditional-extension" )
-        workspace_generator = gat.ConditionalWorkspaceAnnotationCentered( options.conditional_extension,
+        workspace_generator = GatEngine.ConditionalWorkspaceAnnotationCentered( options.conditional_extension,
                                                                           options.conditional_expansion )
     elif options.conditional == "segment-centered":
         if options.conditional_extension == options.conditional_expansion == None:
             raise ValueError( "please specify either --conditional-expansion or --conditional-extension" )
 
-        workspace_generator = gat.ConditionalWorkspaceSegmentCentered( options.conditional_extension,
+        workspace_generator = GatEngine.ConditionalWorkspaceSegmentCentered( options.conditional_extension,
                                                                        options.conditional_expansion )
     else:
         raise ValueError("unknown conditional workspace '%s'" % options.conditional )
@@ -239,7 +241,7 @@ def fromResults( filename ):
         for line in infile:
             if line.startswith("#"): continue
             if line.startswith("track"): continue
-            r = gat.DummyAnnotatorResult._fromLine( line ) 
+            r = GatEngine.DummyAnnotatorResult._fromLine( line ) 
             annotator_results[r.track][r.annotation] = r
             
     return annotator_results
@@ -459,7 +461,7 @@ def main( argv = None ):
     description_header, descriptions, description_width = IO.readDescriptions( options )
 
     ##################################################
-    size_pos, size_segment = gat.csegmentlist.getSegmentSize()
+    size_pos, size_segment = GatSegmentList.getSegmentSize()
     E.debug( "sizes: pos=%i segment=%i, max_coord=%i" % (size_pos, size_segment, 2**(8 * size_pos )))
 
     ##################################################
@@ -493,7 +495,7 @@ def main( argv = None ):
 
     if options.input_filename_counts:
         # use pre-computed counts
-        annotator_results = gat.fromCounts( options.input_filename_counts )
+        annotator_results = GatEngine.fromCounts( options.input_filename_counts )
 
     elif options.input_filename_results:
         # use previous results (re-computes fdr)
@@ -507,13 +509,13 @@ def main( argv = None ):
     ##################################################
     if options.pvalue_method != "empirical":
         E.info("updating pvalues to %s" % options.pvalue_method )
-        gat.updatePValues( annotator_results, options.pvalue_method )
+        GatEngine.updatePValues( annotator_results, options.pvalue_method )
 
     ##################################################
     ## output
     IO.outputResults( annotator_results, 
                       options, 
-                      gat.AnnotatorResultExtended.headers,
+                      GatEngine.AnnotatorResultExtended.headers,
                       description_header, 
                       description_width,
                       descriptions )

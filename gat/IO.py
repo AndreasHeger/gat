@@ -5,7 +5,9 @@ import gat.IOTools as IOTools
 import gat.Experiment as E
 import gat.Stats as Stats
 import numpy
-import csegmentlist
+
+import GatSegmentList
+import GatEngine
 
 try:
     import matplotlib.pyplot as plt
@@ -31,7 +33,7 @@ def dumpBed( coll, section, options  ):
 
 def readSegmentList( label, filenames, options, enable_split_tracks = False ):
     # read one or more segment files
-    results = gat.IntervalCollection( name = label )
+    results = GatEngine.IntervalCollection( name = label )
     E.info( "%s: reading tracks from %i files" % (label, len(filenames)))
     results.load( filenames, split_tracks = enable_split_tracks )
     E.info( "%s: read %i tracks from %i files" % (label, len(results), len(filenames)))
@@ -92,7 +94,7 @@ def buildSegments( options ):
     if options.isochore_files:
         
         # read one or more isochore files
-        isochores = gat.IntervalCollection( name = "isochores" )
+        isochores = GatEngine.IntervalCollection( name = "isochores" )
         E.info( "%s: reading isochores from %i files" % ("isochores", len(options.isochore_files)))
         isochores.load( options.isochore_files )
         dumpStats( isochores, "stats_isochores_raw", options )
@@ -283,14 +285,14 @@ class SegmentsSummary:
         self.all_nucleotides = segments.sum()
 
         # build segments overlapping workspace
-        segments_overlapping_workspace = csegmentlist.SegmentList( clone = segments )
+        segments_overlapping_workspace = GatSegmentList.SegmentList( clone = segments )
         segments_overlapping_workspace.filter( workspace )
 
         # build segments truncated by workspace
-        truncated_segments = csegmentlist.SegmentList( clone = segments_overlapping_workspace )
+        truncated_segments = GatSegmentList.SegmentList( clone = segments_overlapping_workspace )
         truncated_segments.intersect( workspace )
 
-        segments_extending_workspace = csegmentlist.SegmentList( clone = segments )
+        segments_extending_workspace = GatSegmentList.SegmentList( clone = segments )
         segments_extending_workspace.subtract( truncated_segments )
 
         # compute numbers
@@ -376,7 +378,7 @@ def outputResults( results,
     ## compute global fdr
     ##################################################
     E.info( "computing FDR statistics" )
-    qvalues = gat.getQValues( pvalues, 
+    qvalues = GatEngine.getQValues( pvalues, 
                               method = options.qvalue_method,
                               vlambda = options.qvalue_lambda,
                               pi0_method = options.qvalue_pi0_method )
@@ -504,7 +506,7 @@ def plotResults( results, options ):
         plt.legend()
 
         # hist, bins = numpy.histogram( \
-        #     [r.pvalue for r in gat.iterator_results(annotator_results) ],
+        #     [r.pvalue for r in GatEngine.iterator_results(annotator_results) ],
         #     bins = 20 )
         # plt.plot( bins[:-1], hist, label = key )
 

@@ -128,6 +128,7 @@ def computeSample( args ):
             continue
 
         counts.sampled += 1
+        continue
         r = sampler.sample( segs[isochore], workspace[isochore] )
 
         # TODO : activate
@@ -223,7 +224,6 @@ class UnconditionalSampler:
 
         returns a list of results.
         '''
-        
         n = len(work)
 
         results = []

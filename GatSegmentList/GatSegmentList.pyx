@@ -131,6 +131,7 @@ cdef class SegmentList:
         '''
         cdef char * p
         cdef long idx, nsegments
+        cdef void * retval
 
         # initialize empty list
         self.segments = NULL
@@ -155,15 +156,16 @@ cdef class SegmentList:
                 self.allocated = 0
                 self.is_normalized = share.is_normalized
                 self.chunk_size = share.chunk_size
-                self.segments = <Segment*>mmap(NULL, 
-                                               self.nsegments * sizeof(Segment),
-                                               PROT_READ, 
-                                               MAP_SHARED, 
-                                               share.shared_fd, 
-                                               0);
-                if self.segments == MAP_FAILED:
+                retval = <Segment*>mmap(NULL, 
+                                        self.nsegments * sizeof(Segment),
+                                        PROT_READ, 
+                                        MAP_SHARED, 
+                                        share.shared_fd, 
+                                        0)
+                if retval == MAP_FAILED:
                     raise ValueError("could not read list from shared segment" )
-        
+                self.segments = <Segment *>retval
+
         # create from pickled representation
         # if a shared object is pickled, it will be re-constituted as a slave list.
         elif unreduce:
@@ -171,14 +173,19 @@ cdef class SegmentList:
             if type(unreduce[5]) == int:
                 # shared memory
                 shared_fd = unreduce[5]
-                self.segments = <Segment*>mmap(NULL, 
-                                               self.nsegments * sizeof(Segment),
-                                               PROT_READ, 
-                                               MAP_SHARED, 
-                                               shared_fd, 
-                                               0);
-                if self.segments == MAP_FAILED:
-                    raise ValueError( "could not unpickle as slave" )
+                
+                retval = mmap(NULL, 
+                              self.nsegments * sizeof(Segment),
+                              PROT_READ, 
+                              MAP_SHARED, 
+                              shared_fd, 
+                              0)
+                # TODO - get error number
+                if retval == MAP_FAILED:
+                    raise ValueError( "could not unpickle as slave - out of memory error?" )
+                
+                self.segments = <Segment *>retval
+
                 # mark memory as slave - not allocated
                 self.allocated = 0
             else:
