@@ -35,7 +35,7 @@ else:
     GatEngine_sources = ['GatEngine/GatEngine.pyx', 
                          'utils/gat_utils.c' ]
 
-name = "gat"
+name = "genomic-association-tester"
 version = "0.1"
 
 classifiers = """
