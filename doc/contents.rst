@@ -35,6 +35,7 @@ Contents
    :maxdepth: 2
 
    introduction.rst   
+   installation.rst
    tutorials.rst
    usage.rst
    fold.rst
