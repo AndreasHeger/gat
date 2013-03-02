@@ -521,7 +521,7 @@ class UnconditionalSampler:
         # rebuild non-isochore annotations and workspace
         contig_annotations = annotations.clone()
         contig_annotations.fromIsochores()
-        contig_annotations.name = "contig_" + annotations.name
+        contig_annotations.setName( "contig_" + annotations.getName())
 
         contig_workspace = workspace.clone()
         contig_workspace.fromIsochores()
@@ -597,7 +597,7 @@ class ConditionalSampler( UnconditionalSampler ):
         # rebuild non-isochore annotations and workspace
         contig_annotations = annotations.clone()
         contig_annotations.fromIsochores()
-        contig_annotations.name = "contig_" + annotations.name
+        contig_annotations.setName( "contig_" + annotations.getName() )
 
         contig_workspace = workspace.clone()
         contig_workspace.fromIsochores()

@@ -65,7 +65,7 @@ GatSegmentList = Extension(
 GatEngine = Extension(
     "GatEngine",                   # name of extension
     GatEngine_sources,
-    libraries=[ "z" ],
+    libraries=[ "z", 'rt' ],
     library_dirs = [],
     include_dirs=["./utils", 
                   "/usr/lib64/python2.6/site-packages/numpy/core/include", 

@@ -486,8 +486,10 @@ class TestIntervalCollection( GatTest):
                 self.assertEqual( self.a[t][x], b[t][x] )
 
     def testSharing( self ):
-        self.a.share()
-        
+
+        aa = self.a.clone()
+        aa.share()
+
 class TestToFromIsochores( GatTest ):
 
     def setUp( self ):

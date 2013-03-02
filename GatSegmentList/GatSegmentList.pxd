@@ -5,6 +5,8 @@ cdef extern from "string.h":
     char *strtok_r(char *str, char *delim, char **saveptr)
     char *strncpy(char *dest, char *src, size_t n)
     void *memchr(void *s, int c, size_t n)
+    char * strerror_r( int, char *, int )
+    
 
 cdef extern from "stdlib.h":
     void free(void *)
@@ -150,12 +152,13 @@ cdef class SegmentList:
     cdef Segment * segments
     cdef size_t nsegments
     cdef size_t allocated
-    cdef int is_normalized
+    cdef int flag
     cdef int chunk_size
     cdef int shared_fd
     cdef key
 
     # C and Python methods
+    cpdef isNormalized( self )
     cpdef share( self, key )
     cpdef sort( self )
     cpdef SegmentList extend( self, SegmentList other )
@@ -191,4 +194,6 @@ cdef class SegmentList:
     cdef Position overlap( self, Segment other )
     cdef SegmentList getOverlappingSegments( self, Segment other )
     cdef SegmentList truncate( self, Segment other )
+    cdef off_t toMMAP( self, void *, int, off_t )
+    cdef void fromMMAP( self )
 

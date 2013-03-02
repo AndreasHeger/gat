@@ -230,7 +230,7 @@ cdef class SegmentListSampler:
     def __init__(self, SegmentList segment_list ):
         cdef Position i, totsize
         assert len(segment_list) > 0, "sampling from empty segment list"
-        assert segment_list.is_normalized
+        assert segment_list.isNormalized()
 
         self.segment_list = segment_list
         self.nsegments = len(segment_list)
@@ -495,8 +495,8 @@ cdef class SamplerAnnotator(Sampler):
         cdef SegmentList tmp_segments
         cdef SegmentListSampler sls, temp_sampler
 
-        assert segments.is_normalized, "segment list is not normalized"
-        assert workspace.is_normalized, "workspace is not normalized"
+        assert segments.isNormalized(), "segment list is not normalized"
+        assert workspace.isNormalized(), "workspace is not normalized"
 
         unintersected_segments = SegmentList()
         intersected_segments = SegmentList()
@@ -667,7 +667,7 @@ cdef class SamplerSegments(Sampler):
         cdef SegmentListSampler sls
         cdef SegmentList sample
 
-        assert workspace.is_normalized, "workspace is not normalized"
+        assert workspace.isNormalized(), "workspace is not normalized"
 
         sample = SegmentList( allocate = len(segments) )
     
@@ -762,7 +762,7 @@ cdef class SamplerBruteForce(Sampler):
         cdef SegmentListSampler sls
         cdef SegmentList sample
     
-        assert workspace.is_normalized, "workspace is not normalized"
+        assert workspace.isNormalized(), "workspace is not normalized"
 
         sample = SegmentList( allocate = len(segments) )
 
@@ -892,7 +892,7 @@ cdef class SamplerUniform(Sampler):
                                            SegmentList segments,
                                            SegmentList workspace ):
         '''return a sampled list of segments.'''
-        assert workspace.is_normalized, "workspace is not normalized"
+        assert workspace.isNormalized(), "workspace is not normalized"
 
         cdef SegmentList sample
         cdef SegmentListSampler sls
@@ -1005,7 +1005,7 @@ cdef class SamplerShift(Sampler):
         returns: a list of sampled segments.
         '''
 
-        assert workspace.is_normalized, "workspace is not normalized"
+        assert workspace.isNormalized(), "workspace is not normalized"
 
         cdef Segment segment
         cdef SegmentList sample, working_segments
@@ -1125,7 +1125,7 @@ cdef class SamplerLocalPermutation(Sampler):
         returns: a list of sampled segments.
         '''
 
-        assert workspace.is_normalized, "workspace is not normalized"
+        assert workspace.isNormalized(), "workspace is not normalized"
 
         cdef Segment segment
         cdef SegmentList working_segments
@@ -1240,7 +1240,7 @@ cdef class SamplerGlobalPermutation(Sampler):
         returns: a list of sampled segments.
         '''
 
-        assert workspace.is_normalized, "workspace is not normalized"
+        assert workspace.isNormalized(), "workspace is not normalized"
 
         cdef Segment segment
         cdef SegmentList working_segments, working_workspace
@@ -2630,15 +2630,30 @@ class IntervalDictionary( object ):
 #####################################################################
 ## 
 #####################################################################
-class IntervalCollection(object):
+cdef class IntervalCollection(object):
     '''a collection of intervals.
 
     Intervals (objects of type :class:`SegmentList`) are organized
     in hierarchical dictionary first by track and then by isochore.
     '''
 
-    def __init__(self, name ):
+
+    def __init__(self, name = None, unreduce = None ):
         self.intervals = collections.defaultdict( IntervalDictionary )
+        self.name = name
+        self.shared_fd = -1
+        if unreduce:
+            ( self.name, self.intervals ) = unreduce
+            # shared_fd remains at -1 - marks object as slave
+
+    def __reduce__(self):
+        return (buildIntervalCollection, (self.name, 
+                                          self.intervals ))
+
+    def getName( self ):
+        return self.name
+
+    def setName( self, name ):
         self.name = name
 
     def load( self, filenames, split_tracks = False ):
@@ -2843,14 +2858,97 @@ class IntervalCollection(object):
         return new
 
     def share( self ):
-        '''setup collection for sharing.'''
-        for track, vv in self.intervals.iteritems():
-            vv.share( self.name + "-" + track )
+        '''setup collection for sharing.
+        
+        All contents are shared into a single memory mapped
+        file.
+        '''
+        # determine size off memory required
+        cdef off_t nbytes = self.counts() * sizeof( Segment )
+
+        # open file in shared memory
+        cdef int fd
+        key = "/" + self.name
+        fd = shm_open( key,
+                       O_CREAT | O_RDWR, 
+                       S_IRUSR | S_IWUSR)
+        if fd == -1:
+            error = errno
+            raise OSError( "could not create shared memory at %s; ERRNO=%i" % (key, error ))
+
+        # save file descriptor
+        self.shared_fd = fd
+        if ftruncate(fd, nbytes) == -1:
+            error = errno
+            raise OSError( "could not resize memory at %s; ERRNO=%i" % (key, error) )
+        
+        print 'setup, shared_fd', self.name, self.shared_fd
+        # setup memory map
+        cdef void * mm
+        mm = mmap(NULL, nbytes,
+                  PROT_READ | PROT_WRITE, 
+                  MAP_SHARED, 
+                  fd, 
+                  0);
+        
+        if mm == MAP_FAILED:
+            raise ValueError("could not create memory mapped file" )
+
+        # copy all segment lists to shared memory
+        cdef off_t offset = 0
+        cdef SegmentList segmentlist
+        for track,v in self.intervals.iteritems():
+            for contig, segmentlist in v.iteritems():
+                offset = segmentlist.toMMAP( mm, 
+                                             fd, 
+                                             offset )
+        
+    def __dealloc__(self):
+        
+        cdef SegmentList segmentlist
+        cdef int error
+
+        if self.shared_fd != -1:
+            # if IntervalCollection is destroyed that has
+            # used memory mapped SegmentLists, the 
+            # SegmentLists are moved back to private
+            # memory.
+            # This is potentially unnecessary copying
+            # if all SegmentLists are subsequently destroyed
+            # but necessary if there the SegmentLists are
+            # referenced outside the IntervalCollection.
+            for track,v in self.intervals.iteritems():
+                for contig, segmentlist in v.iteritems():
+                    segmentlist.fromMMAP()
+
+            # disconnect from mmap
+            # munmap( self.mmap, 
+            #        self.mmap_bytes)
+
+            key = "/" + self.name
+            fd = shm_unlink( key )
+            error = errno
+            if fd == -1:
+                raise OSError( "could not unlink shared memory : ERRNO=%i" % error )
 
     def unshare( self ):
         '''revert sharing.'''
-        for track, vv in self.intervals.iteritems():
-            vv.unshare()
+        assert self.shared_fd != -1, "unsharing shared IntervalCollection"
+        cdef SegmentList segmentlist
+
+        for track, v in self.intervals.iteritems():
+            for conting, segmentlist in v.iteritems():
+                segmentlist.fromMMAP()
+
+        # disconnect from mmap
+        # munmap( self.mmap, 
+        #        self.mmap_bytes)
+                
+        key = "/" + self.name
+        fd = shm_unlink( key )
+        error = errno
+        if fd == -1:
+            raise OSError( "could not unlink shared memory : ERRNO=%i" % error )
 
     @property
     def tracks(self): return self.intervals.keys()
@@ -2871,7 +2969,8 @@ class IntervalCollection(object):
         return key in self.intervals
 
     def __str__(self):
-        return str( self.intervals )
+        return "%s:%s" % (self.name,
+                          ",".join( ["%s:%s" % (x,y) for x,y in self.intervals.iteritems()]))
 
     def iteritems(self):
         return self.intervals.iteritems()
@@ -2890,6 +2989,10 @@ class IntervalCollection(object):
                          "%i" % overlap,
                          "%i" % length,
                          "%f" % (float(overlap) / length)) ) + "\n" )
+
+def buildIntervalCollection( *args ):
+    '''unpickling - return a rebuilt SamplerShift object.'''
+    return IntervalCollection( unreduce = args )
 
 #####################################################################
 #####################################################################
