@@ -147,9 +147,11 @@ def applyIsochores( segments, annotations, workspaces,
 
     if isochores:
         # intersect isochores and workspaces, segments and annotations
+        # workspace and annotations are truncated
+        # with segments it is optional.
         E.info( "adding isochores to workspace" )
-        workspaces.toIsochores( isochores, truncate = options.truncate_segments_to_workspace )
-        annotations.toIsochores( isochores, truncate = options.truncate_segments_to_workspace )
+        workspaces.toIsochores( isochores, truncate = True )
+        annotations.toIsochores( isochores, truncate = True )
         segments.toIsochores( isochores, truncate = options.truncate_segments_to_workspace )
         
         if workspaces.sum() == 0:
@@ -283,7 +285,7 @@ class SegmentsSummary:
 
         self.all_segments = len(segments)
         self.all_nucleotides = segments.sum()
-
+        
         # build segments overlapping workspace
         segments_overlapping_workspace = GatSegmentList.SegmentList( clone = segments )
         segments_overlapping_workspace.filter( workspace )

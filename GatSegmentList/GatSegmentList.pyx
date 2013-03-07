@@ -193,8 +193,10 @@ cdef class SegmentList:
 
                 self.segments = <Segment *>retval
 
-                # mark memory as slave - not allocated
+                # mark memory as slave - nothing allocated and no shared_fd
                 self.allocated = 0
+                self.shared_fd = -1
+
             else:
                 p = PyString_AsString(unreduce[5])
                 self.segments = <Segment*>malloc( self.nsegments * sizeof( Segment ) )
@@ -298,7 +300,7 @@ cdef class SegmentList:
         self.segments = <Segment *>p
 
     def unshare( self ):
-        '''
+        '''take ownership of shared data.
         '''
         cdef int fd
         
@@ -1373,7 +1375,7 @@ cdef class SegmentList:
 
     def __dealloc__(self):
         cdef int fd
-
+        
         if self.segments != NULL:
             # unshared memory
             if self.allocated > 0:
@@ -1383,10 +1385,10 @@ cdef class SegmentList:
                 munmap( self.segments, 
                         self.nsegments * sizeof(Segment))
         
-        if self.shared_fd != -1:
-            fd = shm_unlink( self.key )
-            if fd == -1:
-                raise OSError( "could not unlink shared memory" )
+        # if self.shared_fd != -1:
+        #     fd = shm_unlink( self.key )
+        #     if fd == -1:
+        #         raise OSError( "could not unlink shared memory" )
 
     def __str__(self):
         return str(self.asList())

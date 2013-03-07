@@ -12,7 +12,7 @@ import multiprocessing.pool
 
 def readFromBedOld( filenames, name = "track" ):
     '''read Segment Lists from one or more bed files.
-
+ 
     Segment lists are grouped by *contig* and *track*.
     
     If no track is given, the *name* attribute is taken.
@@ -586,6 +586,7 @@ def run( segments,
                     ref = reference[track][annotation]
                 else:
                     ref = None
+                
                 annotator_results.append( GatEngine.AnnotatorResultExtended( \
                         track = track,
                         annotation = annotation,

@@ -2534,6 +2534,9 @@ class IntervalDictionary( object ):
 
     def __len__(self): return len(self.intervals)
 
+    def __str__(self):
+        return ";".join( ["%s:%i,%i" % (x, len(y), y.sum()) for x,y in self.intervals.items()])
+
     def __delitem__(self,key): del self.intervals[key]
 
     def keys(self): return self.intervals.keys()
@@ -2855,6 +2858,9 @@ class IntervalCollection(object):
 
     def __contains__(self, key ):
         return key in self.intervals
+
+    def __str__(self):
+        return str( self.intervals )
 
     def iteritems(self):
         return self.intervals.iteritems()
