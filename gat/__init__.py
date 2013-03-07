@@ -131,7 +131,7 @@ def computeSample( args ):
 
         counts.sampled += 1
         r = sampler.sample( segs[isochore], workspace[isochore] )
-
+   
         # TODO : activate
         # self.outputSampleStats( sample_id, isochore, r )
 
@@ -159,6 +159,7 @@ def computeSample( args ):
                              contig_annotations[annotation][contig],
                              contig_workspace[contig])
                     for contig in sample.keys() ] )
+
 
     E.debug("track=%s, sample=%s - completed" % (track,str(sample_id )))
 
@@ -298,12 +299,17 @@ class UnconditionalSampler:
                   ) for x in range(self.num_samples) ]
 
         if self.num_threads > 0:
+            if self.outfile_sample_metrics:
+                raise NotImplementedError( "outputting sample metrics not implemented for multi-threads, use --num-threads=0" )
+
             E.info("setting up shared data for multi-processing")
             annotations.share()
             contig_annotations.share()
             contig_workspace.share( "contig_workspace" )
             temp_segs.share( "generated_segments" )
             temp_workspace.share( "generated_workspace" )
+
+
 
         E.info( "sampling started" )
         results = self.computeSamples( work )

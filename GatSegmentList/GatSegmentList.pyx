@@ -1385,10 +1385,10 @@ cdef class SegmentList:
                 munmap( self.segments, 
                         self.nsegments * sizeof(Segment))
         
-        # if self.shared_fd != -1:
-        #     fd = shm_unlink( self.key )
-        #     if fd == -1:
-        #         raise OSError( "could not unlink shared memory" )
+        if self.shared_fd != -1:
+            fd = shm_unlink( self.key )
+            if fd == -1:
+                raise OSError( "could not unlink shared memory" )
 
     def __str__(self):
         return str(self.asList())

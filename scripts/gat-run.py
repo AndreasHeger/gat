@@ -345,7 +345,8 @@ def main( argv = None ):
                                    "workspaces", "isochores",
                                    "overlap", 
                                    "sample",
-                                   "segment_metrics"),
+                                   "segment_metrics",
+                                   "sample_metrics"),
                        help="output overlap summary stats [default=%default]."  )
 
     parser.add_option( "--output-bed", dest="output_bed", type="choice", action="append",

@@ -361,6 +361,7 @@ def outputMetrics( outfile, segments, workspace, track, section ):
                       ):
         values = [ getattr( x, attribute ) for x in stats_per_isochore ]
         outfile.write("%s\t%s\t%s\t%s\n" % (track, section, attribute, Stats.Summary( values )) )
+
     outfile.flush()
 
 def outputResults( results, 
