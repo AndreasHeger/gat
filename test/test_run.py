@@ -38,8 +38,9 @@ class TestRunning( unittest.TestCase ):
         self.workspace_generator = GatEngine.UnconditionalWorkspace()
         
         with open( 'data/output.tsv', 'r' ) as inf:
-            self.reference_data = [x.split("\t") for x in inf.readlines()[1:]]
+            self.reference_data = [x[:-1].split("\t") for x in inf.readlines()[1:]]
             
+        print self.reference_data
 
     def testNoMultiprocessing( self ):
 

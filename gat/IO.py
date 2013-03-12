@@ -42,6 +42,20 @@ def readSegmentList( label, filenames, options, enable_split_tracks = False ):
     dumpStats( results, "stats_%s_normed" % label, options )
     return results
 
+def readAnnotatorResults( filename ):
+    '''load annotator results from a tab-separated results table.'''
+
+    annotator_results = collections.defaultdict( dict )
+
+    with IOTools.openFile(filename, "r") as infile:
+        for line in infile:
+            if line.startswith("#"): continue
+            if line.startswith("track"): continue
+            r = GatEngine.DummyAnnotatorResult._fromLine( line ) 
+            annotator_results[r.track][r.annotation] = r
+            
+    return annotator_results
+
 def expandGlobs( infiles ):
     return IOTools.flatten( [ glob.glob( x ) for x in infiles ] )
 
