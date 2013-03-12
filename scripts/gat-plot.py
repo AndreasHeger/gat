@@ -66,6 +66,7 @@ import numpy
 import gat
 import gat.Experiment as E
 import gat.IOTools as IOTools
+import gat.IO as IO
 
 try:
     import matplotlib.pyplot as plt
@@ -103,20 +104,6 @@ class DummyAnnotatorResult:
                            self.format_fold % self.fold,
                            self.format_pvalue % self.pvalue,
                            self.format_pvalue % self.qvalue ) )
-
-def fromResults( filename ):
-    '''load annotator results from a tab-separated results table.'''
-
-    annotator_results = collections.defaultdict( dict )
-
-    with open(filename, "r") as infile:
-        for line in infile:
-            if line.startswith("#"): continue
-            if line.startswith("track"): continue
-            r = DummyAnnotatorResult._fromLine( line ) 
-            annotator_results[r.track][r.annotation] = r
-            
-    return annotator_results
 
 def buildPlotFilename( options, key ):
     filename = re.sub("%s", key, options.output_plots_pattern)
@@ -237,7 +224,7 @@ def main( argv = None ):
     ## add common options (-h/--help, ...) and parse command line 
     (options, args) = E.Start( parser, argv = argv, add_output_options = True )
 
-    annotator_results = fromResults( options.input_filename_results )
+    annotator_results = IO.readAnnotatorResults( options.input_filename_results )
     
     if "speparate-bars" in options.plots:
         plotBarplots( annotator_results, options )

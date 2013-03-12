@@ -265,9 +265,9 @@ class DummyAnnotatorResult:
         data = line[:-1].split("\t")
         x.track, x.annotation = data[:2]
         x.counter = "na"
-        x.observed, x.expected, x.lower95, x.upper95, x.stddev, x.fold, x.pvalue, x.qvalue = \
-            map(float, data[2:10] )
-        if len(data) > 10:
+        x.observed, x.expected, x.lower95, x.upper95, x.stddev, x.fold, x.l2fold, x.pvalue, x.qvalue = \
+            map(float, data[2:11] )
+        if len(data) > 11:
             (track_nsegments,
              track_size,
              track_density,
@@ -280,7 +280,7 @@ class DummyAnnotatorResult:
              percent_overlap_nsegments_track,
              percent_overlap_size_track,
              percent_overlap_nsegments_annotation,
-             percent_overlap_size_annotation) = map(float, data[10:23])
+             percent_overlap_size_annotation) = map(float, data[11:24])
             
 
         return x

@@ -278,7 +278,7 @@ def main( argv = None ):
         if not os.path.exists( options.null ):
             raise OSError( "file %s not found" % options.null )
         E.info( "reading reference results from %s" % options.null )
-        options.reference = readAnnotatorResults( options.null )
+        options.reference = IO.readAnnotatorResults( options.null )
     else:
         options.reference = None
 
@@ -289,7 +289,7 @@ def main( argv = None ):
     elif options.input_filename_results:
         # use previous results (re-computes fdr)
         E.info( "reading gat results from %s" % options.input_filename_results )
-        annotator_results = readAnnotatorResults( options.input_filename_results )
+        annotator_results = IO.readAnnotatorResults( options.input_filename_results )
 
     else:
         # do full gat analysis

@@ -1,4 +1,4 @@
-import sys, re, os, glob
+import sys, re, os, glob, collections
 
 import gat
 import gat.IOTools as IOTools
@@ -45,14 +45,14 @@ def readSegmentList( label, filenames, options, enable_split_tracks = False ):
 def readAnnotatorResults( filename ):
     '''load annotator results from a tab-separated results table.'''
 
-    annotator_results = collections.defaultdict( dict )
+    annotator_results = []
 
     with IOTools.openFile(filename, "r") as infile:
         for line in infile:
             if line.startswith("#"): continue
             if line.startswith("track"): continue
-            r = GatEngine.DummyAnnotatorResult._fromLine( line ) 
-            annotator_results[r.track][r.annotation] = r
+            r = gat.DummyAnnotatorResult._fromLine( line ) 
+            annotator_results.append( r )
             
     return annotator_results
 
