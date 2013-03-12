@@ -9,9 +9,6 @@ include INSTALL
 include KNOWN_BUGS
 include THANKS
 include distribute_setup.py
-include engine/cgat.pxd
-include segmentlist/csegmentlist.pxd
-include engine/cgat.pyx
-include segmentlist/csegmentlist.pyx
-include utils/gat_utils.h
-include utils/gat_utils.c
+include GatEngine/GatEngine.*
+include GatSegmentList/GatSegmentList.*
+include utils/gat_utils.*

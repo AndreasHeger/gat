@@ -4,3 +4,8 @@ syntax: regexp
 ^paper/
 ^tutorial/
 test/benchmark
+doc/testingSampler
+gat.egg
+^distribute
+^dist/
+^MANIFEST$

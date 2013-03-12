@@ -653,6 +653,9 @@ class TestCaching( GatTest ):
                     self.assertEqual( saved_samples[(track,x,isochore)].asList(),
                                       insamples[track][x][isochore].asList() )
 
+        if os.path.exists( "test.cache"): os.remove( "test.cache" )
+        if os.path.exists( "test.cache.idx"): os.remove( "test.cache.idx" )
+
 class TestStats( GatTest ):
 
     ntracks = 10 # 17
