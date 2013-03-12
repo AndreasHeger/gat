@@ -94,10 +94,6 @@ DEF SEG_NORMALIZED = 1
 DEF SEG_SHARED = 2
 DEF SEG_SLAVE = 4
 
-@cython.profile(False)
-cdef inline int isNormalized( int f ):
-    return f & SEG_NORMALIZED
-
 cdef class SegmentList:
     '''list of segments.
 
@@ -279,9 +275,6 @@ cdef class SegmentList:
                                         self.key,
                                         data) )
 
-    cpdef isNormalized( self ):
-        return self.flag & SEG_NORMALIZED
-
     cpdef share( self, key ):
         '''share data as a memory map.
         
@@ -289,7 +282,7 @@ cdef class SegmentList:
 
         Returns file descriptor of shared memory.
         '''
-        assert isNormalized(self.flag), "sharing in non-normalized list"
+        assert self.flag & SEG_NORMALIZED, "sharing in non-normalized list"
         assert key.startswith( "/" )
         assert self.shared_fd == -1, "SegmentList already shared"
         cdef int error
@@ -482,12 +475,12 @@ cdef class SegmentList:
     cpdef trim_ends( self, Position pos, Position size, int forward ):
         '''trim segment list by removing *size* nucleotides from
         the segment that includes *pos*.
-
+        
         The flag *forward* gives the direction.
         '''
         if self.nsegments == 0: return
 
-        assert isNormalized(self.flag), "trimming in non-normalized list"
+        assert self.flag & SEG_NORMALIZED, "trimming in non-normalized list"
 
         cdef int idx
         cdef Position l
@@ -575,7 +568,7 @@ cdef class SegmentList:
         '''
         if self.nsegments == 0: return
 
-        assert isNormalized(self.flag), "trimming in non-normalized list"
+        assert self.flag & SEG_NORMALIZED, "trimming in non-normalized list"
 
         cdef int idx
         cdef PositionDifference l
@@ -786,12 +779,14 @@ cdef class SegmentList:
         or after which *other* should be inserted to keep
         the sort order.
 
-        The function returns -1, nsegments if other
-        is before the first or after the last element, respectively.
+        This method does not check if the segment list is normalized. To
+        do this check, call getInsertionPoint().
 
+        The function returns -1 if other is before the first element or the
+        segment list is empty.
+        The function returns nsegments if other is after the last element.
         '''
         cdef int idx
-        assert isNormalized(self.flag), "searching in non-normalized list"
         if self.nsegments == 0: return -1
 
         # avoid out of range searches
@@ -814,9 +809,13 @@ cdef class SegmentList:
             return idx
 
     def getInsertionPoint( self, start, end ):
+        assert self.flag & SEG_NORMALIZED, "searching in non-normalized list"
         return self._getInsertionPoint( Segment( start, end ) )
 
     property isNormalized:
+        def __get__(self): return self.flag & SEG_NORMALIZED
+
+    property statusflag:
         def __get__(self): return self.flag
 
     property isEmpty:
@@ -842,6 +841,7 @@ cdef class SegmentList:
     cdef Position overlap( self, Segment other ):
         '''return the size of intersection between
            segment list and Segment other'''
+        assert self.flag & SEG_NORMALIZED, "non-normalized segment list"
 
         cdef int idx
         idx = self._getInsertionPoint( other )
@@ -863,6 +863,7 @@ cdef class SegmentList:
         '''return the segments overlapping
            segment list and Segment other'''
 
+        assert self.flag & SEG_NORMALIZED, "non-normalized segment list"
         cdef int idx
         idx = self._getInsertionPoint( other )
 
@@ -897,8 +898,8 @@ cdef class SegmentList:
     cpdef Position overlapWithSegments( self, SegmentList other ):
         '''return the number of nucleotides overlapping between this and *other*.'''
 
-        assert isNormalized(self.flag), "intersection from non-normalized list"
-        assert isNormalized(other.flag), "intersection with non-normalized list"
+        assert self.flag & SEG_NORMALIZED, "intersection from non-normalized list"
+        assert other.flag & SEG_NORMALIZED, "intersection with non-normalized list"
 
         # avoid self-self comparison
         if other.segments == self.segments: return self.sum()
@@ -952,8 +953,8 @@ cdef class SegmentList:
         an overlap is counted only if the midpoint of an interval overlaps any interval in ``other``.
         '''
 
-        assert isNormalized(self.flag), "intersection from non-normalized list"
-        assert isNormalized(other.flag), "intersection with non-normalized list"
+        assert self.flag & SEG_NORMALIZED, "intersection from non-normalized list"
+        assert other.flag & SEG_NORMALIZED, "intersection with non-normalized list"
 
         # avoid self-self comparison
         if other.segments == self.segments: return self.sum()
@@ -1049,8 +1050,8 @@ cdef class SegmentList:
         Both this and other are assumed to have been normalized.
 
         '''
-        assert isNormalized(self.flag), "subtraction of a non-normalized list"
-        assert isNormalized(other.flag), "subtraction with non-normalized list"
+        assert self.flag & SEG_NORMALIZED, "subtraction of a non-normalized list"
+        assert other.flag & SEG_NORMALIZED, "subtraction with non-normalized list"
 
         # if self-self comparison, clear all residues
         if other.segments == self.segments: 
@@ -1312,8 +1313,8 @@ cdef class SegmentList:
         will be ``[(0,10), (10,20)]`` and not ``[(0,20)]``.
 
         '''
-        assert isNormalized(self.flag), "intersection of a non-normalized list"
-        assert isNormalized(other.flag), "intersection with non-normalized list"
+        assert self.flag & SEG_NORMALIZED, "intersection of a non-normalized list"
+        assert other.flag & SEG_NORMALIZED, "intersection with non-normalized list"
 
         # avoid self-self comparison
         if other.segments == self.segments: return self
@@ -1444,13 +1445,13 @@ cdef class SegmentList:
 
     cpdef Position max( self ):
         '''return maximum coordinate.'''
-        assert isNormalized(self.flag), "maximum from non-normalized list"
+        assert self.flag & SEG_NORMALIZED, "maximum from non-normalized list"
         if self.nsegments == 0: return 0
         return self.segments[self.nsegments - 1].end
 
     cpdef Position min( self ):
         '''return minimum coordinate.'''
-        assert isNormalized(self.flag), "minimum from non-normalized list"
+        assert self.flag & SEG_NORMALIZED, "minimum from non-normalized list"
         if self.nsegments == 0: return 0
         return self.segments[0].start
 

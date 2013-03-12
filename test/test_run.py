@@ -13,7 +13,7 @@ class TestRunning( unittest.TestCase ):
     '''test running gat in various modes.
     '''
 
-    sample_size = 10
+    sample_size = 100
 
     def setUp( self ):
 
@@ -23,7 +23,7 @@ class TestRunning( unittest.TestCase ):
 
         options.segment_files = ['data/segments.bed.gz']
         options.annotation_files = ['data/annotations.bed.gz']
-        options.workspace_files = ['data/contigs.bed.gz' ]
+        options.workspace_files = ['data/workspace.bed.gz' ]
 
         self.segments, self.annotations, workspaces, isochores = gat.IO.buildSegments( options )
         self.workspace = gat.IO.applyIsochores( self.segments, 
@@ -37,6 +37,10 @@ class TestRunning( unittest.TestCase ):
         self.counters = [GatEngine.CounterNucleotideOverlap()]
         self.workspace_generator = GatEngine.UnconditionalWorkspace()
         
+        with open( 'data/output.tsv', 'r' ) as inf:
+            self.reference_data = [x.split("\t") for x in inf.readlines()[1:]]
+            
+
     def testNoMultiprocessing( self ):
 
         annotator_results = gat.run( self.segments,

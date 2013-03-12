@@ -158,7 +158,6 @@ cdef class SegmentList:
     cdef key
 
     # C and Python methods
-    cpdef isNormalized( self )
     cpdef share( self, key )
     cpdef sort( self )
     cpdef SegmentList extend( self, SegmentList other )

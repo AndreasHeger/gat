@@ -192,12 +192,10 @@ class TestSegmentList( GatTest ):
         '''check insertion point for unnormalized segment lists.'''
         ss = [ (x, x + 20 ) for x in range( 0, 100, 10) ]
         s = SegmentList( iter = ss,
-                             normalize = False )
+                         normalize = False )
         
         for point in xrange( 0, 100 ):
-            p = s.getInsertionPoint( point, point + 1 )
-            print point, p
-
+            self.assertRaises( AssertionError, s.getInsertionPoint, point, point + 1 )
 
     def testMergeAdjacent( self ):
         ss = [ (x, x + 100  ) for x in range( 0, 1000, 100) ]
@@ -518,9 +516,7 @@ class TestToFromIsochores( GatTest ):
         
         a = self.a.clone()
         orig = a.clone()
-
         a.fromIsochores()
-
         self.check( a, orig )
 
     def testToFromIsochores( self ):

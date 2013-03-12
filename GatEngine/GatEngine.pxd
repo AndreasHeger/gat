@@ -128,9 +128,17 @@ cdef extern from "gat_utils.h":
     int toCompressedFile( unsigned char *, size_t, FILE *)
     int fromCompressedFile( unsigned char *, size_t, FILE *)
 
-cdef class IntervalCollection:
-
-    cdef int shared_fd
-    cdef intervals 
+cdef class IntervalContainer:
+    cdef int shared_fd     	   
+    cdef str shared_fn
+    cdef intervals
     cdef str name
+ 
+cdef class IntervalDictionary(IntervalContainer):
+    pass
 
+cdef class IntervalCollection(IntervalContainer):
+    pass
+
+
+    

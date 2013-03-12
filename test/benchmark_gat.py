@@ -79,12 +79,16 @@ def getPlotFilename( s, section = None ):
     else:
         filename = "%s.png" % re.sub( "[ ()]", "", s )
     filename = re.sub( "__main__", "", filename )
-    return filename
+    return os.path.join( 'benchmark', filename)
 
 def getFilename( s ):
+    '''return filename for benchmark data.
+
+    Benchmark data is stored in the _benchmark_ directory.
+    '''
     filename = "%s" % re.sub( "[ ()]", "", s )
     filename = re.sub( "__main__", "", filename )
-    return filename
+    return os.path.join( 'benchmark', filename)
 
 class GatTest( unittest.TestCase ):
     def shortDescription( self ): return None
@@ -734,11 +738,6 @@ class TestSegmentSamplingSamplerAnnotator( GatTest ):
 
         self.assertEqual( self.ntests, len(samples) )
 
-        self.checkSanity( samples, segments, workspace )
-        
-        if self.check_length:
-            self.checkLength( samples, segments, workspace )
-
         # compute expected coverage
         # check if coverage is uniform over workspace
         # expected coverage
@@ -757,7 +756,7 @@ class TestSegmentSamplingSamplerAnnotator( GatTest ):
         expected = len(samples) * segment_overlap / float( workspace.sum())
         #   float(workspace.sum()) / (workspace.sum() + segments.sum()  * len(workspace) )
 
-        # compute actual coverage counts
+        # compute actual coverage counts and plot
         counts_within_workspace = getWorkspaceCounts( workspace, 
                                                       segments,
                                                       samples,
@@ -769,6 +768,11 @@ class TestSegmentSamplingSamplerAnnotator( GatTest ):
 
         # check if each sample has the correct number of nucleotides  
         sums = [x.sum() for x in samples ]
+
+        self.checkSanity( samples, segments, workspace )
+        
+        if self.check_length:
+            self.checkLength( samples, segments, workspace )
 
         if self.check_nucleotides:
             for x, s in enumerate(samples):
@@ -1369,7 +1373,7 @@ class TestStatsSNPSampling( GatTest ):
         plt.xlabel( "simulated - pvalue" )
         plt.ylabel( "distribution - pvalue" )
         plt.plot( anno_pvalue, anno_pvalue, "b" )
-        plt.savefig( "test_%s.png" % re.sub( "[ ()]", "", str(self) ))
+        plt.savefig( os.path.join( 'benchmark', "test_%s.png" % re.sub( "[ ()]", "", str(self) )))
 
     def testSingleSNP( self ):
 
@@ -1984,7 +1988,7 @@ class TestStatsTheAnnotator( TestStatsGat ):
             except ZeroDivisionError:
                 fold = 0.0
 
-            r = GatEngine.DummyAnnotatorResult()
+            r = gat.DummyAnnotatorResult()
             r.track = "default"
             r.observed = observed * segment_size
             r.expected = expected * segment_size
