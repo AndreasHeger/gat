@@ -2,6 +2,22 @@
 Installation
 ============
 
+Requirements
+============
+
+GAT has been written in `python <http://www.python.org>`_ and has been
+tested with the following python versions:
+
+   * python 2.7.3
+   * python 2.6.8
+
+GAT requires the following modules to be installed at installation:
+
+   * `numpy <http://www.numpy.org/>`_ 1.4 or greater
+   * `cython <http://www.cython.org/>`_ 0.14 or greater
+
+The plotting and unit test modules also require scipy and matplotlib.
+
 Installing from PyPi
 ====================
 
@@ -36,23 +52,12 @@ To install, type::
 
 in the package directory.
 
-Requirements
-============
-
-GAT requires the following packages:
-
-   * `numpy <http://www.numpy.org/>`_ 1.7 or greater
-   * `cython <http://www.cython.org/>`_ 0.18 or greater
-
-The plotting and unit test modules also require scipy and matplotlib.
-
-GAT has been tested with the following python versions:
-
-   * python 2.7.3
-   * python 2.6.8
 
 Release History
 ===============
 
+0.2
+  * First release
+
 0.1 
-   * First release
+   * Alpha release

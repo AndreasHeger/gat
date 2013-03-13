@@ -11,6 +11,7 @@ Genomic annotation tool
 import os
 import sys
 import glob
+import numpy
 
 from distribute_setup import use_setuptools
 use_setuptools()
@@ -35,8 +36,8 @@ else:
     GatEngine_sources = ['GatEngine/GatEngine.pyx', 
                          'utils/gat_utils.c' ]
 
-name = "genomic-association-tester"
-version = "0.1"
+name = "gat"
+version = "0.2"
 
 classifiers = """
 Development Status :: 4 - Beta
@@ -57,8 +58,7 @@ GatSegmentList = Extension(
    GatSegmentList_sources,
    libraries=[ "z", 'rt' ],
    library_dirs = [],
-   include_dirs=['./utils', 
-                 "/usr/lib64/python2.6/site-packages/numpy/core/include", '.'],
+   include_dirs=['./utils', numpy.get_include() ],
    language="c",
    )
 
@@ -69,8 +69,7 @@ GatEngine = Extension(
     library_dirs = [],
     include_dirs=["./utils", 
                   "/usr/lib64/python2.6/site-packages/numpy/core/include", 
-                  'GatSegmentList', 
-                  '.'],
+                  numpy.get_include() ],
     language="c",
     )
 

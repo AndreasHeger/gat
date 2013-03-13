@@ -8,7 +8,10 @@ This tutorial demonstrates the usage of *gat* with
 a simple example - where does a transcription factor bind in
 the genome?
 
-This tutorial uses the SRF data set described in `Valouev et al. (2008)`_.
+This tutorial uses the SRF data set described in `Valouev et
+al. (2008)`_. The data sets used in this tutorial are available at:
+
+http://www.cgat.org/~andreas/documentation/gat-examples/TutorialGenomicAnnotation.tar.gz
 
 The data is in :file:`srf.hg19.bed`. This :term:`bed` formatted file
 contains 556 high confidence peaks from the analysis of `Valouev et al. (2008)`_

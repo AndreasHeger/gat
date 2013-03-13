@@ -6,6 +6,10 @@ This tutorial demonstrates the use of *gat* for functional annotation.
 The tutorial follows the analysis in the `MacLean et al. (2010)`_
 paper introducing `GREAT`_.
 
+The data sets used in this tutorial are available at:
+
+http://www.cgat.org/~andreas/documentation/gat-examples/TutorialFunctionalAnnotation.tar.gz
+
 We are interested if the binding sites of SRF predicted from
 our ChIP-Seq experiment are enriched in the regulatory domains
 of genes of specific functions. 
