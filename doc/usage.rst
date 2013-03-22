@@ -175,17 +175,21 @@ Counters describe the measure of association that is tested. Counters
 are selected with the command line option ``--counter``. Available 
 counters are:
 
-   1. ``nucleotide-overlap``: number of bases overlapping [default]
-   2. ``segment-overlap``: number of intervals intervals in the
+1. ``nucleotide-overlap``: number of bases overlapping [default]
+
+2. ``segment-overlap``: number of intervals intervals in the
    :term:`segments of interest` overlapping :term:`annotations`. A single
    base-pair overlap is sufficient.
-   3. ``segment-mid-overlap``: number of intervals in the
+
+3. ``segment-mid-overlap``: number of intervals in the
    :term:`segments of interest` overlapping at their midpoint
    :term:`annotations`.
-   4. ``annotations-overlap``: number of intervals in the
+
+4. ``annotations-overlap``: number of intervals in the
    :term:`annotations` overlapping :term:`segments of intereset`. A single
    base-pair overlap is sufficient.
-   5. ``segment-mid-overlap``: number of intervals in the
+
+5. ``segment-mid-overlap``: number of intervals in the
    :term:`annotations` overlapping at their midpoint 
    :term:`segments of intereset`
    
@@ -238,6 +242,14 @@ If the option ``--counts-file`` is given, *gat* will skip the sampling
 and counting step completely and read observed counts from 
 ``--count-file=counts_filename``.
 
+Using multiple CPU/cores
+========================
+
+GAT can make use of several available CPU/cores if available. Use
+the ``--num-threads=#`` option in order to specify how many CPU/cores
+GAT will make use of. The default ``--num-threads=0`` means that GAT
+will not use any multiprocessing.
+
 Outputting intermediate results
 -------------------------------
 
@@ -247,7 +259,8 @@ a ``%s`` as a wild card character. The wild card is replaced with
 various keys. Note that the amount of data output can be substantial.
 
 ``--output-counts-pattern``
-   output counts. One file is created for each counter.
+   output counts. One file is created for each counter. Counts output files
+   are required for :ref:`gat-compare`.   
 
 ``--output-plots-pattern``
    create plots (requires matplotlib_). One plot for each annotation
@@ -260,6 +273,8 @@ various keys. Note that the amount of data output can be substantial.
 
 Other tools
 ===========
+
+.. _gat-compare:
 
 gat-compare
 -----------
@@ -281,10 +296,14 @@ between two cell lines, execute::
 
    gat-compare.py CD4.nucleotide-overlap.counts.tsv.gz CD14.nucleotide-overlap.counts.tsv.gz
 
+.. _gat-plot:
+
 gat-plot
 --------
 
 Plot gat results.
+
+.. _gat-great:
 
 gat-great
 ---------
