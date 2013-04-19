@@ -998,9 +998,15 @@ cdef class SegmentList:
 
         return noverlap
 
-    def getLengthDistribution( self, bucket_size, nbuckets ):
-        '''build histogram of segments lengths.'''
-        assert bucket_size > 0, 'bucket_size is 0'
+    def getLengthDistribution( self, bucket_size = 0, nbuckets = 100000):
+        '''build histogram of segments lengths.
+        
+        If bucket_size is 0, the bucket size will be determined automatically
+        to accomodate the largest segment.
+
+        returns a histogram with the bucket_size.
+        '''
+        assert bucket_size >= 0, 'bucket_size is 0'
         assert nbuckets > 0, 'nbuckets is 0'
 
         cdef int idx, i
@@ -1008,19 +1014,24 @@ cdef class SegmentList:
         cdef Segment s
         cdef numpy.ndarray[DTYPE_INT_t, ndim=1] histogram
         histogram = numpy.zeros( nbuckets, dtype=numpy.int )
+        if bucket_size == 0:
+            bucket_size = int( math.ceil( segment_length(self.largest()) / float(nbuckets)) )
+            
         for idx from 0 <= idx < self.nsegments:
             l = segment_length(self.segments[idx])
             i = <int>((l+bucket_size-1)/bucket_size)
             if i >= nbuckets:
-                raise ValueError( "segment %i-%i too large: %i >= %i, increase nbuckets or bucket_size such that nbuckets * bucket_size > %i" %\
+                raise ValueError( "segment %i-%i too large: %i >= %i, increase nbuckets (%i) or bucket_size (%i) such that nbuckets * bucket_size > %i" %\
                                       ( self.segments[idx].start,
                                         self.segments[idx].end,
                                         l, 
                                         nbuckets * bucket_size,
+                                        nbuckets,
+                                        bucket_size,
                                         l
                                         ) )
             histogram[i] += 1
-        return histogram
+        return histogram, bucket_size
 
     cdef SegmentList truncate( self, Segment other ):
         '''truncate Segment list to range given by segment *other*.'''
@@ -1442,6 +1453,25 @@ cdef class SegmentList:
             s = self.segments[idx]
             total += s.end - s.start
         return total
+
+    def largest( self ):
+        '''return largest segment.
+
+        If there are multiple segments of the same size, the first
+        will be returned.
+        '''
+        if self.nsegments == 0: raise ValueError( "largest segment from empty list" )
+        cdef int idx
+        cdef int max_idx = 0
+        cdef Position max_value = 0
+        cdef Position l
+        total = 0
+        for idx from 0 <= idx < self.nsegments:
+            l = segment_length( self.segments[idx] )
+            if l > max_value:
+                max_idx = idx
+                max_value = l
+        return self.segments[max_idx]
 
     cpdef Position max( self ):
         '''return maximum coordinate.'''

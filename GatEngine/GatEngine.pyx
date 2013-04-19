@@ -519,10 +519,10 @@ cdef class SamplerAnnotator(Sampler):
         sampled_segments = SegmentList( allocate = int(1.1 * len(segments)) )
 
         # build a segment length histogram
-        histogram = working_segments.getLengthDistribution( self.bucket_size,
-                                                            self.nbuckets )
+        histogram, bucket_size = working_segments.getLengthDistribution( self.bucket_size,
+                                                                         self.nbuckets )
 
-        hs = HistogramSampler( histogram, self.bucket_size )
+        hs = HistogramSampler( histogram, bucket_size )
 
         # set up segment sampler
         sls = SegmentListSampler( workspace )
@@ -679,9 +679,9 @@ cdef class SamplerSegments(Sampler):
             return sample
 
         # build length histogram
-        histogram = working_segments.getLengthDistribution( self.bucket_size,
+        histogram, bucket_size = working_segments.getLengthDistribution( self.bucket_size,
                                                             self.nbuckets )
-        hs = HistogramSampler( histogram, self.bucket_size )
+        hs = HistogramSampler( histogram, bucket_size )
 
         # create segment sampler
         sls = SegmentListSampler( workspace )
@@ -774,9 +774,9 @@ cdef class SamplerBruteForce(Sampler):
             return sample
 
         # build length histogram
-        histogram = working_segments.getLengthDistribution( self.bucket_size,
-                                                            self.nbuckets )
-        hs = HistogramSampler( histogram, self.bucket_size )
+        histogram, bucket_size = working_segments.getLengthDistribution( self.bucket_size,
+                                                                         self.nbuckets )
+        hs = HistogramSampler( histogram, bucket_size )
 
         # create segment sampler
         sls = SegmentListSampler( workspace )
@@ -911,10 +911,10 @@ cdef class SamplerUniform(Sampler):
             return sample
 
         # build length histogram
-        histogram = working_segments.getLengthDistribution( self.bucket_size,
-                                                            self.nbuckets )
+        histogram, bucket_size = working_segments.getLengthDistribution( self.bucket_size,
+                                                                         self.nbuckets )
 
-        hs = HistogramSampler( histogram, self.bucket_size )
+        hs = HistogramSampler( histogram, bucket_size )
 
         sample = SegmentList( allocate = increment )
 

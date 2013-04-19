@@ -227,6 +227,12 @@ class TestSegmentList( GatTest ):
         self.assertEqual( s.sum(), 195)
         self.assertEqual( len(s), 10 )
 
+    def testLargest( self ):
+        ss = [ (x, x + x / 10 ) for x in range( 0, 1000, 100) ]
+        s = SegmentList( iter = ss, normalize = True )
+        p = s.largest()
+        self.assertEqual( p['end']-p['start'], 90)
+
     def testGetFilledSegmentsFromStart( self ):
         ss = [ (x, x + 10 ) for x in range( 0, 120, 20) ]
         s = SegmentList( iter = ss, normalize = True )

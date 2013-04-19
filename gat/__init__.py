@@ -147,7 +147,8 @@ def buildParser( usage = None ):
                             " [default=%default]" )
 
     parser.add_option( "--bucket-size", dest="bucket_size", type="int", 
-                       help="size of a bin for histogram of segment lengths [default=%default]" )
+                       help="size of a bin for histogram of segment lengths. If 0, it will be automatically"
+                            " scaled to fit nbuckets [default=%default]" )
 
     parser.add_option( "--nbuckets", dest="nbuckets", type="int", 
                        help="number of bins for histogram of segment lengths [default=%default]" )
@@ -206,7 +207,7 @@ def buildParser( usage = None ):
         sample_files = [],
         num_samples = 1000,
         nbuckets = 100000,
-        bucket_size = 1,
+        bucket_size = 0,
         counters = [],
         output_stats = [],
         output_bed = [],
@@ -320,7 +321,7 @@ def computeSample( args ):
       contig_workspace,
       counters ) = workdata
 
-    E.debug("track=%s, sample=%s - started" % (track, str(sample_id)))
+    # E.debug("track=%s, sample=%s - started" % (track, str(sample_id)))
 
     counts = Experiment.Counter()
 
@@ -400,7 +401,7 @@ def computeSample( args ):
                              contig_workspace[contig])
                     for contig in sample.keys() ] )
 
-    E.debug("track=%s, sample=%s - completed" % (track,str(sample_id )))
+    # E.debug("track=%s, sample=%s - completed" % (track,str(sample_id )))
 
     return counts_per_track
 

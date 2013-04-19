@@ -69,6 +69,7 @@ GatEngine = Extension(
     library_dirs = [],
     include_dirs=["./utils", 
                   "/usr/lib64/python2.6/site-packages/numpy/core/include", 
+                  "../GatSegmentList",
                   numpy.get_include() ],
     language="c",
     )
