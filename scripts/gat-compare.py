@@ -82,6 +82,7 @@ import gat
 import gat.Experiment as E
 import gat.IOTools as IOTools
 import gat.IO as IO
+import GatEngine
 
 def main( argv = None ):
     """script main.
@@ -158,7 +159,7 @@ def main( argv = None ):
         ##################################################
         if options.pvalue_method != "empirical":
             E.info("updating pvalues to %s" % options.pvalue_method )
-            gat.updatePValues( annotator_results, options.pvalue_method )
+            GatEngine.updatePValues( annotator_results, options.pvalue_method )
 
         ##################################################
         ##################################################
@@ -166,7 +167,7 @@ def main( argv = None ):
         ## compute global fdr
         ##################################################
         E.info( "computing FDR statistics" )
-        gat.updateQValues( annotator_results, 
+        GatEngine.updateQValues( annotator_results, 
                            method = options.qvalue_method,
                            vlambda = options.qvalue_lambda,
                            pi0_method = options.qvalue_pi0_method )
@@ -211,12 +212,12 @@ def main( argv = None ):
             sampled_delta_fold = numpy.log( fold_changes1 / fold_changes2) + delta_fold
             observed_delta_fold = 0.0 + delta_fold
 
-            result = gat.AnnotatorResult( data1.annotation, data2.annotation, 
-                                          "na",
-                                          observed_delta_fold,
-                                          sampled_delta_fold, 
-                                          reference = None,
-                                          pseudo_count = 0 )
+            result = GatEngine.AnnotatorResult( data1.annotation, data2.annotation, 
+                                                "na",
+                                                observed_delta_fold,
+                                                sampled_delta_fold, 
+                                                reference = None,
+                                                pseudo_count = 0 )
 
 
             results.append( result )
@@ -276,13 +277,13 @@ def main( argv = None ):
                 sampled_delta_fold = numpy.log( fold_changes1 / fold_changes2) + delta_fold
                 observed_delta_fold = 0.0 + delta_fold
 
-                result = gat.AnnotatorResult( track, annotation, 
-                                              "na",
-                                              observed_delta_fold,
-                                              sampled_delta_fold, 
-                                              reference = None,
-                                              pseudo_count = 0 )
-
+                result = GatEngine.AnnotatorResult( track, annotation, 
+                                                    "na",
+                                                    observed_delta_fold,
+                                                    sampled_delta_fold, 
+                                                    reference = None,
+                                                    pseudo_count = 0 )
+                
 
                 results.append( result )
 
@@ -294,7 +295,7 @@ def main( argv = None ):
             
     IO.outputResults( results, 
                       options, 
-                      gat.AnnotatorResult.headers,
+                      GatEngine.AnnotatorResult.headers,
                       description_header, 
                       description_width,
                       descriptions,
