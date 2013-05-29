@@ -39,20 +39,25 @@ Contents
    tutorials.rst
    usage.rst
    fold.rst
+   performance.rst
+   background.rst
    glossary.rst
 
-Implementation notes
+Developers' notes
 ====================
+
+The following section contains notes for developers.
 
 .. toctree::
    :maxdepth: 2
 
-   background.rst   
-   examples.rst
+   notes.rst   
    testing.rst
    simulators.rst
-   implementation.rst
-   tutorial.rst
+
+..   examples.rst
+..   implementation.rst
+..   tutorial.rst
 
 Indices and tables
 ==================
@@ -61,41 +66,41 @@ Indices and tables
 * :ref:`modindex`
 * :ref:`search`
 
-.. todo::
+.. .. todo::
 
-   * permit incremental runs
-   * caching of segment size distribution
-   * pre-compute workspace/segment intersection
-   * parallel computation of samples 
-   * profile and tune
-   * add GFF/GTF support
-   * add additional counters:
-      Distance between segment and annotation
-      1. Closest distance of segment to annotation
-      2. Closest distance of annotation to segment
-      3. Fix Segment density counter
-   * benchmarking - add diagrams for experiment setup 
-   * benchmarking - number of segment distributions
-   * compute summarry statistics on workspaces, segments and
-     annotations in order to detect excessive fragmentation.
-     Benchmark this.
+..    * permit incremental runs
+..    * caching of segment size distribution
+..    * pre-compute workspace/segment intersection
+..    * parallel computation of samples 
+..    * profile and tune
+..    * add GFF/GTF support
+..    * add additional counters:
+..       Distance between segment and annotation
+..       1. Closest distance of segment to annotation
+..       2. Closest distance of annotation to segment
+..       3. Fix Segment density counter
+..    * benchmarking - add diagrams for experiment setup 
+..    * benchmarking - number of segment distributions
+..    * compute summarry statistics on workspaces, segments and
+..      annotations in order to detect excessive fragmentation.
+..    * Benchmark this.
 
-     Summary parameters
-     Parameters are: 
-        number of segments, number of nucleotides
-        number of segments split by a boundary, nucleotides extending outside boundary
-	segment size distribution untruncated (min, max, mean, media, q1, q3)
-	segment size distributino truncated
+..    *  Summary parameters
+..    *  Parameters are: 
+..        * number of segments, number of nucleotides
+..        * number of segments split by a boundary, nucleotides extending outside boundary
+..        * segment size distribution untruncated (min, max, mean, media, q1, q3)
+..        * segment size distributino truncated
 
-     Count segments and annotations
-     Count per contig in the workspace, count per isochore
+..      Count segments and annotations
+..      Count per contig in the workspace, count per isochore
 
-     Optionally: do all of this for sampled segments
+..      Optionally: do all of this for sampled segments
 
 
-   * add galaxy interface.
-   * reorganize package structure
-   * check pip installation
-   * check requirements   
+..    * add galaxy interface.
+..    * reorganize package structure
+..    * check pip installation
+..    * check requirements   
 
   

@@ -1,4 +1,4 @@
-.. _tutorial1:
+.. _tutorial2:
 
 =============================
 Tutorial - Genomic annotation
@@ -6,7 +6,11 @@ Tutorial - Genomic annotation
 
 This tutorial demonstrates the usage of *gat* with
 a simple example - where does a transcription factor bind in
-the genome?
+the genome? 
+
+As opposed to :ref:`tutorial1` we will not be looking at the overlap
+between one set of intervals with another, but at the overlap of
+one set of intervals with multiple others.
 
 This tutorial uses the SRF data set described in `Valouev et
 al. (2008)`_. The data sets used in this tutorial are available at:
@@ -130,11 +134,11 @@ The :term:`fold` column is the fold enrichment or depletion and is
 computed as the ratio of :term:`observed` over :term:`expected`. The
 column :term:`l2fold` is the log2 of this ratio.
 
-The column :term:`pvalue` gives the empirical P-Value, i.e. in what
+The column :term:`pvalue` gives the empirical :term:`p-value`, i.e. in what
 proportion of samples was a higher enrichment or lower depletion
 found than the one that was observed.
 
-The column :term:`qvalue` lists a multiple testing corrected p-value.
+The column :term:`qvalue` lists a multiple testing corrected :term:`p-value`.
 Setting a qvalue threshold and accepting only those comparisons with a
 qvalue below that threshold corresponds to controlling the false discovery
 rate at that particular level.

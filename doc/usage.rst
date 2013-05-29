@@ -54,10 +54,10 @@ The main columns in the table are:
       the fold enrichment, given by the ratio observed / expected
    l2fold
       log2 of the fold enrichment value
-   pvalue_
-      the pvalue_ of enrichment/depletion
+   pvalue
+      the :term:`p-value` of enrichment/depletion
    qvalue
-      a multiple-testing corrected :term:`pvalue`. See 
+      a multiple-testing corrected :term:`p-value`. See 
       `multiple testing correction`_.
 
 Additionally, there are the following columns:
@@ -163,10 +163,12 @@ rich sequence. An association between genes and CHiP-Seq intervals might simply 
 to the G+C effect. Using isochores can control for this effect to some extent.
 
 Isochores split the :term:`workspace` into smaller workspaces of similar properties,
-so called *isochore workspaces*. Simulations are performed for each :term:`isochore workspaces` 
+so called :term:`isochore workspaces`. Simulations are performed for each :term:`isochore workspaces` 
 separately. At the end, results for each all isochore workspaces are aggregated.
 
 In order to add isochores, use the *--isochore-file* command line option.
+
+.. _counters:
 
 Choosing measures of association
 --------------------------------
@@ -186,12 +188,12 @@ counters are:
    :term:`annotations`.
 
 4. ``annotations-overlap``: number of intervals in the
-   :term:`annotations` overlapping :term:`segments of intereset`. A single
+   :term:`annotations` overlapping :term:`segments of interest`. A single
    base-pair overlap is sufficient.
 
 5. ``segment-mid-overlap``: number of intervals in the
    :term:`annotations` overlapping at their midpoint 
-   :term:`segments of intereset`
+   :term:`segments of interest`
    
 Multiple counters can be given. If only one counter is provided, the
 output will be to stdout. Otherwise, separate output files will be
@@ -201,8 +203,8 @@ created each counter. The filename can be controlled with the
 Changing the PValue method
 --------------------------
 
-By default, *gat* returns the empirical :term:`pvalue` based on the sampling
-procedure. The minimum :term:`pvalue` is ``1 / number of samples``.
+By default, *gat* returns the empirical :term:`p-value` based on the sampling
+procedure. The minimum :term:`p-value` is ``1 / number of samples``.
 
 Sometimes the lower bound on p-values causes methods that estimate the
 FDR to fail as the distribution of p-values is atypical. In order to
@@ -222,7 +224,7 @@ rate`_. The default is to use the Benjamini-Hochberg procedure.
 Different methods can be chosen with the ``--qvalue-method`` option.
 
 ``--qvalue-method=storey`` uses the procedure by `Storey et al. (2002)`_ to compute a
-:term:`qvalue` for each pairwise comparison. The implementation
+:term:`q-value` for each pairwise comparison. The implementation
 is in its functionality equivalent to the qvalue_ package implemented 
 in R_.
 
@@ -236,11 +238,14 @@ Caching sampling results
 If :file:`cache_filename` does not exist, samples will be saved to the
 cache after computation. If :file:`cache_filename` does already exist,
 samples will be retrieved from the cache instead of being re-computed.
-Using cached samples is useful when trying different :term:`Counters`.
+Using cached samples is useful when trying different counters 
+(see :ref:`counters`).
 
 If the option ``--counts-file`` is given, *gat* will skip the sampling
 and counting step completely and read observed counts from 
 ``--count-file=counts_filename``.
+
+.. _multiplecores:
 
 Using multiple CPU/cores
 ========================

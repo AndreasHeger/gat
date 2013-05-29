@@ -43,7 +43,7 @@ Manual coding is still the best.
 GREAT
 ======
 
-The GREAT algorithm works as follows within the :term:`gat`
+The GREAT algorithm works as follows within the GAT
 terminology. In GREAT, annotations are overlapping regulatory domains
 of genes with GO terms againts which segments of interest are tested.
 
@@ -52,7 +52,7 @@ For each annotation A:
 1. Compute total number of bases annotated with annotation A: b_A
 2. Compute total number of bases in workspace: b_W
 3. Compute fraction of 1 and 2: p_A = fraction of genome annotated
-with A = b_A / b_W
+   with A = b_A / b_W
 2. Compute number of times a segment hits a certain annotation: k_A
 3. Compute number of times a segment is in the workspace: n_S
 

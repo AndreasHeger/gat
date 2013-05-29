@@ -16,8 +16,8 @@ test this using data from the UCSC genome browser.
 Data download
 =============
 
-To obtain data for this tutorial, go to the `UCSC
-genome browser`_ and select *human* (assembly: *Mar. 2006
+To obtain data for this tutorial, go to the UCSC
+genome browser and select *human* (assembly: *Mar. 2006
 (NCBI36/hg18)*) as the species to work with. Go to the
 `Table Browser` and download the following tracks or
 tables:

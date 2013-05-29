@@ -1,4 +1,4 @@
-go_id description long_description text 
+go_id	description
 GO:0000001	mitochondrion inheritance
 GO:0000002	mitochondrial genome maintenance
 GO:0000003	reproduction

@@ -2,75 +2,6 @@
 Background
 ==========
 
-Sampling strategies
-===================
-
-Sampling creates a new set of :term:`interval` ``P``. There
-are several different strategies possible.
-
-Annotator strategy
-------------------
-
-In the original Annotator strategy, samples are created in a two step procedure. 
-First, the length of a sample segment is chosen randomly from the empirical segment 
-length distribution. Then, a random coordinate is chosen. If the
-sampled segment does not overlap with the workspace it is rejected. 
-
-Before adding the segment to the sampled set, it is truncated to 
-the workspace.
-
-If it overlaps with a previously sampled segment, the segments
-are merged. Thus, bases shared between two segments are not counted 
-twice.
-
-Sampling continues, until exactly the same number of bases overlap between
-the ``P`` and the ``W`` as do between ``S`` and ``W``.
-      	 
-Note that the length distribution of the intervals in ``P`` might be different 
-from ``S``.
-
-The length is sampled from the empirical histogram of segment sizes. The
-granularity of the histogram can be controlled by the options ``-bucket-size``
-and ``--nbuckets``. The largest segment should be smaller than ``bucket-size * nbuckets``.
-Increase either if you have large segments in your data set, but smaller
-values of ``nbuckets`` are quicker.
-
-This method is quick if the workspace is large. If it is small, 
-a large number of samples will be rejected and the procedure 
-slows down.
-
-This sampling method is compatible with both distance and overlap
-based measures of associaton. 
-
-Workspaces and isochores
-++++++++++++++++++++++++
-
-Workspaces limit the genomic space available for segments and annotations.
-Isochores split a workspace into smaller parts that permit to control for
-confounding variables like G+C content.
-
-The simplest workspace is the full genome. For some analyses it might be better 
-to limit to analysis to autosomes. 
-
-Examples for the use of isochores could be to analyze chromosomes or chromosomal arms
-separately. 
-
-If isochores are used, the length distribution and nucleotide overlaps are counted per isochore
-ensuring that the same number of nucleotides overlap each isochore in ``P`` and ``S`` and the
-length distributions per isochore are comparable. 
-
-Empirical length distribution
-+++++++++++++++++++++++++++++
-
-The empirical length distribution is created from all :term:`intervals`
-in ``S``. The full segment length is chosen even if there is partial overlap.
-Optionally, the segment can be truncated. From Gerton::
-
-   What is the best choice depends on the data. Not truncating can lead 
-   to a biased length distribution if it is expected that segments that 
-   only partially overlap the workspace have very different lengths. However, 
-   truncating can lead to spurious short segments.
-
 History
 =======
 
@@ -90,4 +21,111 @@ The differences are:
 
    * faster.
 
+.. Use of GAT in studies
+
+.. GAT has been used in the following published studies:
+
 .. _Ponjavic et al (2007): http://genome.cshlp.org/content/17/5/556.short
+.. .. _Heger at al. 
+
+Comparison to other methods
+===========================
+
+Testing for the association between genomic features is a field of
+long-standing interest in genomics and has gained considerable
+traction with the publication of large scale genomic data sets such as
+the ENCODE_ data.
+
+Generally we believe that the problem of testing for association has
+not been fully resolved and advise every genomicist to apply several
+methods. The list of tools/services below is not exhaustive:
+
+GREAT_ (`MacLean et al. (2010)`_) uses a binomial test to test if
+transcription factor binding sites are associated with regulatory
+domains of genes. GREAT_ has a convenient web interface with many
+annotations pre-loaded. Compared to GREAT_, GAT can measure depletion
+and can 
+
+GenometriCorr_ (`Favorov et al. (2012)`_) compute a variety of distance
+metrics when comparing two interval sets and then apply a set of
+statistical tests to measure association. GenomicCorr is a good
+exploratory tool to generate hypotheses about the relationships
+of two genomic sets of intervals. Compared to GenometriCorr_, GAT
+can simulate more realistic genomic scenarios, for example, segments might
+not occur in certain regions (due to mapping problems) or occur at
+reduced frequency (G+C biases). 
+
+The GSC_ (`The Encode Project Consortium (2012)`_) metric (for Genome
+Structure Correlation) is inspired by the analysis of approximately piecewise
+stationary time series . The GSC metric estimates the significance of
+an association metric by estimating the random expectation of the
+association metric using randomly chosen intervals on the genome. This
+expectation is then used to test if the observed value of the metric
+(nucleotide overlap, region overlap, ...) is higher than expected. 
+The method is described in the supplemental details of the first 
+and recent ENCODE_ papers and 
+`here <http://projecteuclid.org/DPubS?service=UI&version=1.0&verb=Display&handle=euclid.aoas/1294167794>`_.
+
+BITS_ (`Layer et al. (2013)`_) (Binary Interval Search) is a method
+to perform quick overlap queries between genomic data sets. It
+implements a Monte-Carlo method for simulation that is particularly
+suited towards making all on all comparisons between a large number 
+data sets.
+
+.. _GREAT: http://bejerano.stanford.edu/great/public/html/
+.. _MacLean et al. (2010): http://www.ncbi.nlm.nih.gov/pubmed/20436461
+.. _GenometriCorr: http://genometricorr.sourceforge.net/
+.. _Favorov et al. (2012): http://www.ploscompbiol.org/article/info%3Adoi%2F10.1371%2Fjournal.pcbi.1002529#pcbi-1002529-g001
+.. _GSC: http://www.encodestatistics.org/
+.. _The Encode Project Consortium (2012): http://www.nature.com/nature/journal/v489/n7414/full/nature11247.html
+.. _BITS: https://github.com/arq5x/bits
+.. _Layer et al. (2013): http://www.ncbi.nlm.nih.gov/pubmed/23129298`
+
+Benchmark
+---------
+
+We used the example from :ref:`Tutorial1` to perform a rough
+comparison between various methods. In all cases, we used
+``n = 1000`` for simulations. Times are wall-clock times.
+Please note that this is not a rigorous benchmark.
+
++------+------+------------+--------+-----------+--------+-----+
+|Method|Set1  |Set2        |Observed|Expected   |P-value |Time |
++------+------+------------+--------+-----------+--------+-----+
+|BITS_ |srf   |jurkat      |450     |5.24       |<0.001  |43s  |
++------+------+------------+--------+-----------+--------+-----+
+|BITS_ |srf   |hepg2       |381     |9.87       |<0.001  |39s  |
++------+------+------------+--------+-----------+--------+-----+
+|BITS_ |srf   |hepg2/jurkat|9       |5.7        |0.13    |28s  |
++------+------+------------+--------+-----------+--------+-----+
+|BITS_ |jurkat|hepg2       |47237   |3548       |<0.001  |106s |
++------+------+------------+--------+-----------+--------+-----+
+|GSC_  |srf   |jurkat      |        |           |0.0004  |58s  |
++------+------+------------+--------+-----------+--------+-----+
+|GSC_  |srf   |hepg2       |        |           |6.9E-11 |54s  |
++------+------+------------+--------+-----------+--------+-----+
+|GSC_  |srf   |hepg2/jurkat|        |           |5.23E-7 |40s  |
++------+------+------------+--------+-----------+--------+-----+
+|GSC_  |jurkat|hepg2       |        |           |0       |159s |
++------+------+------------+--------+-----------+--------+-----+
+|GAT   |srf   |jurkat      |20183   |247.6      |<0.001  |11s  |
++------+------+------------+--------+-----------+--------+-----+
+|GAT   |srf   |hepg2       |18965   |601.4      |<0.001  |11s  |
++------+------+------------+--------+-----------+--------+-----+
+|GAT   |srf   |hepg2/jurkat|425     |327.3      |0.21    |11s  |
++------+------+------------+--------+-----------+--------+-----+
+|GAT   |jurkat|hepg2       |6163503 |457332.8   |<0.001  |316s |
++------+------+------------+--------+-----------+--------+-----+
+
+BITS_ and GAT are fairly comparable, even though they use different
+metrics for the association (number of segments overlapping versus
+number of nucleotides overlapping). GAT is quicker on smaller data
+sets, while BITS_ outperforms on large datasets.
+
+GSC_ reports a significant association in the comparison between
+srf and dhs intervals specific to hepg2 cells, while the other two
+tools do not, which is the biologically plausible result. It is
+difficult to say if there indeed is an association, or GSC_ is 
+overestimating association.
+
+.. _ENCODE: http://genome.ucsc.edu/ENCODE/

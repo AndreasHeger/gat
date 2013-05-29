@@ -70,7 +70,7 @@ swopped, each set in the :term:`annotations` will be randomized
 separately and compared to a single set of :term:`segments of
 interest`.
 
-Note that :term:`P-value`s are prone to `misinterpretation`_.
+Note that a :term:`P-value` can be prone to `misinterpretation`_.
 In particular, the :term:`P-value` only indicates if an observed overlap is
 statistically significant different from the expectation. The :term:`P-value` 
 makes no inferences about the size of the effect and if it is
@@ -116,7 +116,7 @@ confidence that there is a difference in promotor binding between the
 two transcription factors.
 
 The latter case, in which we have two different 
-:term:`regions of interest` and we want to contrast their fold
+:term:`segments of interest` and we want to contrast their fold
 enrichment against the same annotations is implemented in gat using
 the ``gat-compare.py`` command.
 

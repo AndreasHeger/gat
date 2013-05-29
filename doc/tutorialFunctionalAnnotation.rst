@@ -1,3 +1,5 @@
+.. _tutorial3:
+
 ==================================
 Tutorial - Functional annnotation
 ==================================
@@ -277,3 +279,5 @@ of low mapability.
 .. _MacLean et al. (2010): http://www.ncbi.nlm.nih.gov/pubmed/20436461
 .. _Ensembl: http:://www.ensembl.org
 .. _GO Gene Ontology: http://www.geneontology.org/
+.. _GO: http://www.geneontology.org/
+.. _refseq: http://www.ncbi.nlm.nih.gov/refseq/

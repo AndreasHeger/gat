@@ -2,21 +2,22 @@
 Simulation algorithms
 ======================
 
-Gat implements a variety of algorithms. Not all of them make sense.
+Gat implements a variety of simulation algorithms. Not all of them are of
+practical use.
 
-.. autoclass:: cgat.SamplerAnnotator
+.. autoclass:: GatEngine.SamplerAnnotator
 
-.. autoclass:: cgat.SamplerSegments
+.. autoclass:: GatEngine.SamplerSegments
 
-.. autoclass:: cgat.SamplerUniform
+.. autoclass:: GatEngine.SamplerUniform
 
-.. autoclass:: cgat.SamplerBruteForce
+.. autoclass:: GatEngine.SamplerBruteForce
 
-.. autoclass:: cgat.SamplerShift
+.. autoclass:: GatEngine.SamplerShift
 
-.. autoclass:: cgat.SamplerLocalPermutation
+.. autoclass:: GatEngine.SamplerLocalPermutation
 
-.. autoclass:: cgat.SamplerGlobalPermutation
+.. autoclass:: GatEngine.SamplerGlobalPermutation
 
 
 

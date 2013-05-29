@@ -1,3 +1,4 @@
+
 #!/bin/env python
 ################################################################################
 #
@@ -65,7 +66,7 @@ Usage
 
 Example::
 
-   python gat-run.py 
+   python gat-great.py 
       --segment-file=segments.bed.gz 
       --workspace-file=workspace.bed.gz 
       --annotation-file=annotations_architecture.bed.gz  
@@ -92,7 +93,7 @@ import gat
 import gat.Experiment as E
 import gat.IOTools as IOTools
 import gat.IO as IO
-import csegmentlist
+import GatSegmentList
 
 import scipy.stats
 
@@ -215,6 +216,7 @@ def main( argv ):
         shift_extension = 0,
         overlap_mode = "midpoint",
         truncate_workspace_to_annotations = False,
+        truncate_segments_to_workspace = False
         )
 
     ## add common options (-h/--help, ...) and parse command line 
@@ -288,7 +290,7 @@ def main( argv ):
             try:
                 ss = segmentdict[isochore]
                 # select segments overlapping workspace
-                segments_in_workspace = csegmentlist.SegmentList( clone = ss )
+                segments_in_workspace = GatSegmentList.SegmentList( clone = ss )
                 segments_in_workspace.intersect( workspace[isochore] )
                 # number of segments in workspace
                 nsegments_in_workspace = len(segments_in_workspace)
@@ -323,7 +325,7 @@ def main( argv ):
                     continue
                 
                 # select segments overlapping annotation
-                segments_overlapping_annotation = csegmentlist.SegmentList( clone = ss )
+                segments_overlapping_annotation = GatSegmentList.SegmentList( clone = ss )
                 segments_overlapping_annotation.intersect( annotations[annotation][isochore] )
                 # number of segments in annotation
                 nsegments_overlapping_annotation = ss.intersectionWithSegments( annotations[annotation][isochore],
@@ -332,7 +334,7 @@ def main( argv ):
                 # number of nucleotides at the intersection of segments, annotation and workspace
                 basecoverage_intersection = segments_overlapping_annotation.sum()
 
-                annotations_overlapping_segments = csegmentlist.SegmentList( clone = aa )
+                annotations_overlapping_segments = GatSegmentList.SegmentList( clone = aa )
                 annotations_overlapping_segments.intersect( ss )
                 nannotations_overlapping_segments = len( annotations_overlapping_segments )
 
