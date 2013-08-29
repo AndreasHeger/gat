@@ -56,6 +56,12 @@ in the package directory.
 Release History
 ===============
 
+1.1 Bugfix release: easier Galaxy integration
+   * Changed to distutils (from distribute)
+   * Changed /bin/env to /usr/bin/env
+
+1.0 Release coinciding with publication
+
 0.2
   * First release
 

@@ -12,11 +12,14 @@ import os
 import sys
 import glob
 import numpy
+import platform
 
-from distribute_setup import use_setuptools
-use_setuptools()
+#from distribute_setup import use_setuptools
+#use_setuptools()
 
-from setuptools import Extension, setup, find_packages
+#from setuptools import Extension, setup, find_packages
+from distutils.core import setup
+from distutils.extension import Extension
 
 #######################################################
 #######################################################
@@ -37,7 +40,7 @@ else:
                          'utils/gat_utils.c' ]
 
 name = "gat"
-version = "1.0"
+version = "1.1"
 
 classifiers = """
 Development Status :: 4 - Beta
@@ -52,11 +55,17 @@ Topic :: Scientific/Engineering
 Topic :: Scientific/Engineering :: Bioinformatics
 """
 
+libraries = ['z']
+
+# macosx has no librt
+if platform.system() in ("Linux", "Windows"):
+    libraries.append( 'rt' )
+
 # link against rt for shared memory access
 GatSegmentList = Extension(
    "GatSegmentList",                   # name of extension
    GatSegmentList_sources,
-   libraries=[ "z", 'rt' ],
+   libraries=libraries,
    library_dirs = [],
    include_dirs=['./utils', numpy.get_include() ],
    language="c",
@@ -65,10 +74,9 @@ GatSegmentList = Extension(
 GatEngine = Extension(
     "GatEngine",                   # name of extension
     GatEngine_sources,
-    libraries=[ "z", 'rt' ],
+    libraries=libraries,
     library_dirs = [],
     include_dirs=["./utils", 
-                  "/usr/lib64/python2.6/site-packages/numpy/core/include", 
                   "../GatSegmentList",
                   numpy.get_include() ],
     language="c",
