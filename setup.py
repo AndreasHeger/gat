@@ -188,7 +188,7 @@ setup(
     author_email = "andreas.heger@gmail.com",
     license = "MIT",
     platforms = "ALL",
-    url = "http://code.google.com/p/genomic-association-tester/",
+    url = "https://github.com/AndreasHeger/gat",
     py_modules = [ x[:-3] for x in glob.glob( 'gat/*.py') ],
     install_requires  = install_requires,
     ext_modules = [ GatSegmentList, GatEngine ],
