@@ -36,7 +36,7 @@ Purpose
 This script compares gat runs and compares statistical significance of fold change differences between two or more
 regions of interest.
 
-This script requires counts files created by gat (option ``--output-counts-file``).
+This script requires counts files created by gat (option ``--output-counts-pattern``).
 
 The reported observed value between sets 1 and 2 is the difference of fc2 and fc1:
 
