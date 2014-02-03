@@ -33,25 +33,30 @@ gat-compare - compare two gat runs
 Purpose
 -------
 
-This script compares gat runs and compares statistical significance of fold change differences between two or more
-regions of interest.
+This script compares gat runs and compares statistical significance of
+fold change differences between two or more regions of interest.
 
-This script requires counts files created by gat (option ``--output-counts-pattern``).
+This script requires counts files created by gat (option
+``--output-counts-pattern``).
 
-The reported observed value between sets 1 and 2 is the difference of fc2 and fc1:
+The reported observed value between sets 1 and 2 is the difference of
+fc2 and fc1:
 
    * observed = fold2 - fold1
 
-The script accepts one or more output files from a gat run. 
+The script accepts one or more output files from a gat run.
 
-If only a single file is given, the significance of fold change differences are computed 
-for each pairwise comparison of annotations. Thus, the script might answer the question 
-if a transcription factor is more enriched in promotors than in enhancers.
+If only a single file is given, the significance of fold change
+differences are computed for each pairwise comparison of
+annotations. Thus, the script might answer the question if a
+transcription factor is more enriched in promotors than in enhancers.
 
-If multiple files are given, the script computes the fold change differences for the same 
-annotation for all pairwise combinations of :term:`segments of interest` across the different
-files. Thus, the script might answer the question if transcription factor A is more enriched
-in promotors than transcription factor B is enriched in promotors.
+If multiple files are given, the script computes the fold change
+differences for the same annotation for all pairwise combinations of
+:term:`segments of interest` across the different files. Thus, the
+script might answer the question if transcription factor A is more
+enriched in promotors than transcription factor B is enriched in
+promotors.
 
 Usage
 -----
