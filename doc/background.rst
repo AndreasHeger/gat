@@ -63,8 +63,9 @@ association metric using randomly chosen intervals on the genome. This
 expectation is then used to test if the observed value of the metric
 (nucleotide overlap, region overlap, ...) is higher than expected. 
 The method is described in the supplemental details of the first 
-and recent ENCODE_ papers and 
+and recent ENCODE_ papers (`Birney et al. (2007)_`, ...) and 
 `here <http://projecteuclid.org/DPubS?service=UI&version=1.0&verb=Display&handle=euclid.aoas/1294167794>`_.
+
 
 BITS_ (`Layer et al. (2013)`_) (Binary Interval Search) is a method
 to perform quick overlap queries between genomic data sets. It
@@ -79,7 +80,7 @@ data sets.
 .. _GSC: http://www.encodestatistics.org/
 .. _The Encode Project Consortium (2012): http://www.nature.com/nature/journal/v489/n7414/full/nature11247.html
 .. _BITS: https://github.com/arq5x/bits
-.. _Layer et al. (2013): http://www.ncbi.nlm.nih.gov/pubmed/23129298`
+.. _Layer et al. (2013): http://www.ncbi.nlm.nih.gov/pubmed/23129298
 
 Benchmark
 ---------
@@ -129,3 +130,4 @@ difficult to say if there indeed is an association, or GSC_ is
 overestimating association.
 
 .. _ENCODE: http://genome.ucsc.edu/ENCODE/
+.. _Birney et al. (2007): http://www.nature.com/nature/journal/v447/n7146/extref/nature05874-s1.pdf

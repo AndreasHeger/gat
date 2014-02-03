@@ -17,7 +17,7 @@ al. (2008)`_. The data sets used in this tutorial are available at:
 
 http://www.cgat.org/~andreas/documentation/gat-examples/TutorialGenomicAnnotation.tar.gz
 
-The data is in :file:`srf.hg19.bed`. This :term:`bed` formatted file
+The data is in :file:`srf.hg19.bed.gz`. This :term:`bed` formatted file
 contains 556 high confidence peaks from the analysis of `Valouev et al. (2008)`_
 mapped to human chromosome hg19.
 
@@ -37,7 +37,7 @@ First analysis
 
 *gat* accepts :term:`bed` formatted files as input.
 
-As segments of interest we will be using the :file:`srf.hgf19.bed`
+As segments of interest we will be using the :file:`srf.hgf19.bed.gz`
 containing the results of the ChIP-Seq experiment::
 
    chr5    60627981        60628031        SRF.1
@@ -84,8 +84,8 @@ non-overlapping intervals covering the full genome::
 
 We can now run *gat* by giving specifying the three input files::
 
-   gat-run.py --ignore-segment-tracks --segments=srf.hg19.bed
-      --annotations=annotations_geneset.bed.gz --workspace=contigs.bed
+   gat-run.py --ignore-segment-tracks --segments=srf.hg19.bed.gz
+      --annotations=annotations_geneset.bed.gz --workspace=contigs.bed.gz
    --num-samples=1000 --log=gat.log > gat.out
 
 The option `--ignore-segment-tracks` tells *gat* to ignore the fourth
@@ -180,12 +180,12 @@ values will be too optimistic.
 To get a more accurate estimate of the enrichment in various regions,
 we should exclude assembly gaps. 
 
-The :term:`bed` formatted file :file:`contigs_ungapped.bed` contains
+The :term:`bed` formatted file :file:`contigs_ungapped.bed.gz` contains
 only those genomic regions that are not assembly gaps (2.86Gb). 
 We can use this file instead::
 
-   gat-run.py --ignore-segment-tracks --segments=srf.hg19.bed
-      --annotations=annotations_geneset.bed.gz --workspace=contigs_ungapped.bed
+   gat-run.py --ignore-segment-tracks --segments=srf.hg19.bed.gz
+      --annotations=annotations_geneset.bed.gz --workspace=contigs_ungapped.bed.gz
       --num-samples=1000 --log=gat.log > gat.out
 
 +----------+--------+----------+-------+-------+----------+----------+
@@ -224,8 +224,10 @@ We could intersect the two bed files ourselves, but we can also
 supply multiple workspaces to *gat*. *gat* will automatically
 intersect multiple workspaces::
 
-   gat-run.py --ignore-segment-tracks --segments=srf.hg19.bed
-      --annotations=annotations_geneset.bed.gz --workspace=contigs_ungapped.bed
+   gat-run.py --ignore-segment-tracks --segments=srf.hg19.bed.gz
+      --annotations=annotations_geneset.bed.gz
+      --workspace=contigs_ungapped.bed.gz
+      --workspace=mapability_36.filtered.bed.gz
       --num-samples=1000 --log=gat.log > gat.out
 
 As a consequence of reducing the workspace the fold changes change:

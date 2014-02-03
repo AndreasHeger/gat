@@ -219,6 +219,7 @@ def main( argv = None ):
         input_filename_results = None,
         pvalue_method = "empirical",
         output_plots_pattern = None,
+        plots = [],
         )
 
     ## add common options (-h/--help, ...) and parse command line 

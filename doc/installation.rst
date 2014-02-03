@@ -30,6 +30,17 @@ To install via pip, type::
 
    pip install genomic-association-tester
 
+To install on OS X, we suggest to begin by installing 
+`homebrew <http://brew.sh/>`_ by following these
+`instructions <http://hackercodex.com/guide/mac-osx-mountain-lion-10.8-configuration/>`_
+
+Follow then by::
+
+   brew install python --with-brewed-openssl
+   pip install numpy
+   pip install cython
+   pip install gat   
+
 Installing via source
 =====================
 
