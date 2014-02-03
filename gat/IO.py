@@ -89,6 +89,10 @@ def buildSegments( options ):
         segments.merge( delete = True)
         E.info( "merged all segments into one track with %i segments" % len(segments))
 
+    if segments.sum() == 0:
+        E.critical( "no segments in input file - run aborted" )
+        raise ValueError( "segments file is empty - run aborted" )
+
     if len(segments) > 1000: 
         raise ValueError( "too many (%i) segment files - use track definitions or --ignore-segment-tracks" % len(segments) )
     
