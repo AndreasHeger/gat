@@ -63,7 +63,7 @@ if [ "$OS" == "ubuntu" -o "$OS" == "travis" ] ; then
    echo " Installing packages for Ubuntu "
    echo
 
-   apt-get install -y gcc g++ libpq-dev libreadline-dev python-numpy python-cython python-matplotlib
+   apt-get install -y gcc g++ libpq-dev libreadline-dev python-numpy cython python-matplotlib
 
 elif [ "$OS" == "sl" ] ; then
 
