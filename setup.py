@@ -24,12 +24,14 @@ import re
 try:
     import numpy
 except ImportError:
-    raise ImportError("the CGAT code collection requires numpy to be installed before running setup.py (pip install numpy)" )
+    raise ImportError(
+        "GAT requires numpy to be installed before running setup.py (pip install numpy)")
 
 try:
     import Cython
 except ImportError:
-    raise ImportError("the CGAT code collection requires cython to be installed before running setup.py (pip install cython)" )
+    raise ImportError(
+        "GAT code requires cython to be installed before running setup.py (pip install cython)")
 
 ########################################################################
 ########################################################################
@@ -48,8 +50,9 @@ except ImportError:
 from setuptools import setup, find_packages, Extension
 
 from distutils.version import LooseVersion, StrictVersion
-if LooseVersion( setuptools.__version__ ) < LooseVersion( '1.1' ):
-    raise ImportError("the CGAT code collection requires setuptools 1.1 higher")
+if LooseVersion(setuptools.__version__) < LooseVersion('1.1'):
+    raise ImportError(
+        "the CGAT code collection requires setuptools 1.1 higher")
 
 from Cython.Distutils import build_ext
 
