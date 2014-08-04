@@ -7,7 +7,7 @@ python:
 #  - "3.4"
 
 script: 
-  - sudo ./install-CGAT-tools.sh --travis
+  - sudo ./install.sh --travis
 
 notifications:
   email:
