@@ -63,7 +63,7 @@ if [ "$OS" == "ubuntu" -o "$OS" == "travis" ] ; then
    echo " Installing packages for Ubuntu "
    echo
 
-   apt-get install -y gcc g++ zlib1g-dev libssl-dev libbz2-dev libfreetype6-dev libpng12-dev libblas-dev libatlas-dev liblapack-dev gfortran libpq-dev libreadline-dev
+   apt-get install -y gcc g++ libpq-dev libreadline-dev python-numpy python-cython python-matplotlib
 
 elif [ "$OS" == "sl" ] ; then
 
@@ -97,11 +97,13 @@ if [ "$OS" == "ubuntu" -o "$OS" == "sl" ] ; then
    tar xvfz virtualenv-1.10.1.tar.gz
    rm virtualenv-1.10.1.tar.gz
    cd virtualenv-1.10.1
-   python virtualenv.py cgat-venv
+   python virtualenv.py --system-site-packages cgat-venv
    source cgat-venv/bin/activate
 
    # Install Python prerequisites
    pip install cython
+   pip install numpy
+   pip install nose
 
 elif [ "$OS" == "travis" ] ; then
    # Travis-CI provides a virtualenv with Python 2.7
@@ -110,9 +112,9 @@ elif [ "$OS" == "travis" ] ; then
    echo
 
    # Install Python prerequisites
-   pip install cython
-   pip install numpy
-   pip install nose
+   #pip install cython
+   #pip install numpy
+   #pip install nose
 
 else
 
@@ -164,12 +166,6 @@ nosetests_external_deps $OS
 
 # install code
 python setup.py install
-
-# change into tests directory. Otherwise,
-# 'import pysam' will import the repository,
-# not the installed version. This causes
-# problems in the compilation test.
-cd tests
 
 # run nosetests
 # -s: do not capture stdout, conflicts with pysam.dispatch
