@@ -3,19 +3,12 @@ language: python
 
 python:
   - "2.7"
-
-before_install:
-  - chmod +x setup-DEBs.sh
-  - sudo ./setup-DEBs.sh
-
-install:
-  - chmod +x setup-DEBs.sh
-  - sudo ./setup-Python.sh
+#  - "3.3"
+#  - "3.4"
 
 script: 
-  - python setup.py install
+  - sudo ./install-CGAT-tools.sh --travis
 
 notifications:
   email:
     - andreas.heger@gmail.com
-

@@ -408,7 +408,8 @@ def computeSample( args ):
 class UnconditionalSampler:
 
     def __init__(self,         
-                 num_samples, samples, 
+                 num_samples, 
+                 samples, 
                  samples_outfile, 
                  sampler,
                  workspace_generator, 

@@ -3163,7 +3163,6 @@ cdef class SamplesCached( Samples ):
         '''add a new *sample* for *track* and *isochore*, giving it *sample_id*.'''
 
         Samples.add( self, track, sample_id, isochore, segmentlist )
-
         cdef SegmentList seglist
         seglist = segmentlist
         cdef off_t pos

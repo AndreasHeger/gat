@@ -120,11 +120,21 @@ The latter case, in which we have two different
 enrichment against the same annotations is implemented in gat using
 the ``gat-compare.py`` command.
 
-The ``gat-compare.py`` command takes the observed and simulated counts
+Briefly, the ``gat-compare.py`` command takes the observed and simulated counts
 from one or more ``gat-run.py`` runs. For each sample, it computes a fold
 change ratio as rfc = fc1 / fc2 providing a distribution of expected
 fold change ratios. The tool checks if the null hypothesis of no fold
 change difference (rfc = 1) can be rejected.
+
+Conceptually, this works by running two simulations in-sync, one for
+trancription factor A and one for transcription factor B. At each iteration,
+the fold change is computed for each annotation between the sampled
+segments and the observed segments. At the same time, the fold change
+difference in the fold change between set A and set B is
+recorded. Thus, at the end of the simulations gat gets a distribution of
+expected fold change differences between samples and computes an
+empirical P-Value for the observed fold change difference between A
+and B.
 
 .. _effect size: http://en.wikipedia.org/wiki/Effect_size
 .. _misinterpretation: http://en.wikipedia.org/wiki/P-value#Misunderstandings
