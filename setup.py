@@ -16,11 +16,11 @@ import re
 
 ########################################################################
 #######################################################################
-## Check for dependencies
+# Check for dependencies
 ##
-## Is there a way to do this more elegantly?
-##     1. Run "pip install numpy"
-##     2. Wrap inside functions (works for numpy/pysam, but not cython)
+# Is there a way to do this more elegantly?
+# 1. Run "pip install numpy"
+# 2. Wrap inside functions (works for numpy/pysam, but not cython)
 try:
     import numpy
 except ImportError:
@@ -35,14 +35,14 @@ except ImportError:
 
 ########################################################################
 ########################################################################
-## Import setuptools
-## Use existing setuptools, otherwise try ez_setup.
+# Import setuptools
+# Use existing setuptools, otherwise try ez_setup.
 try:
     import setuptools
 except ImportError:
-    ## try to get via ez_setup
-    ## ez_setup did not work on all machines tested as
-    ## it uses curl with https protocol, which is not
+    # try to get via ez_setup
+    # ez_setup did not work on all machines tested as
+    # it uses curl with https protocol, which is not
     ## enabled in ScientificLinux
     import ez_setup
     ez_setup.use_setuptools()
@@ -58,16 +58,18 @@ from Cython.Distutils import build_ext
 
 ###############################################################
 ###############################################################
-# Define dependencies 
+# Define dependencies
 #
 major, minor1, minor2, s, tmp = sys.version_info
 
 #####################################################################
 #####################################################################
-## Code to install dependencies from a repository
+# Code to install dependencies from a repository
 #####################################################################
-## Modified from http://stackoverflow.com/a/9125399
+# Modified from http://stackoverflow.com/a/9125399
 #####################################################################
+
+
 def which(program):
     """
     Detect whether or not a program is installed.
@@ -88,8 +90,10 @@ def which(program):
 
     return None
 
-REPO_REQUIREMENT = re.compile(r'^-e (?P<link>(?P<vcs>git|svn|hg|bzr).+#egg=(?P<package>.+)-(?P<version>\d(?:\.\d)*))$')
-HTTPS_REQUIREMENT = re.compile(r'^-e (?P<link>.*).+#(?P<package>.+)-(?P<version>\d(?:\.\d)*)$')
+REPO_REQUIREMENT = re.compile(
+    r'^-e (?P<link>(?P<vcs>git|svn|hg|bzr).+#egg=(?P<package>.+)-(?P<version>\d(?:\.\d)*))$')
+HTTPS_REQUIREMENT = re.compile(
+    r'^-e (?P<link>.*).+#(?P<package>.+)-(?P<version>\d(?:\.\d)*)$')
 install_requires = []
 dependency_links = []
 
@@ -97,7 +101,8 @@ for requirement in (l.strip() for l in open('requires.txt') if not l.startswith(
     match = REPO_REQUIREMENT.match(requirement)
     if match:
         assert which(match.group('vcs')) is not None, \
-            "VCS '%(vcs)s' must be installed in order to install %(link)s" % match.groupdict()
+            "VCS '%(vcs)s' must be installed in order to install %(link)s" % match.groupdict(
+        )
         install_requires.append("%(package)s==%(version)s" % match.groupdict())
         dependency_links.append(match.group('link'))
         continue
@@ -114,7 +119,7 @@ for requirement in (l.strip() for l in open('requires.txt') if not l.startswith(
 
     install_requires.append(requirement)
 
-if major==2 and minor1<5 or major<2:
+if major == 2 and minor1 < 5 or major < 2:
     raise SystemExit("""SphinxReport requires Python 2.5 or later.""")
 
 #######################################################
@@ -123,17 +128,17 @@ try:
     from Cython.Distutils import build_ext
 except ImportError:
     # no Cython available - use existing C code
-    cmdclass = { }
-    GatSegmentList_sources = ['GatSegmentList/GatSegmentList.c', 
+    cmdclass = {}
+    GatSegmentList_sources = ['GatSegmentList/GatSegmentList.c',
                               'utils/gat_utils.c']
-    GatEngine_sources = ['GatEngine/GatEngine.c', 
-                         'utils/gat_utils.c' ]
+    GatEngine_sources = ['GatEngine/GatEngine.c',
+                         'utils/gat_utils.c']
 else:
-    cmdclass = { 'build_ext' : build_ext }
-    GatSegmentList_sources = ['GatSegmentList/GatSegmentList.pyx', 
+    cmdclass = {'build_ext': build_ext}
+    GatSegmentList_sources = ['GatSegmentList/GatSegmentList.pyx',
                               'utils/gat_utils.c']
-    GatEngine_sources = ['GatEngine/GatEngine.pyx', 
-                         'utils/gat_utils.c' ]
+    GatEngine_sources = ['GatEngine/GatEngine.pyx',
+                         'utils/gat_utils.c']
 
 name = "gat"
 version = "1.1"
@@ -152,54 +157,52 @@ Topic :: Scientific/Engineering :: Bioinformatics
 """
 
 
-
 #######################################################################
 
 libraries = ['z']
 
 # macosx has no librt
 if platform.system() in ("Linux", "Windows"):
-    libraries.append( 'rt' )
+    libraries.append('rt')
 
 # link against rt for shared memory access
 GatSegmentList = Extension(
-   "GatSegmentList",                   # name of extension
-   GatSegmentList_sources,
-   libraries=libraries,
-   library_dirs = [],
-   include_dirs=['./utils', numpy.get_include() ],
-   language="c",
-   )
+    "GatSegmentList",                   # name of extension
+    GatSegmentList_sources,
+    libraries=libraries,
+    library_dirs=[],
+    include_dirs=['./utils', numpy.get_include()],
+    language="c",
+)
 
 GatEngine = Extension(
     "GatEngine",                   # name of extension
     GatEngine_sources,
     libraries=libraries,
-    library_dirs = [],
-    include_dirs=["./utils", 
+    library_dirs=[],
+    include_dirs=["./utils",
                   "../GatSegmentList",
-                  numpy.get_include() ],
+                  numpy.get_include()],
     language="c",
-    )
+)
 
-setup( 
-    name = name,
-    version = version,
-    description = "GenomicAssocationTester", 
-    long_description = __doc__,
-    author = "Andreas Heger",
-    author_email = "andreas.heger@gmail.com",
-    license = "MIT",
-    platforms = "ALL",
-    url = "https://github.com/AndreasHeger/gat",
-    py_modules = [ x[:-3] for x in glob.glob( 'gat/*.py') ],
-    install_requires  = install_requires,
-    ext_modules = [ GatSegmentList, GatEngine ],
-    cmdclass = {'build_ext': build_ext },
-    scripts = ['scripts/gat-run.py', 
-                 'scripts/gat-great.py',
-                 'scripts/gat-compare.py',
-                 'scripts/gat-plot.py' ],
-    zip_safe = False,
-    )
-
+setup(
+    name=name,
+    version=version,
+    description="GenomicAssocationTester",
+    long_description=__doc__,
+    author="Andreas Heger",
+    author_email="andreas.heger@gmail.com",
+    license="MIT",
+    platforms="ALL",
+    url="https://github.com/AndreasHeger/gat",
+    py_modules=[x[:-3] for x in glob.glob('gat/*.py')],
+    install_requires=install_requires,
+    ext_modules=[GatSegmentList, GatEngine],
+    cmdclass={'build_ext': build_ext},
+    scripts=['scripts/gat-run.py',
+             'scripts/gat-great.py',
+             'scripts/gat-compare.py',
+             'scripts/gat-plot.py'],
+    zip_safe=False,
+)
