@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-################################################################################
+##########################################################################
 #
 #   MRC FGU Computational Genomics Group
 #
@@ -20,7 +20,7 @@
 #   You should have received a copy of the GNU General Public License
 #   along with this program; if not, write to the Free Software
 #   Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
-#################################################################################
+##########################################################################
 '''
 gat-run - run the genomic annotation tool
 =============================================
@@ -60,7 +60,10 @@ Code
 
 '''
 
-import os, sys, re, optparse, collections, types, glob, time
+import os
+import sys
+import re
+import time
 
 import gat
 import gat.Experiment as E
@@ -69,8 +72,9 @@ import gat.Stats as Stats
 import GatSegmentList
 import GatEngine
 
+
 def fromSegments(options, args):
-    '''run analysis from segment files. 
+    '''run analysis from segment files.
 
     This is the most common use case.
     '''
@@ -80,44 +84,46 @@ def fromSegments(options, args):
     ##################################################
     ##################################################
     ##################################################
-    ## build segments
-    segments, annotations, workspaces, isochores = IO.buildSegments( options )
+    # build segments
+    segments, annotations, workspaces, isochores = IO.buildSegments(options)
 
-    E.info( "intervals loaded in %i seconds" % (time.time() - tstart) )
+    E.info("intervals loaded in %i seconds" % (time.time() - tstart))
 
     ##################################################
     ##################################################
     ##################################################
-    ## open various additional output files
+    # open various additional output files
     ##################################################
     outfiles = {}
-    for section in ("sample", 
+    for section in ("sample",
                     "segment_metrics",
                     "sample_metrics",
                     ):
         if section in options.output_stats or \
             "all" in options.output_stats or \
-                len( [ x for x in options.output_stats if re.search( x, "section" ) ] ) > 0:
+                len([x for x in options.output_stats if re.search(x, "section")]) > 0:
             outfiles[section] = E.openOutputFile(section)
 
     if 'sample_metrics' in outfiles:
-        outfiles['sample_metrics'].write( "track\tsection\tmetric\t%s\n" % "\t".join(Stats.Summary().getHeaders() ))
+        outfiles['sample_metrics'].write(
+            "track\tsection\tmetric\t%s\n" % "\t".join(Stats.Summary().getHeaders()))
 
     # filter segments by workspace
-    workspace = IO.applyIsochores( segments, 
-                                   annotations, 
-                                   workspaces,
-                                   options, 
-                                   isochores,
-                                   truncate_segments_to_workspace = options.truncate_segments_to_workspace,
-                                   truncate_workspace_to_annotations = options.truncate_workspace_to_annotations,
-                                   restrict_workspace = options.restrict_workspace )
+    workspace = IO.applyIsochores(
+        segments,
+        annotations,
+        workspaces,
+        options,
+        isochores,
+        truncate_segments_to_workspace=options.truncate_segments_to_workspace,
+        truncate_workspace_to_annotations=options.truncate_workspace_to_annotations,
+        restrict_workspace=options.restrict_workspace)
 
     ##################################################
     ##################################################
     ##################################################
-    ## check memory requirements
-    counts = segments.countsPerTrack() 
+    # check memory requirements
+    counts = segments.countsPerTrack()
     max_counts = max(counts.values())
     # previous algorithm: memory requirements if all samples are stored
     memory = 8 * 2 * options.num_samples * max_counts * len(workspace)
@@ -128,12 +134,12 @@ def fromSegments(options, args):
     # initialize sampler
     if options.sampler == "annotator":
         sampler = GatEngine.SamplerAnnotator(
-            bucket_size = options.bucket_size,
-            nbuckets = options.nbuckets )
+            bucket_size=options.bucket_size,
+            nbuckets=options.nbuckets)
     elif options.sampler == "shift":
-        sampler = GatEngine.SamplerShift( 
-            radius = options.shift_expansion,
-            extension = options.shift_extension )
+        sampler = GatEngine.SamplerShift(
+            radius=options.shift_expansion,
+            extension=options.shift_extension)
     elif options.sampler == "segments":
         sampler = GatEngine.SamplerSegments()
     elif options.sampler == "local-permutation":
@@ -144,7 +150,7 @@ def fromSegments(options, args):
         sampler = GatEngine.SamplerBruteForce()
     elif options.sampler == "uniform":
         sampler = GatEngine.SamplerUniform()
-        
+
     ##################################################
     ##################################################
     ##################################################
@@ -152,165 +158,178 @@ def fromSegments(options, args):
     counters = []
     for counter in options.counters:
         if counter == "nucleotide-overlap":
-            counters.append( GatEngine.CounterNucleotideOverlap() )
+            counters.append(GatEngine.CounterNucleotideOverlap())
         elif counter == "nucleotide-density":
-            counters.append( GatEngine.CounterNucleotideDensity() )
+            counters.append(GatEngine.CounterNucleotideDensity())
         elif counter == "segment-overlap":
-            counters.append( GatEngine.CounterSegmentOverlap() )
+            counters.append(GatEngine.CounterSegmentOverlap())
         elif counter == "annotations-overlap":
-            counters.append( GatEngine.CounterAnnotationsOverlap() )
+            counters.append(GatEngine.CounterAnnotationsOverlap())
         elif counter == "segment-midoverlap":
-            counters.append( GatEngine.CounterSegmentMidpointOverlap() )
+            counters.append(GatEngine.CounterSegmentMidpointOverlap())
         elif counter == "annotations-midoverlap":
-            counters.append( GatEngine.CounterAnnotationsMidpointOverlap() )
+            counters.append(GatEngine.CounterAnnotationsMidpointOverlap())
         else:
-            raise ValueError("unknown counter '%s'" % counter )
+            raise ValueError("unknown counter '%s'" % counter)
 
     ##################################################
     ##################################################
     ##################################################
-    ## initialize workspace generator
+    # initialize workspace generator
     if options.conditional == "unconditional":
         workspace_generator = GatEngine.UnconditionalWorkspace()
     elif options.conditional == "cooccurance":
         workspace_generator = GatEngine.ConditionalWorkspaceCooccurance()
     elif options.conditional == "annotation-centered":
-        if options.conditional_extension == options.conditional_expansion == None:
-            raise ValueError( "please specify either --conditional-expansion or --conditional-extension" )
-        workspace_generator = GatEngine.ConditionalWorkspaceAnnotationCentered( options.conditional_extension,
-                                                                          options.conditional_expansion )
+        if options.conditional_extension == options.conditional_expansion is None:
+            raise ValueError(
+                "please specify either --conditional-expansion or "
+                "--conditional-extension")
+        workspace_generator = GatEngine.ConditionalWorkspaceAnnotationCentered(
+            options.conditional_extension,
+            options.conditional_expansion)
     elif options.conditional == "segment-centered":
-        if options.conditional_extension == options.conditional_expansion == None:
-            raise ValueError( "please specify either --conditional-expansion or --conditional-extension" )
+        if options.conditional_extension == options.conditional_expansion is None:
+            raise ValueError(
+                "please specify either --conditional-expansion or "
+                "--conditional-extension")
 
-        workspace_generator = GatEngine.ConditionalWorkspaceSegmentCentered( options.conditional_extension,
-                                                                       options.conditional_expansion )
+        workspace_generator = GatEngine.ConditionalWorkspaceSegmentCentered(
+            options.conditional_extension,
+            options.conditional_expansion)
     else:
-        raise ValueError("unknown conditional workspace '%s'" % options.conditional )
+        raise ValueError("unknown conditional workspace '%s'" %
+                         options.conditional)
 
-
     ##################################################
     ##################################################
     ##################################################
-    ## check if reference is compplete
+    # check if reference is compplete
     ##################################################
     if options.reference:
-        reference = options.reference
         for track in segments.tracks:
             if track not in options.reference:
-                raise ValueError("missing track '%s' in reference" % track )
+                raise ValueError("missing track '%s' in reference" % track)
             r = options.reference[track]
             for annotation in annotations.tracks:
                 if annotation not in r:
-                    raise ValueError("missing annotation '%s' in annotations for track='%s'" % (annotation, track ))
+                    raise ValueError(
+                        "missing annotation '%s' in annotations for "
+                        "track='%s'" % (annotation, track))
 
-
     ##################################################
     ##################################################
     ##################################################
-    ## compute
+    # compute
     ##################################################
-    annotator_results = gat.run( segments, 
-                                 annotations, 
-                                 workspace,
-                                 sampler, 
-                                 counters,
-                                 workspace_generator = workspace_generator,
-                                 num_samples = options.num_samples,
-                                 cache = options.cache,
-                                 outfiles = outfiles,
-                                 output_counts_pattern = options.output_counts_pattern,
-                                 output_samples_pattern = options.output_samples_pattern,
-                                 sample_files = options.sample_files,
-                                 conditional = options.conditional,
-                                 conditional_extension = options.conditional_extension,
-                                 reference = options.reference,
-                                 pseudo_count = options.pseudo_count,
-                                 num_threads = options.num_threads )
+    annotator_results = gat.run(
+        segments,
+        annotations,
+        workspace,
+        sampler,
+        counters,
+        workspace_generator=workspace_generator,
+        num_samples=options.num_samples,
+        cache=options.cache,
+        outfiles=outfiles,
+        output_counts_pattern=options.output_counts_pattern,
+        output_samples_pattern=options.output_samples_pattern,
+        sample_files=options.sample_files,
+        conditional=options.conditional,
+        conditional_extension=options.conditional_extension,
+        reference=options.reference,
+        pseudo_count=options.pseudo_count,
+        num_threads=options.num_threads)
 
     return annotator_results
 
 
-def main( argv = None ):
+def main(argv=None):
     """script main.
 
     parses command line options in sys.argv, unless *argv* is given.
     """
 
-    if not argv: argv = sys.argv
+    if not argv:
+        argv = sys.argv
 
-    parser = gat.buildParser( usage = globals()["__doc__"] )
+    parser = gat.buildParser(usage=globals()["__doc__"])
 
-    ## add common options (-h/--help, ...) and parse command line 
-    (options, args) = E.Start( parser, argv = argv, add_output_options = True )
+    # add common options (-h/--help, ...) and parse command line
+    (options, args) = E.Start(parser, argv=argv, add_output_options=True)
 
     ##################################################
-    description_header, descriptions, description_width = IO.readDescriptions( options )
+    description_header, descriptions, description_width = IO.readDescriptions(
+        options)
 
     ##################################################
     size_pos, size_segment = GatSegmentList.getSegmentSize()
-    E.debug( "sizes: pos=%i segment=%i, max_coord=%i" % (size_pos, size_segment, 2**(8 * size_pos )))
+    E.debug("sizes: pos=%i segment=%i, max_coord=%i" %
+            (size_pos, size_segment, 2 ** (8 * size_pos)))
 
     ##################################################
     # set default counter
     if not options.counters:
-        options.counters.append( "nucleotide-overlap" )
+        options.counters.append("nucleotide-overlap")
 
     ##################################################
-    if options.output_tables_pattern != None: 
+    if options.output_tables_pattern != None:
         if "%s" not in options.output_tables_pattern:
-            raise ValueError( "output_tables_pattern should contain at least one '%s'")
+            raise ValueError(
+                "output_tables_pattern should contain at least one '%s'")
 
-    if options.output_samples_pattern != None: 
+    if options.output_samples_pattern != None:
         if "%s" not in options.output_samples_pattern:
-            raise ValueError( "output_samples_pattern should contain at least one '%s'")
+            raise ValueError(
+                "output_samples_pattern should contain at least one '%s'")
 
-    if options.output_counts_pattern != None: 
+    if options.output_counts_pattern != None:
         if "%s" not in options.output_counts_pattern:
-            raise ValueError( "output_counts_pattern should contain at least one '%s'")
-
+            raise ValueError(
+                "output_counts_pattern should contain at least one '%s'")
 
     ##################################################
     # read fold changes that results should be compared with
     if options.null != "default":
-        if not os.path.exists( options.null ):
-            raise OSError( "file %s not found" % options.null )
-        E.info( "reading reference results from %s" % options.null )
-        options.reference = IO.readAnnotatorResults( options.null )
+        if not os.path.exists(options.null):
+            raise OSError("file %s not found" % options.null)
+        E.info("reading reference results from %s" % options.null)
+        options.reference = IO.readAnnotatorResults(options.null)
     else:
         options.reference = None
 
     if options.input_filename_counts:
         # use pre-computed counts
-        annotator_results = GatEngine.fromCounts( options.input_filename_counts )
+        annotator_results = GatEngine.fromCounts(options.input_filename_counts)
 
     elif options.input_filename_results:
         # use previous results (re-computes fdr)
-        E.info( "reading gat results from %s" % options.input_filename_results )
-        annotator_results = IO.readAnnotatorResults( options.input_filename_results )
+        E.info("reading gat results from %s" % options.input_filename_results)
+        annotator_results = IO.readAnnotatorResults(
+            options.input_filename_results)
 
     else:
         # do full gat analysis
-        annotator_results = fromSegments( options, args )
+        annotator_results = fromSegments(options, args)
 
     ##################################################
     if options.pvalue_method != "empirical":
-        E.info("updating pvalues to %s" % options.pvalue_method )
-        GatEngine.updatePValues( annotator_results, options.pvalue_method )
+        E.info("updating pvalues to %s" % options.pvalue_method)
+        GatEngine.updatePValues(annotator_results, options.pvalue_method)
 
     ##################################################
-    ## output
-    IO.outputResults( annotator_results, 
-                      options, 
-                      GatEngine.AnnotatorResultExtended.headers,
-                      description_header, 
-                      description_width,
-                      descriptions )
+    # output
+    IO.outputResults(annotator_results,
+                     options,
+                     GatEngine.AnnotatorResultExtended.headers,
+                     description_header,
+                     description_width,
+                     descriptions)
 
-    IO.plotResults( annotator_results, options )
+    IO.plotResults(annotator_results, options)
 
-    ## write footer and output benchmark information.
+    # write footer and output benchmark information.
     E.Stop()
 
 if __name__ == "__main__":
-    sys.exit( main( sys.argv) )
+    sys.exit(main(sys.argv))

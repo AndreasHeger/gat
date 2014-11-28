@@ -197,7 +197,7 @@ def Start(parser=None,
         parser.add_option("-P", "--output-filename-pattern", dest="output_filename_pattern", type="string",
                           help="OUTPUT filename pattern for various methods [%default].")
 
-        parser.add_option("-F", 
+        parser.add_option("-F",
                           "--force-output",
                           "--force", dest="output_force", action="store_true",
                           help="force over-writing of existing files.")
@@ -395,7 +395,7 @@ class Memoize(object):
         return self
 
     def __call__(self, *args):
-        if self.cache.has_key(args):
+        if args in self.cache:
             return self.cache[args]
         else:
             object = self.cache[args] = self.fn(self.instance, *args)
@@ -516,108 +516,6 @@ class Counter(object):
 
     def iteritems(self):
         return self._counts.iteritems()
-
-
-class Experiment:
-
-    mShortOptions = ""
-    mLongOptions = []
-
-    mLogLevel = 0
-    mTest = 0
-    mDatabaseName = None
-
-    mName = sys.argv[0]
-
-    def __init__(self):
-
-        # process command-line arguments
-        (self.mOptlist, self.mArgs) = self.ParseCommandLine()
-
-        # set options now
-        self.ProcessOptions(self.mOptlist)
-
-    def DumpParameters(self):
-        """dump parameters of this object. All parameters start with a lower-case m."""
-
-        members = self.__dict__
-
-        print "#--------------------------------------------------------------------------------------------"
-        print "#" + string.join(sys.argv)
-        print "# pid: %i, system:" % os.getpid(), string.join(os.uname(), ",")
-        print "#--------------------------------------------------------------------------------------------"
-        print "# Parameters for instance of <" + self.mName + "> on " + time.asctime(time.localtime(time.time()))
-
-        member_keys = list(members.keys())
-        member_keys.sort()
-        for member in member_keys:
-            if member[0] == 'm':
-                print "# %-40s:" % member, members[member]
-
-        print "#--------------------------------------------------------------------------------------------"
-        sys.stdout.flush()
-
-    #-----------------------------> Control functions <-----------------------
-
-    # ------------------------------------------------------------------------------------
-    def ProcessOptions(self, optlist):
-        """Sets options in this module. Please overload as necessary."""
-
-        for o, a in optlist:
-            if o in ("-V", "--Verbose"):
-                self.mLogLevel = string.atoi(a)
-            elif o in ("-T", "--test"):
-                self.mTest = 1
-
-    # ------------------------------------------------------------------------------------
-    def ProcessArguments(self, args):
-        """Perform actions as given in command line arguments."""
-
-        if self.mLogLevel >= 1:
-            self.DumpParameters()
-
-        for arg in args:
-            if arg[-1] == ")":
-                statement = "self.%s" % arg
-            else:
-                statement = "self.%s()" % arg
-            exec statement
-
-            if self.mLogLevel >= 1:
-                print "--------------------------------------------------------------------------------------------"
-                print statement + " finished at " + time.asctime(time.localtime(time.time()))
-                print "--------------------------------------------------------------------------------------------"
-
-    # ------------------------------------------------------------------------------------
-    def ParseCommandLine(self):
-        """Call subroutine with command line arguments."""
-
-        self.mShortOptions = self.mShortOptions + "V:D:T"
-        self.mLongOptions.append("Verbose=")
-        self.mLongOptions.append("Database=")
-        self.mLongOptions.append("Test")
-
-        try:
-            optlist, args = getopt.getopt(sys.argv[1:],
-                                          self.mShortOptions,
-                                          self.mLongOptions)
-        except getopt.error, msg:
-            self.PrintUsage()
-            print msg
-            sys.exit(2)
-
-        return optlist, args
-
-    #-------------------------------------------------------------------------
-    def Process(self):
-        self.ProcessArguments(self.mArgs)
-
-    #-------------------------------------------------------------------------
-    def PrintUsage(self):
-        """print usage information."""
-
-        print "# valid short options are:", self.mShortOptions
-        print "# valid long options are:", str(self.mLongOptions)
 
 
 def run(cmd):

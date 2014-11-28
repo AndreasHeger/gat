@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-################################################################################
+##########################################################################
 #
 #   MRC FGU Computational Genomics Group
 #
@@ -20,7 +20,7 @@
 #   You should have received a copy of the GNU General Public License
 #   along with this program; if not, write to the Free Software
 #   Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
-#################################################################################
+##########################################################################
 '''
 gat-compare - compare two gat runs
 ==================================
@@ -79,7 +79,15 @@ Code
 
 '''
 
-import os, sys, re, optparse, collections, types, glob, time, math
+import os
+import sys
+import re
+import optparse
+import collections
+import types
+import glob
+import time
+import math
 import itertools
 import numpy
 
@@ -89,96 +97,101 @@ import gat.IOTools as IOTools
 import gat.IO as IO
 import GatEngine
 
-def main( argv = None ):
+
+def main(argv=None):
     """script main.
 
     parses command line options in sys.argv, unless *argv* is given.
     """
 
-    if not argv: argv = sys.argv
+    if not argv:
+        argv = sys.argv
 
     # setup command line parser
-    parser = optparse.OptionParser( version = "%prog version: $Id: script_template.py 2871 2010-03-03 10:20:44Z andreas $", 
-                                    usage = globals()["__doc__"] )
+    parser = optparse.OptionParser(version="%prog version: $Id: script_template.py 2871 2010-03-03 10:20:44Z andreas $",
+                                   usage=globals()["__doc__"])
 
     parser.add_option("-o", "--order", dest="output_order", type="choice",
-                      choices = ( "track", "annotation", "fold", "pvalue", "qvalue", "observed" ),
-                      help="order results in output by fold, track, etc. [default=%default]."  )
+                      choices=(
+                          "track", "annotation", "fold", "pvalue", "qvalue", "observed"),
+                      help="order results in output by fold, track, etc. [default=%default].")
 
     parser.add_option("-p", "--pvalue-method", dest="pvalue_method", type="choice",
-                      choices = ( "empirical", "norm", ),
-                      help="type of pvalue reported [default=%default]."  )
+                      choices=("empirical", "norm", ),
+                      help="type of pvalue reported [default=%default].")
 
     parser.add_option("-q", "--qvalue-method", dest="qvalue_method", type="choice",
-                      choices = ( "storey", "BH", "bonferroni", "holm", "hommel", "hochberg", "BY", "none" ),
-                      help="method to perform multiple testing correction by controlling the fdr [default=%default]."  )
+                      choices=(
+                          "storey", "BH", "bonferroni", "holm", "hommel", "hochberg", "BY", "none"),
+                      help="method to perform multiple testing correction by controlling the fdr [default=%default].")
 
-    parser.add_option( "--qvalue-lambda", dest="qvalue_lambda", type="float",
-                      help="fdr computation: lambda [default=%default]."  )
+    parser.add_option("--qvalue-lambda", dest="qvalue_lambda", type="float",
+                      help="fdr computation: lambda [default=%default].")
 
-    parser.add_option( "--qvalue-pi0-method", dest="qvalue_pi0_method", type="choice",
-                       choices = ("smoother", "bootstrap" ),
-                       help="fdr computation: method for estimating pi0 [default=%default]."  )
+    parser.add_option("--qvalue-pi0-method", dest="qvalue_pi0_method", type="choice",
+                      choices=("smoother", "bootstrap"),
+                      help="fdr computation: method for estimating pi0 [default=%default].")
 
-    parser.add_option( "--descriptions", dest="input_filename_descriptions", type="string", 
-                       help="filename mapping annotation terms to descriptions. "
-                            " if given, the output table will contain additional columns "
-                            " [default=%default]" )
+    parser.add_option("--descriptions", dest="input_filename_descriptions", type="string",
+                      help="filename mapping annotation terms to descriptions. "
+                      " if given, the output table will contain additional columns "
+                      " [default=%default]")
 
-    parser.add_option( "--pseudo-count", dest="pseudo_count", type="float",
+    parser.add_option("--pseudo-count", dest="pseudo_count", type="float",
                       help="pseudo count. The pseudo count is added to both the observed and expected overlap. "
-                       " Using a pseudo-count avoids gat reporting fold changes of 0 [default=%default]."  )
+                      " Using a pseudo-count avoids gat reporting fold changes of 0 [default=%default].")
 
-    parser.add_option( "--output-plots-pattern", dest="output_plots_pattern", type="string", 
-                       help="output pattern for plots [default=%default]" )
+    parser.add_option("--output-plots-pattern", dest="output_plots_pattern", type="string",
+                      help="output pattern for plots [default=%default]")
 
     parser.set_defaults(
-        pvalue_method = "empirical",
-        qvalue_method = "BH",
-        qvalue_lambda = None,
-        qvalue_pi0_method = "smoother",
+        pvalue_method="empirical",
+        qvalue_method="BH",
+        qvalue_lambda=None,
+        qvalue_pi0_method="smoother",
         # pseudo count for fold change computation to avoid 0 fc
-        pseudo_count = 1.0,
-        output_order = "observed",
-        )
+        pseudo_count=1.0,
+        output_order="observed",
+    )
 
-    ## add common options (-h/--help, ...) and parse command line 
-    (options, args) = E.Start( parser, argv = argv, add_output_options = True )
+    # add common options (-h/--help, ...) and parse command line
+    (options, args) = E.Start(parser, argv=argv, add_output_options=True)
 
     input_filenames_counts = args
 
     ##################################################
-    E.info( "received %i filenames with counts" % len(input_filenames_counts))
+    E.info("received %i filenames with counts" % len(input_filenames_counts))
 
     ##################################################
-    description_header, descriptions, description_width = IO.readDescriptions( options )
+    description_header, descriptions, description_width = IO.readDescriptions(
+        options)
 
     all_annotator_results = []
 
     for input_filename_counts in input_filenames_counts:
- 
-        E.info("processing %s" % input_filename_counts )
-        
-        annotator_results = gat.fromCounts( input_filename_counts )
+
+        E.info("processing %s" % input_filename_counts)
+
+        annotator_results = gat.fromCounts(input_filename_counts)
 
         ##################################################
         if options.pvalue_method != "empirical":
-            E.info("updating pvalues to %s" % options.pvalue_method )
-            GatEngine.updatePValues( annotator_results, options.pvalue_method )
+            E.info("updating pvalues to %s" % options.pvalue_method)
+            GatEngine.updatePValues(annotator_results, options.pvalue_method)
 
         ##################################################
         ##################################################
         ##################################################
-        ## compute global fdr
+        # compute global fdr
         ##################################################
-        E.info( "computing FDR statistics" )
-        GatEngine.updateQValues( annotator_results, 
-                           method = options.qvalue_method,
-                           vlambda = options.qvalue_lambda,
-                           pi0_method = options.qvalue_pi0_method )
+        E.info("computing FDR statistics")
+        GatEngine.updateQValues(annotator_results,
+                                method=options.qvalue_method,
+                                vlambda=options.qvalue_lambda,
+                                pi0_method=options.qvalue_pi0_method)
 
-        all_annotator_results.append( annotator_results )
-        
+        all_annotator_results.append(annotator_results)
+
     pseudo_count = options.pseudo_count
     results = []
 
@@ -188,18 +201,18 @@ def main( argv = None ):
         # collect all annotations
         annotations, segments = list(), set()
         for x in all_annotator_results[0]:
-            segments.add( x.track)
-            annotations.append( x )
+            segments.add(x.track)
+            annotations.append(x)
 
         if len(segments) != 1:
-            raise NotImplementedError( "multiple segments of interest")
+            raise NotImplementedError("multiple segments of interest")
 
         for data1, data2 in itertools.combinations(annotations, 2):
-            
+
             # note that fold changes can be very large if there are 0 samples
             # this is fine for getting the distributional params (mean, stddev)
-            fold_changes1 = data1.observed / (data1.samples + pseudo_count ) 
-            fold_changes2 = data2.observed / (data2.samples + pseudo_count ) 
+            fold_changes1 = data1.observed / (data1.samples + pseudo_count)
+            fold_changes2 = data2.observed / (data2.samples + pseudo_count)
 
             # add a separate fc pseudo-count to avoid 0 values
             fold_changes1 += 0.0001
@@ -214,45 +227,47 @@ def main( argv = None ):
             # Move the observed fold ratio in order to get an idea of the magnitude
             # of the underlying fold change
             delta_fold = data2.fold - data1.fold
-            sampled_delta_fold = numpy.log( fold_changes1 / fold_changes2) + delta_fold
+            sampled_delta_fold = numpy.log(
+                fold_changes1 / fold_changes2) + delta_fold
             observed_delta_fold = 0.0 + delta_fold
 
-            result = GatEngine.AnnotatorResult( data1.annotation, data2.annotation, 
-                                                "na",
-                                                observed_delta_fold,
-                                                sampled_delta_fold, 
-                                                reference = None,
-                                                pseudo_count = 0 )
+            result = GatEngine.AnnotatorResult(data1.annotation, data2.annotation,
+                                               "na",
+                                               observed_delta_fold,
+                                               sampled_delta_fold,
+                                               reference=None,
+                                               pseudo_count=0)
 
-
-            results.append( result )
-
+            results.append(result)
 
     else:
         E.info("performing pairwise comparison between files")
 
         ##################################################
         # perform pairwise comparison
-        for index1, index2 in itertools.combinations( range(len(input_filenames_counts)), 2):
-            E.info( "comparing %i and %i" % (index1,index2))
-            a,b = all_annotator_results[index1], all_annotator_results[index2]
+        for index1, index2 in itertools.combinations(range(len(input_filenames_counts)), 2):
+            E.info("comparing %i and %i" % (index1, index2))
+            a, b = all_annotator_results[index1], all_annotator_results[index2]
 
             # index results in a and b
-            aa = collections.defaultdict( dict )
-            for x in a: aa[x.track][x.annotation] = x
+            aa = collections.defaultdict(dict)
+            for x in a:
+                aa[x.track][x.annotation] = x
 
-            bb = collections.defaultdict( dict )
-            for x in b: bb[x.track][x.annotation] = x
+            bb = collections.defaultdict(dict)
+            for x in b:
+                bb[x.track][x.annotation] = x
 
             if len(aa.keys()) != 1 or len(bb.keys()) != 1:
-                raise NotImplementedError( "multiple segments of interest")
+                raise NotImplementedError("multiple segments of interest")
 
             track = "merged"
             # get shared annotations
             annotations1 = aa[track].keys()
             annotations2 = bb[track].keys()
-            shared_annotations = list( set(annotations1).intersection( set(annotations2) ) )
-            E.info( "%i shared annotations" % len(shared_annotations))
+            shared_annotations = list(
+                set(annotations1).intersection(set(annotations2)))
+            E.info("%i shared annotations" % len(shared_annotations))
 
             for annotation in shared_annotations:
 
@@ -262,9 +277,10 @@ def main( argv = None ):
                 data2 = bb[track][annotation]
 
                 # note that fold changes can be very large if there are 0 samples
-                # this is fine for getting the distributional params (mean, stddev)
-                fold_changes1 = data1.observed / (data1.samples + pseudo_count ) 
-                fold_changes2 = data2.observed / (data2.samples + pseudo_count ) 
+                # this is fine for getting the distributional params (mean,
+                # stddev)
+                fold_changes1 = data1.observed / (data1.samples + pseudo_count)
+                fold_changes2 = data2.observed / (data2.samples + pseudo_count)
 
                 # add a separate fc pseudo-count to avoid 0 values
                 fold_changes1 += 0.0001
@@ -279,37 +295,36 @@ def main( argv = None ):
                 # Move the observed fold ratio in order to get an idea of the magnitude
                 # of the underlying fold change
                 delta_fold = data2.fold - data1.fold
-                sampled_delta_fold = numpy.log( fold_changes1 / fold_changes2) + delta_fold
+                sampled_delta_fold = numpy.log(
+                    fold_changes1 / fold_changes2) + delta_fold
                 observed_delta_fold = 0.0 + delta_fold
 
-                result = GatEngine.AnnotatorResult( track, annotation, 
-                                                    "na",
-                                                    observed_delta_fold,
-                                                    sampled_delta_fold, 
-                                                    reference = None,
-                                                    pseudo_count = 0 )
-                
+                result = GatEngine.AnnotatorResult(track, annotation,
+                                                   "na",
+                                                   observed_delta_fold,
+                                                   sampled_delta_fold,
+                                                   reference=None,
+                                                   pseudo_count=0)
 
-                results.append( result )
-
+                results.append(result)
 
     if len(results) == 0:
-        E.critical( "no results found" )
+        E.critical("no results found")
         E.Stop()
         return
-            
-    IO.outputResults( results, 
-                      options, 
-                      GatEngine.AnnotatorResult.headers,
-                      description_header, 
-                      description_width,
-                      descriptions,
-                      format_observed = "%6.4f" )
 
-    IO.plotResults( results, options )
+    IO.outputResults(results,
+                     options,
+                     GatEngine.AnnotatorResult.headers,
+                     description_header,
+                     description_width,
+                     descriptions,
+                     format_observed="%6.4f")
 
-    ## write footer and output benchmark information.
+    IO.plotResults(results, options)
+
+    # write footer and output benchmark information.
     E.Stop()
 
 if __name__ == "__main__":
-    sys.exit( main( sys.argv) )
+    sys.exit(main(sys.argv))
