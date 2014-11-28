@@ -67,6 +67,10 @@ in the package directory.
 Release History
 ===============
 
+1.2 Bugfix release:
+   * Command line options renamed for CGAT compatibility
+   * minor bugfixes
+
 1.1 Bugfix release: easier Galaxy integration
    * Changed to distutils (from distribute)
    * Changed /bin/env to /usr/bin/env
