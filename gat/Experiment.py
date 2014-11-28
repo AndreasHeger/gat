@@ -197,7 +197,9 @@ def Start(parser=None,
         parser.add_option("-P", "--output-filename-pattern", dest="output_filename_pattern", type="string",
                           help="OUTPUT filename pattern for various methods [%default].")
 
-        parser.add_option("-F", "--force", dest="output_force", action="store_true",
+        parser.add_option("-F", 
+                          "--force-output",
+                          "--force", dest="output_force", action="store_true",
                           help="force over-writing of existing files.")
 
         parser.set_defaults(output_filename_pattern="%s",

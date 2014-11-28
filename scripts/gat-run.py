@@ -61,17 +61,15 @@ Code
 '''
 
 import os, sys, re, optparse, collections, types, glob, time
-import numpy
 
 import gat
 import gat.Experiment as E
-import gat.IOTools as IOTools
 import gat.IO as IO
 import gat.Stats as Stats
 import GatSegmentList
 import GatEngine
 
-def fromSegments( options, args ):
+def fromSegments(options, args):
     '''run analysis from segment files. 
 
     This is the most common use case.
