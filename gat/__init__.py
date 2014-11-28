@@ -9,6 +9,7 @@ import gat.Bed as Bed
 import gat.IOTools as IOTools
 import gat.Experiment as E
 import gat.Stats as Stats
+import gat.IO as IO
 
 import GatEngine
 
@@ -25,7 +26,7 @@ def readFromBedOld(filenames, name="track"):
     '''
 
     segment_lists = collections.defaultdict(
-        lambda: collections.defaultdict(SegmentList))
+        lambda: collections.defaultdict(GatEngine.SegmentList))
 
     if name == "track":
         f = lambda x: x.mTrack["name"]
@@ -53,51 +54,58 @@ def buildParser(usage=None):
     parser = optparse.OptionParser(version="%prog version: $Id:",
                                    usage=usage)
 
-    parser.add_option("-a", "--annotation-file", "--annotations",
-                      dest="annotation_files", type="string", action="append",
-                      help="filename with annotations [default=%default].")
+    parser.add_option(
+        "-a", "--annotation-bed-file", "--annotations", "--annotation-file",
+        dest="annotation_files", type="string", action="append",
+        help="filename with annotations [default=%default].")
 
-    parser.add_option("-s", "--segment-file", "--segments",
-                      dest="segment_files", type="string",
-                      action="append",
-                      help="filename with segments. Also accepts a "
-                      "glob in parentheses [default=%default].")
+    parser.add_option(
+        "-s", "--segment-bed-file", "--segments", "--segment-file",
+        dest="segment_files", type="string",
+        action="append",
+        help="filename with segments. Also accepts a "
+        "glob in parentheses [default=%default].")
 
-    parser.add_option("-w", "--workspace-file", "--workspace",
-                      dest="workspace_files", type="string", action="append",
-                      help="filename with workspace segments. Also "
-                      "accepts a glob in parentheses [default=%default].")
+    parser.add_option(
+        "-w", "--workspace-bed-file", "--workspace", "--workspace-file",
+        dest="workspace_files", type="string", action="append",
+        help="filename with workspace segments. Also "
+        "accepts a glob in parentheses [default=%default].")
 
-    parser.add_option("-i", "--isochore-file", "--isochores",
-                      dest="isochore_files", type="string", action="append",
-                      help="filename with isochore segments. Also "
-                      "accepts a glob in parentheses [default=%default].")
+    parser.add_option(
+        "-i", "--isochore-bed-file", "--isochores", "--isochore-file",
+        dest="isochore_files", type="string", action="append",
+        help="filename with isochore segments. Also "
+        "accepts a glob in parentheses [default=%default].")
 
-    parser.add_option("-l", "--sample-file", dest="sample_files",
-                      type="string", action="append",
-                      help="filename with sample files. Start processing "
-                      "from samples [default=%default].")
+    parser.add_option(
+        "-l", "--sample-file", dest="sample_files",
+        type="string", action="append",
+        help="filename with sample files. Start processing "
+        "from samples [default=%default].")
 
-    parser.add_option("-c", "--counter", dest="counters", type="choice",
-                      action="append",
-                      choices=("nucleotide-overlap",
-                               "nucleotide-density",
-                               "segment-overlap",
-                               "segment-midoverlap",
-                               "annotations-overlap",
-                               "annotations-midoverlap"),
-                      help="quantity to use for estimating enrichment "
-                      "[default=%default].")
+    parser.add_option(
+        "-c", "--counter", dest="counters", type="choice",
+        action="append",
+        choices=("nucleotide-overlap",
+                 "nucleotide-density",
+                 "segment-overlap",
+                 "segment-midoverlap",
+                 "annotations-overlap",
+                 "annotations-midoverlap"),
+        help="quantity to use for estimating enrichment "
+        "[default=%default].")
 
-    parser.add_option("-m", "--sampler", dest="sampler", type="choice",
-                      choices=("annotator",
-                               "segments",
-                               "shift",
-                               "local-permutation",
-                               "global-permutation",
-                               "uniform",
-                               "brute-force"),
-                      help="quantity to test [default=%default].")
+    parser.add_option(
+        "-m", "--sampler", dest="sampler", type="choice",
+        choices=("annotator",
+                 "segments",
+                 "shift",
+                 "local-permutation",
+                 "global-permutation",
+                 "uniform",
+                 "brute-force"),
+        help="quantity to test [default=%default].")
 
     parser.add_option("-n", "--num-samples", dest="num_samples", type="int",
                       help="number of samples to compute [default=%default].")
@@ -407,10 +415,9 @@ def computeSample(args):
 
     # E.debug("track=%s, sample=%s - started" % (track, str(sample_id)))
 
-    counts = Experiment.Counter()
+    counts = E.Counter()
 
     sample_id = str(sample_id)
-    counts_per_isochore = collections.defaultdict(list)
 
     outf_samples = samples_outfile
 
@@ -512,9 +519,10 @@ class UnconditionalSampler:
         self.outfile_sample_metrics = outfiles.get("sample_metrics", None)
 
         if self.outfile_sample_stats:
-            E.debug("sample stats go to %s" % outfile_sample_stats)
+            E.debug("sample stats go to %s" % self.outfile_sample_stats)
             self.outfile_sample_stats.write(
-                "sample\tisochore\tnsegments\tnnucleotides\tmean\tstd\tmin\tq1\tmedian\tq3\tmax\n")
+                "sample\tisochore\tnsegments\tnnucleotides\tmean\t"
+                "std\tmin\tq1\tmedian\tq3\tmax\n")
 
         self.last_sample_id = None
         self.all_lengths = []
@@ -563,7 +571,8 @@ class UnconditionalSampler:
         if self.num_threads == 0:
             for i, w in enumerate(work):
                 r = computeSample(
-                    (w, self.samples_outfile, self.outfile_sample_metrics, None))
+                    (w, self.samples_outfile, self.outfile_sample_metrics,
+                     None))
                 if i % report_interval == 0:
                     E.info("%i/%i done (%5.2f)" % (i, n, 100.0 * i / n))
                 results.append(r)
@@ -598,7 +607,8 @@ class UnconditionalSampler:
 
         return results
 
-    def sample(self, track, counts, counters, segs, annotations, workspace, outfiles):
+    def sample(self, track, counts, counters, segs, annotations, workspace,
+               outfiles):
         '''sample and return counts.
 
         Return a list of counted results for each counter.
@@ -675,8 +685,9 @@ class UnconditionalSampler:
 
 class ConditionalSampler(UnconditionalSampler):
 
-    def sample(self, track, counts, counters, segs, annotations, workspace, outfiles):
-        '''conditional sampling - sample using only those 
+    def sample(self, track, counts, counters, segs, annotations, workspace,
+               outfiles):
+        '''conditional sampling - sample using only those
         segments that contain both a segment and an annotation.
 
         return dictionary with counts per track
@@ -711,8 +722,8 @@ class ConditionalSampler(UnconditionalSampler):
 
             annos = annotations[annotation]
 
-            temp_segs, temp_annotations, temp_workspace = self.workspace_generator(
-                segs, annos, workspace)
+            temp_segs, temp_annotations, temp_workspace = \
+                self.workspace_generator(segs, annos, workspace)
 
             # set up sharing
             temp_segs.share("generated_segments")
@@ -723,7 +734,7 @@ class ConditionalSampler(UnconditionalSampler):
                     temp_workspace.counts(),
                     temp_workspace.sum()))
 
-            work = [WorkData('_'.join((track, anno_id)),
+            work = [WorkData('_'.join((track, annoid)),
                              x,
                              self.sampler,
                              temp_segs,
@@ -761,14 +772,14 @@ def run(segments,
 
     kwargs recognized are:
 
-    cache 
+    cache
        filename of cache
 
     num_samples
        number of samples to compute
 
     output_counts_pattern
-       output counts to filename 
+       output counts to filename
 
     output_samples_pattern
        if given, output samles to these files, one per segment
@@ -850,13 +861,13 @@ def run(segments,
         # build regex
         regex = re.compile(re.sub("%s", "(\S+)", output_samples_pattern))
         E.info("loading samples from %i files" % len(sample_files))
-        samples = SamplesFile(filenames=sample_files,
-                              regex=regex)
+        samples = GatEngine.SamplesFile(
+            filenames=sample_files,
+            regex=regex)
     else:
         samples = GatEngine.Samples()
 
     sampled_counts = {}
-    old_sampled_counts = {}
 
     counts = E.Counter()
 
@@ -934,10 +945,10 @@ def run(segments,
 
         for track, r in observed_count.iteritems():
             for annotation, observed in r.iteritems():
-                temp_segs, temp_annos, temp_workspace = workspace_generator(segments[track],
-                                                                            annotations[
-                                                                                annotation],
-                                                                            workspace)
+                temp_segs, temp_annos, temp_workspace = workspace_generator(
+                    segments[track],
+                    annotations[annotation],
+                    workspace)
 
                 # if reference is given, p-value will indicate difference
                 # The test that track and annotation are present is done
