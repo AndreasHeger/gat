@@ -21,8 +21,7 @@
 #   along with this program; if not, write to the Free Software
 #   Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 ##########################################################################
-'''
-gat-run - run the genomic annotation tool
+'''gat-run - run the genomic annotation tool
 =============================================
 
 :Author: Andreas Heger
@@ -33,19 +32,19 @@ gat-run - run the genomic annotation tool
 Purpose
 -------
 
-This script compares one or more genomic segments of interest 
-against one more other genomic annotations.
+This script compares one or more genomic segments of interest against
+one more other genomic annotations.
 
 Usage
 -----
 
 Example::
 
-   python gat-run.py 
-      --segment-file=segments.bed.gz 
-      --workspace-file=workspace.bed.gz 
-      --annotation-file=annotations_architecture.bed.gz  
- 
+   python gat-run.py
+      --segment-file=segments.bed.gz
+      --workspace-file=workspace.bed.gz
+      --annotation-file=annotations_architecture.bed.gz
+
 Type::
 
    python gat-run.py --help

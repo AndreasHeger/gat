@@ -216,6 +216,11 @@ def buildParser(usage=None):
                       help="ignore segment tracks - all segments belong "
                       "to one track and called 'merged' [default=%default]")
 
+    parser.add_option("--with-segment-tracks", dest="ignore_segment_tracks",
+                      action="store_false",
+                      help="the segments data file is arranged in tracks. "
+                      "[default=%default]")
+
     parser.add_option("--enable-split-tracks", dest="enable_split_tracks",
                       action="store_true",
                       help="permit the same track to be in multiple "
@@ -315,7 +320,7 @@ def buildParser(usage=None):
         qvalue_lambda=None,
         qvalue_pi0_method="smoother",
         sampler="annotator",
-        ignore_segment_tracks=False,
+        ignore_segment_tracks=True,
         input_filename_descriptions=None,
         conditional="unconditional",
         conditional_extension=None,
