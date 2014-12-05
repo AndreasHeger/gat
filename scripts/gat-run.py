@@ -180,7 +180,7 @@ def fromSegments(options, args):
     elif options.conditional == "cooccurance":
         workspace_generator = GatEngine.ConditionalWorkspaceCooccurance()
     elif options.conditional == "annotation-centered":
-        if options.conditional_extension == options.conditional_expansion is None:
+        if options.conditional_expansion is None:
             raise ValueError(
                 "please specify either --conditional-expansion or "
                 "--conditional-extension")
@@ -188,7 +188,7 @@ def fromSegments(options, args):
             options.conditional_extension,
             options.conditional_expansion)
     elif options.conditional == "segment-centered":
-        if options.conditional_extension == options.conditional_expansion is None:
+        if options.conditional_expansion is None:
             raise ValueError(
                 "please specify either --conditional-expansion or "
                 "--conditional-extension")
@@ -272,17 +272,17 @@ def main(argv=None):
         options.counters.append("nucleotide-overlap")
 
     ##################################################
-    if options.output_tables_pattern != None:
+    if options.output_tables_pattern is not None:
         if "%s" not in options.output_tables_pattern:
             raise ValueError(
                 "output_tables_pattern should contain at least one '%s'")
 
-    if options.output_samples_pattern != None:
+    if options.output_samples_pattern is not None:
         if "%s" not in options.output_samples_pattern:
             raise ValueError(
                 "output_samples_pattern should contain at least one '%s'")
 
-    if options.output_counts_pattern != None:
+    if options.output_counts_pattern is not None:
         if "%s" not in options.output_counts_pattern:
             raise ValueError(
                 "output_counts_pattern should contain at least one '%s'")

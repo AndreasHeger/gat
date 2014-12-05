@@ -109,12 +109,15 @@ def buildSegments(options):
 
     if len(segments) > 1000:
         raise ValueError(
-            "too many (%i) segment files - use track definitions or --ignore-segment-tracks" % len(segments))
+            "too many (%i) segment files - use track definitions "
+            "or --ignore-segment-tracks" % len(segments))
 
     annotations = readSegmentList(
-        "annotations", options.annotation_files, options, options.enable_split_tracks)
+        "annotations", options.annotation_files, options,
+        options.enable_split_tracks)
     workspaces = readSegmentList(
-        "workspaces", options.workspace_files, options, options.enable_split_tracks)
+        "workspaces", options.workspace_files, options,
+        options.enable_split_tracks)
 
     # intersect workspaces to build a single workspace
     E.info("collapsing workspaces")
