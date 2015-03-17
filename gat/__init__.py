@@ -612,7 +612,8 @@ class UnconditionalSampler:
 
         return results
 
-    def sample(self, track, counts, counters, segs, annotations, workspace,
+    def sample(self, track, counts, counters, segs,
+               annotations, workspace,
                outfiles):
         '''sample and return counts.
 
@@ -643,7 +644,7 @@ class UnconditionalSampler:
 
         if workspace.sum() == 0:
             E.warn("empty workspace - no computation performed")
-            return counts_per_track
+            return None
 
         work = [WorkData(track,
                          x,
@@ -720,7 +721,7 @@ class ConditionalSampler(UnconditionalSampler):
 
         if workspace.sum() == 0:
             E.warn("empty workspace - no computation performed")
-            return counts_per_track
+            return None
 
         # compute samples conditionally - need to proceed by annotation
         for annoid, annotation in enumerate(annotations.tracks):
@@ -919,6 +920,10 @@ def run(segments,
         counts_per_track = outer_sampler.sample(
             track, counts, counters, segs, annotations, workspace, outfiles)
 
+        # skip empty tracks
+        if counts_per_track is None:
+            continue
+
         if samples_outfile:
             samples_outfile.close()
 
@@ -944,7 +949,6 @@ def run(segments,
     E.info("computing PValue statistics")
 
     annotator_results = list()
-
     counter_id = 0
     for counter, observed_count in zip(counters, observed_counts):
 
@@ -954,6 +958,10 @@ def run(segments,
                     segments[track],
                     annotations[annotation],
                     workspace)
+
+                # ignore empty results
+                if temp_workspace.sum() == 0:
+                    continue
 
                 # if reference is given, p-value will indicate difference
                 # The test that track and annotation are present is done
