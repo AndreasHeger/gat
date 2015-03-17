@@ -1586,19 +1586,21 @@ cdef void compressSampleIndex( EnrichmentStatistics * stats ):
         stats.sample2sorted[stats.sorted2sample[x]] = refidx
         x += 1
 
-cdef EnrichmentStatistics * makeEnrichmentStatistics( observed, samples,
-                                                      reference,
-                                                      pseudo_count ):
+cdef EnrichmentStatistics * makeEnrichmentStatistics(observed,
+                                                     samples,
+                                                     reference,
+                                                     pseudo_count):
 
     cdef EnrichmentStatistics * stats 
     cdef Position offset, i, l
 
     l = len(samples)
     if l < 1:
-        raise ValueError( "not enough samples - no stats in makeEnrichmentStatistics" )
+        return NULL
 
-    stats = <EnrichmentStatistics*>malloc( sizeof(EnrichmentStatistics) )
-    if not stats: raise MemoryError( "out of memory when allocation %i bytes" % sizeof( EnrichmentStatistics) )
+    stats = <EnrichmentStatistics*>malloc(sizeof(EnrichmentStatistics))
+    if not stats:
+        raise MemoryError("out of memory when allocation %i bytes" % sizeof(EnrichmentStatistics) )
 
     stats.samples = <double*>calloc( l, sizeof(double))
     stats.sorted2sample = <int*>calloc( l, sizeof(int))
@@ -1712,10 +1714,10 @@ cdef class AnnotatorResult(object):
         self.track = track
         self.annotation = annotation
         self.counter = counter
-        self.stats = makeEnrichmentStatistics( observed, 
-                                               samples,
-                                               reference,
-                                               pseudo_count )
+        self.stats = makeEnrichmentStatistics(observed, 
+                                              samples,
+                                              reference,
+                                              pseudo_count)
 
         self.format_observed = "%i"
 
@@ -1727,7 +1729,7 @@ cdef class AnnotatorResult(object):
         #     format_pvalue = "%7.6e"
 
         if self.stats.fold > 0:
-            logfold = self.format_fold % math.log( self.stats.fold, 2 )
+            logfold = self.format_fold % math.log(self.stats.fold, 2)
         else:
             logfold = "-inf"
 
@@ -1746,10 +1748,10 @@ cdef class AnnotatorResult(object):
 
     def __dealloc__(self):
         if self.stats != NULL:
-            free( self.stats.samples )
-            free( self.stats.sorted2sample )
-            free( self.stats.sample2sorted )
-            free( self.stats )
+            free(self.stats.samples)
+            free(self.stats.sorted2sample)
+            free(self.stats.sample2sorted)
+            free(self.stats)
 
     property track:
         def __get__(self): return self.track
