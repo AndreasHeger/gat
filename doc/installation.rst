@@ -67,6 +67,9 @@ in the package directory.
 Release History
 ===============
 
+1.2.1 Bugfix release:
+   * added missing files :file:`requires.txt` to tarball
+
 1.2 Bugfix release:
    * Command line options renamed for CGAT compatibility
    * minor bugfixes

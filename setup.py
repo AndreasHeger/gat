@@ -141,7 +141,7 @@ else:
                          'utils/gat_utils.c']
 
 name = "gat"
-version = "1.2"
+version = "1.2.1"
 
 classifiers = """
 Development Status :: 4 - Beta
