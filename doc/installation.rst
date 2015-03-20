@@ -28,7 +28,7 @@ using `pip <http://www.pip-installer.org/en/latest/>`_ or
 
 To install via pip, type::
 
-   pip install genomic-association-tester
+   pip install gat
 
 To install on OS X, we suggest to begin by installing 
 `homebrew <http://brew.sh/>`_ by following these
@@ -44,28 +44,23 @@ Follow then by::
 Installing via source
 =====================
 
-The latest released version of Gat can be downloaded from the following URL:
+The latest changes can be obtained by cloning the repository on github_::
 
-   http://code.google.com/p/genomic-association-tester/downloads/list
-
-Next, uncompress the tar archive::
-   
-   tar -xvzf genomic-association-tester.tar.gz
-
-The latest changes can be obtained by cloning the repository
-using merucial::
-
-   hg clone https://andreas.heger@code.google.com/p/genomic-association-tester/ gat
+   git clone https://github.com/AndreasHeger/gat.git
 
 To install, type::
 
-   python setup.py
+   python setup.py install
 
 in the package directory.
 
 
 Release History
 ===============
+
+1.2.2 Minor features
+   * Added --random-seed as option.
+   * moved documentation to read-the-docs.
 
 1.2.1 Bugfix release:
    * added missing files :file:`requires.txt` to tarball
