@@ -115,7 +115,7 @@ cdef class SegmentListSamplerSlow:
         self.cdf = numpy.cumsum( [x[1] - x[0] for x in self.segment_list ] )
         self.total_size = self.cdf[-1]
 
-    cpdef sample( self, Position length ):
+    cpdef sample(self, Position length):
         '''return a new position within segment list.'''
 
         # note: could be made quicker by
@@ -125,8 +125,8 @@ cdef class SegmentListSamplerSlow:
         cdef PositionDifference overlap
         cdef size_t segment_index
 
-        r = numpy.random.randint( 0, self.total_size )
-        segment_index = numpy.searchsorted( self.cdf, r )
+        r = numpy.random.randint(0, self.total_size)
+        segment_index = numpy.searchsorted(self.cdf, r)
         offset = r - self.cdf[segment_index]
         if offset == 0:
             pos = self.segment_list.segments[segment_index].start
@@ -262,7 +262,7 @@ cdef class SegmentListSampler:
         cdef long random_pos_in_segment, sampling_start
         # sample a position 
         # r = rand() / (RAND_MAX / total_size + 1)
-        random_pos_in_workspace = numpy.random.randint( 0, self.total_size )
+        random_pos_in_workspace = numpy.random.randint(0, self.total_size)
         segment_index = searchsorted( self.cdf,
                                       self.nsegments,
                                       sizeof(Position),

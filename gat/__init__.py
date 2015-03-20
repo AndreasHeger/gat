@@ -47,6 +47,10 @@ def readFromBedOld(filenames, name="track"):
     return segment_lists
 
 
+class OptionGroup(optparse.OptionGroup):
+    pass
+
+
 def buildParser(usage=None):
     '''return gat command line parser.
     '''
@@ -54,37 +58,137 @@ def buildParser(usage=None):
     parser = optparse.OptionParser(version="%prog version: $Id:",
                                    usage=usage)
 
-    parser.add_option(
+    group = OptionGroup(parser, "Input options")
+
+    group.add_option(
         "-a", "--annotation-bed-file", "--annotations", "--annotation-file",
         dest="annotation_files", type="string", action="append",
         help="filename with annotations [default=%default].")
 
-    parser.add_option(
+    group.add_option(
         "-s", "--segment-bed-file", "--segments", "--segment-file",
         dest="segment_files", type="string",
         action="append",
         help="filename with segments. Also accepts a "
         "glob in parentheses [default=%default].")
 
-    parser.add_option(
+    group.add_option(
         "-w", "--workspace-bed-file", "--workspace", "--workspace-file",
         dest="workspace_files", type="string", action="append",
         help="filename with workspace segments. Also "
         "accepts a glob in parentheses [default=%default].")
 
-    parser.add_option(
+    group.add_option(
         "-i", "--isochore-bed-file", "--isochores", "--isochore-file",
         dest="isochore_files", type="string", action="append",
         help="filename with isochore segments. Also "
         "accepts a glob in parentheses [default=%default].")
 
-    parser.add_option(
+    group.add_option(
         "-l", "--sample-file", dest="sample_files",
         type="string", action="append",
         help="filename with sample files. Start processing "
         "from samples [default=%default].")
 
-    parser.add_option(
+    group.add_option(
+        "--input-counts-file", dest="input_filename_counts",
+        type="string",
+        help="start processing from counts - no segments "
+        "required [default=%default].")
+
+    group.add_option(
+        "--input-results-file", dest="input_filename_results",
+        type="string",
+        help="start processing from results - no segments "
+        "required [default=%default].")
+
+    group.add_option(
+        "--ignore-segment-tracks", dest="ignore_segment_tracks",
+        action="store_true",
+        help="ignore segment tracks - all segments belong "
+        "to one track and called 'merged' [default=%default]")
+
+    group.add_option(
+        "--with-segment-tracks", dest="ignore_segment_tracks",
+        action="store_false",
+        help="the segments data file is arranged in tracks. "
+        "[default=%default]")
+
+    group.add_option(
+        "--enable-split-tracks", dest="enable_split_tracks",
+        action="store_true",
+        help="permit the same track to be in multiple "
+        "files [default=%default]")
+
+    parser.add_option_group(group)
+
+    group = OptionGroup(parser, "Output options")
+
+    group.add_option(
+        "-o", "--order", dest="output_order", type="choice",
+        choices=(
+            "track", "annotation", "fold", "pvalue", "qvalue"),
+        help="order results in output by fold, track, etc. "
+        "[default=%default].")
+
+    group.add_option(
+        "--output-tables-pattern", dest="output_tables_pattern",
+        type="string",
+        help="output pattern for result tables. Used if there "
+        "are multiple counters used [default=%default].")
+
+    group.add_option(
+        "--output-counts-pattern", dest="output_counts_pattern",
+        type="string",
+        help="output pattern for counts [default=%default].")
+
+    group.add_option(
+        "--output-plots-pattern", dest="output_plots_pattern",
+        type="string",
+        help="output pattern for plots [default=%default]")
+
+    group.add_option(
+        "--output-samples-pattern",
+        dest="output_samples_pattern", type="string",
+        help="output pattern for samples. Samples are "
+        "stored in bed format, one for "
+        " each segment [default=%default]")
+
+    group.add_option(
+        "--output-stats", dest="output_stats", type="choice",
+        action="append",
+        choices=("all",
+                 "annotations", "segments",
+                 "workspaces", "isochores",
+                 "overlap",
+                 "sample",
+                 "segment_metrics",
+                 "sample_metrics"),
+        help="output overlap summary stats [default=%default].")
+
+    group.add_option(
+        "--output-bed", dest="output_bed", type="choice",
+        action="append",
+        choices=("all",
+                 "annotations", "segments",
+                 "workspaces", "isochores",
+                 "overlap"),
+        help="output bed files [default=%default].")
+
+    group.add_option(
+        "--descriptions", dest="input_filename_descriptions",
+        type="string",
+        help="filename mapping annotation terms to "
+        "descriptions. "
+        "if given, the output table will contain additional "
+        "columns "
+        "[default=%default]")
+
+    parser.add_option_group(group)
+
+    group = OptionGroup(parser, "Sampling algorithm options")
+
+    group.add_option(
         "-c", "--counter", dest="counters", type="choice",
         action="append",
         choices=("nucleotide-overlap",
@@ -96,7 +200,7 @@ def buildParser(usage=None):
         help="quantity to use for estimating enrichment "
         "[default=%default].")
 
-    parser.add_option(
+    group.add_option(
         "-m", "--sampler", dest="sampler", type="choice",
         choices=("annotator",
                  "segments",
@@ -107,194 +211,154 @@ def buildParser(usage=None):
                  "brute-force"),
         help="quantity to test [default=%default].")
 
-    parser.add_option("-n", "--num-samples", dest="num_samples", type="int",
-                      help="number of samples to compute [default=%default].")
+    group.add_option(
+        "-n", "--num-samples", dest="num_samples", type="int",
+        help="number of samples to compute [default=%default].")
 
-    parser.add_option("-e", "--cache", dest="cache", type="string",
-                      help="filename for caching samples [default=%default].")
+    group.add_option(
+        "--shift-extension", dest="shift_extension",
+        type="float",
+        help="if the sampling method is 'shift', create a "
+        "segment of size # anound the segment "
+        "to determine the size of the region for "
+        "shifthing [default=%default].")
 
-    parser.add_option("-o", "--order", dest="output_order", type="choice",
-                      choices=(
-                          "track", "annotation", "fold", "pvalue", "qvalue"),
+    group.add_option(
+        "--shift-expansion", dest="shift_expansion",
+        type="float",
+        help="if the sampling method is 'shift', multiply each "
+        "segment by # "
+        "to determine the size of the region for "
+        "shifthing [default=%default].")
 
-                      help="order results in output by fold, track, etc. "
-                      "[default=%default].")
+    group.add_option(
+        "--bucket-size", dest="bucket_size", type="int",
+        help="size of a bin for histogram of segment lengths. "
+        "If 0, it will be automatically "
+        "scaled to fit nbuckets [default=%default]")
 
-    parser.add_option("-p", "--pvalue-method", dest="pvalue_method",
-                      type="choice",
-                      choices=("empirical", "norm", ),
-                      help="type of pvalue reported [default=%default].")
+    group.add_option(
+        "--nbuckets", dest="nbuckets", type="int",
+        help="number of bins for histogram of segment "
+        "lengths [default=%default]")
 
-    parser.add_option("-q", "--qvalue-method", dest="qvalue_method",
-                      type="choice",
-                      choices=(
-                          "storey", "BH", "bonferroni", "holm", "hommel",
-                          "hochberg", "BY", "none"),
-                      help="method to perform multiple testing correction "
-                      "by controlling the fdr [default=%default].")
+    parser.add_option_group(group)
 
-    parser.add_option("-t", "--num-threads", dest="num_threads", type="int",
-                      help="number of threads to use for sampling "
-                      "[default=%default]")
+    group = OptionGroup(parser, "Statistics options")
 
-    parser.add_option("--qvalue-lambda", dest="qvalue_lambda", type="float",
-                      help="fdr computation: lambda [default=%default].")
+    group.add_option(
+        "-p", "--pvalue-method", dest="pvalue_method",
+        type="choice",
+        choices=("empirical", "norm", ),
+        help="type of pvalue reported [default=%default].")
 
-    parser.add_option("--qvalue-pi0-method", dest="qvalue_pi0_method",
-                      type="choice",
-                      choices=("smoother", "bootstrap"),
-                      help="fdr computation: method for estimating pi0 "
-                      "[default=%default].")
+    group.add_option(
+        "-q", "--qvalue-method", dest="qvalue_method",
+        type="choice",
+        choices=(
+            "storey", "BH", "bonferroni", "holm", "hommel",
+            "hochberg", "BY", "none"),
+        help="method to perform multiple testing correction "
+        "by controlling the fdr [default=%default].")
 
-    parser.add_option("--input-counts-file", dest="input_filename_counts",
-                      type="string",
-                      help="start processing from counts - no segments "
-                      "required [default=%default].")
+    group.add_option(
+        "--qvalue-lambda", dest="qvalue_lambda", type="float",
+        help="fdr computation: lambda [default=%default].")
 
-    parser.add_option("--input-results-file", dest="input_filename_results",
-                      type="string",
-                      help="start processing from results - no segments "
-                      "required [default=%default].")
+    group.add_option(
+        "--qvalue-pi0-method", dest="qvalue_pi0_method",
+        type="choice",
+        choices=("smoother", "bootstrap"),
+        help="fdr computation: method for estimating pi0 "
+        "[default=%default].")
 
-    parser.add_option("--output-tables-pattern", dest="output_tables_pattern",
-                      type="string",
-                      help="output pattern for result tables. Used if there "
-                      "are multiple counters used [default=%default].")
+    group.add_option(
+        "--pseudo-count", dest="pseudo_count", type="float",
+        help="pseudo count. The pseudo count is added to both "
+        "the observed and expected overlap. "
+        "Using a pseudo-count avoids gat reporting fold changes "
+        "of 0 [default=%default].")
 
-    parser.add_option("--output-counts-pattern", dest="output_counts_pattern",
-                      type="string",
-                      help="output pattern for counts [default=%default].")
+    group.add_option(
+        "--null", dest="null", type="string",
+        help="null hypothesis. The default is to test "
+        "categories "
+        "for enrichment/depletion. "
+        "If a filename with gat output is given, gat will test "
+        "for the difference "
+        "in fold change between the segments supplied and in "
+        "the other file [default=%default].")
 
-    parser.add_option("--output-plots-pattern", dest="output_plots_pattern",
-                      type="string",
-                      help="output pattern for plots [default=%default]")
+    parser.add_option_group(group)
 
-    parser.add_option("--output-samples-pattern",
-                      dest="output_samples_pattern", type="string",
-                      help="output pattern for samples. Samples are "
-                      "stored in bed format, one for "
-                      " each segment [default=%default]")
+    group = OptionGroup(parser, "Processing options")
 
-    parser.add_option("--output-stats", dest="output_stats", type="choice",
-                      action="append",
-                      choices=("all",
-                               "annotations", "segments",
-                               "workspaces", "isochores",
-                               "overlap",
-                               "sample",
-                               "segment_metrics",
-                               "sample_metrics"),
-                      help="output overlap summary stats [default=%default].")
+    group.add_option(
+        "-e", "--cache", dest="cache", type="string",
+        help="filename for caching samples [default=%default].")
 
-    parser.add_option("--output-bed", dest="output_bed", type="choice",
-                      action="append",
-                      choices=("all",
-                               "annotations", "segments",
-                               "workspaces", "isochores",
-                               "overlap"),
-                      help="output bed files [default=%default].")
+    group.add_option(
+        "-t", "--num-threads", dest="num_threads", type="int",
+        help="number of threads to use for sampling "
+        "[default=%default]")
 
-    parser.add_option("--descriptions", dest="input_filename_descriptions",
-                      type="string",
-                      help="filename mapping annotation terms to "
-                      "descriptions. "
-                      "if given, the output table will contain additional "
-                      "columns "
-                      "[default=%default]")
+    group.add_option(
+        "--random-seed", dest='random_seed', type="int",
+        help="random seed to initialize number generator "
+        "with [%default].")
 
-    parser.add_option("--bucket-size", dest="bucket_size", type="int",
-                      help="size of a bin for histogram of segment lengths. "
-                      "If 0, it will be automatically "
-                      "scaled to fit nbuckets [default=%default]")
+    parser.add_option_group(group)
 
-    parser.add_option("--nbuckets", dest="nbuckets", type="int",
-                      help="number of bins for histogram of segment "
-                      "lengths [default=%default]")
+    group = OptionGroup(parser, "Workspace manipulation (experimental)")
 
-    parser.add_option("--ignore-segment-tracks", dest="ignore_segment_tracks",
-                      action="store_true",
-                      help="ignore segment tracks - all segments belong "
-                      "to one track and called 'merged' [default=%default]")
+    group.add_option(
+        "--conditional", dest="conditional", type="choice",
+        choices=("unconditional", "annotation-centered",
+                 "segment-centered", "cooccurance"),
+        help="conditional workspace creation [default=%default]"
+        "*cooccurance* - compute enrichment only within "
+        "workspace "
+        "segments that contain both segments "
+        "and annotations, "
+        "*annotation-centered* - workspace centered around "
+        "annotations. See --conditional-extension,"
+        "segment-centered - workspace centered around "
+        "segments. See --conditional-extension")
 
-    parser.add_option("--with-segment-tracks", dest="ignore_segment_tracks",
-                      action="store_false",
-                      help="the segments data file is arranged in tracks. "
-                      "[default=%default]")
+    group.add_option(
+        "--conditional-extension", dest="conditional_extension",
+        type="int",
+        help="if workspace is created conditional, extend by "
+        "this amount (in bp) [default=%default].")
 
-    parser.add_option("--enable-split-tracks", dest="enable_split_tracks",
-                      action="store_true",
-                      help="permit the same track to be in multiple "
-                      "files [default=%default]")
+    group.add_option(
+        "--conditional-expansion", dest="conditional_expansion",
+        type="float",
+        help="if workspace is created conditional, expand by "
+        "this amount (ratio) [default=%default].")
 
-    parser.add_option("--conditional", dest="conditional", type="choice",
-                      choices=("unconditional", "annotation-centered",
-                               "segment-centered", "cooccurance"),
-                      help="conditional workspace creation [default=%default]"
-                      "*cooccurance* - compute enrichment only within "
-                      "workspace "
-                      "segments that contain both segments "
-                      "and annotations, "
-                      "*annotation-centered* - workspace centered around "
-                      "annotations. See --conditional-extension,"
-                      "segment-centered - workspace centered around "
-                      "segments. See --conditional-extension")
+    group.add_option(
+        "--restrict-workspace", dest="restrict_workspace",
+        action="store_true",
+        help="restrict workspace to those segments that "
+        "contain both track "
+        "and annotations [default=%default]")
 
-    parser.add_option("--conditional-extension", dest="conditional_extension",
-                      type="int",
-                      help="if workspace is created conditional, extend by "
-                      "this amount (in bp) [default=%default].")
+    group.add_option(
+        "--truncate-workspace-to-annotations",
+        dest="truncate_workspace_to_annotations",
+        action="store_true",
+        help="truncate workspace with annotations "
+        "[default=%default]")
 
-    parser.add_option("--conditional-expansion", dest="conditional_expansion",
-                      type="float",
-                      help="if workspace is created conditional, expand by "
-                      "this amount (ratio) [default=%default].")
+    group.add_option(
+        "--truncate-segments-to-workspace",
+        dest="truncate_segments_to_workspace",
+        action="store_true",
+        help="truncate segments to workspace before "
+        "sampling [default=%default]")
 
-    parser.add_option("--restrict-workspace", dest="restrict_workspace",
-                      action="store_true",
-                      help="restrict workspace to those segments that "
-                      "contain both track "
-                      "and annotations [default=%default]")
-
-    parser.add_option("--truncate-workspace-to-annotations",
-                      dest="truncate_workspace_to_annotations",
-                      action="store_true",
-                      help="truncate workspace with annotations "
-                      "[default=%default]")
-
-    parser.add_option("--truncate-segments-to-workspace",
-                      dest="truncate_segments_to_workspace",
-                      action="store_true",
-                      help="truncate segments to workspace before "
-                      "sampling [default=%default]")
-
-    parser.add_option("--shift-extension", dest="shift_extension",
-                      type="float",
-                      help="if the sampling method is 'shift', create a "
-                      "segment of size # anound the segment "
-                      "to determine the size of the region for "
-                      "shifthing [default=%default].")
-
-    parser.add_option("--shift-expansion", dest="shift_expansion",
-                      type="float",
-                      help="if the sampling method is 'shift', multiply each "
-                      "segment by # "
-                      "to determine the size of the region for "
-                      "shifthing [default=%default].")
-
-    parser.add_option("--pseudo-count", dest="pseudo_count", type="float",
-                      help="pseudo count. The pseudo count is added to both "
-                      "the observed and expected overlap. "
-                      "Using a pseudo-count avoids gat reporting fold changes "
-                      "of 0 [default=%default].")
-
-    parser.add_option("--null", dest="null", type="string",
-                      help="null hypothesis. The default is to test "
-                      "categories "
-                      "for enrichment/depletion. "
-                      "If a filename with gat output is given, gat will test "
-                      "for the difference "
-                      "in fold change between the segments supplied and in "
-                      "the other file [default=%default].")
+    parser.add_option_group(group)
 
     parser.set_defaults(
         annotation_files=[],
@@ -335,6 +399,7 @@ def buildParser(usage=None):
         pseudo_count=1.0,
         null="default",
         num_threads=0,
+        random_seed=None,
     )
 
     return parser

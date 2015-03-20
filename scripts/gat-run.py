@@ -63,6 +63,8 @@ import os
 import sys
 import re
 import time
+import numpy
+import random
 
 import gat
 import gat.Experiment as E
@@ -81,18 +83,13 @@ def fromSegments(options, args):
     tstart = time.time()
 
     ##################################################
-    ##################################################
-    ##################################################
     # build segments
     segments, annotations, workspaces, isochores = IO.buildSegments(options)
 
     E.info("intervals loaded in %i seconds" % (time.time() - tstart))
 
     ##################################################
-    ##################################################
-    ##################################################
     # open various additional output files
-    ##################################################
     outfiles = {}
     for section in ("sample",
                     "segment_metrics",
@@ -100,12 +97,14 @@ def fromSegments(options, args):
                     ):
         if section in options.output_stats or \
             "all" in options.output_stats or \
-                len([x for x in options.output_stats if re.search(x, "section")]) > 0:
+                len([x for x in options.output_stats
+                     if re.search(x, "section")]) > 0:
             outfiles[section] = E.openOutputFile(section)
 
     if 'sample_metrics' in outfiles:
         outfiles['sample_metrics'].write(
-            "track\tsection\tmetric\t%s\n" % "\t".join(Stats.Summary().getHeaders()))
+            "track\tsection\tmetric\t%s\n" % "\t".join(
+                Stats.Summary().getHeaders()))
 
     # filter segments by workspace
     workspace = IO.applyIsochores(
@@ -119,16 +118,12 @@ def fromSegments(options, args):
         restrict_workspace=options.restrict_workspace)
 
     ##################################################
-    ##################################################
-    ##################################################
     # check memory requirements
-    counts = segments.countsPerTrack()
-    max_counts = max(counts.values())
     # previous algorithm: memory requirements if all samples are stored
-    memory = 8 * 2 * options.num_samples * max_counts * len(workspace)
+    # counts = segments.countsPerTrack()
+    # max_counts = max(counts.values())
+    # memory = 8 * 2 * options.num_samples * max_counts * len(workspace)
 
-    ##################################################
-    ##################################################
     ##################################################
     # initialize sampler
     if options.sampler == "annotator":
@@ -151,8 +146,6 @@ def fromSegments(options, args):
         sampler = GatEngine.SamplerUniform()
 
     ##################################################
-    ##################################################
-    ##################################################
     # initialize counter
     counters = []
     for counter in options.counters:
@@ -171,8 +164,6 @@ def fromSegments(options, args):
         else:
             raise ValueError("unknown counter '%s'" % counter)
 
-    ##################################################
-    ##################################################
     ##################################################
     # initialize workspace generator
     if options.conditional == "unconditional":
@@ -201,10 +192,7 @@ def fromSegments(options, args):
                          options.conditional)
 
     ##################################################
-    ##################################################
-    ##################################################
     # check if reference is compplete
-    ##################################################
     if options.reference:
         for track in segments.tracks:
             if track not in options.reference:
@@ -217,10 +205,7 @@ def fromSegments(options, args):
                         "track='%s'" % (annotation, track))
 
     ##################################################
-    ##################################################
-    ##################################################
     # compute
-    ##################################################
     annotator_results = gat.run(
         segments,
         annotations,
@@ -286,6 +271,12 @@ def main(argv=None):
         if "%s" not in options.output_counts_pattern:
             raise ValueError(
                 "output_counts_pattern should contain at least one '%s'")
+
+    if options.random_seed is not None:
+        # initialize python random number generator
+        random.seed(options.random_seed)
+        # initialize numpy random number generator
+        numpy.random.seed(options.random_seed)
 
     ##################################################
     # read fold changes that results should be compared with

@@ -38,7 +38,6 @@ API
 ---
 '''
 
-import string
 import re
 import sys
 import time
@@ -46,11 +45,11 @@ import inspect
 import os
 import optparse
 import logging
-import random
 import collections
-import types
+import copy
 import subprocess
 import gzip
+import uuid
 
 
 class DefaultOptions:
@@ -61,14 +60,40 @@ class DefaultOptions:
 global_starting_time = time.time()
 global_options = DefaultOptions()
 global_args = None
-# import hashlib
-# global_id = hashlib.md5(time.asctime(time.localtime(time.time()))).hexdigest()
-import uuid
 global_id = uuid.uuid4()
 global_benchmark = collections.defaultdict(int)
 
 
-def GetHeader():
+def openFile(filename, mode="r", create_dir=False):
+    '''open file in *filename* with mode *mode*.
+
+    If *create* is set, the directory containing filename
+    will be created if it does not exist.
+
+    gzip - compressed files are recognized by the
+    suffix ``.gz`` and opened transparently.
+
+    Note that there are differences in the file
+    like objects returned, for example in the
+    ability to seek.
+
+    returns a file or file-like object.
+    '''
+
+    _, ext = os.path.splitext(filename)
+
+    if create_dir:
+        dirname = os.path.dirname(filename)
+        if dirname and not os.path.exists(dirname):
+            os.makedirs(dirname)
+
+    if ext.lower() in (".gz", ".z"):
+        return gzip.open(filename, mode)
+    else:
+        return open(filename, mode)
+
+
+def getHeader():
     """return a header string with command line options and
     timestamp"""
     system, host, release, version, machine = os.uname()
@@ -81,7 +106,7 @@ def GetHeader():
             system, release, version, machine)
 
 
-def GetParams(options=None):
+def getParams(options=None):
     """return a string containing script parameters.
     Parameters are all variables that start with "param_".
     """
@@ -102,7 +127,7 @@ def GetParams(options=None):
         return "# no parameters."
 
 
-def GetFooter():
+def getFooter():
     """return a header string with command line options and
     timestamp."""
     return "# job finished in %i seconds at %s -- %s -- %s" %\
@@ -112,15 +137,48 @@ def GetFooter():
             global_id)
 
 
+class OptionGroup(optparse.OptionGroup):
+    pass
+
+
+def callbackShortHelp(option, opt, value, parser):
+    '''output short help (only command line options).'''
+    # clear usage and description
+    parser.set_description(None)
+    parser.set_usage(None)
+    # output help
+    parser.print_help()
+    # exit
+    parser.exit()
+
+
+class MultiLineFormatter(logging.Formatter):
+
+    '''logfile formatter: add identation for multi-line entries.'''
+
+    def format(self, record):
+        s = logging.Formatter.format(self, record)
+        if s.startswith("#"):
+            prefix = "#"
+        else:
+            prefix = ""
+        if record.message:
+            header, footer = s.split(record.message)
+            s = prefix + s.replace('\n', '\n%s' % prefix + ' ' * len(header))
+        return s
+
+
 def Start(parser=None,
           argv=sys.argv,
           quiet=False,
+          no_parsing=False,
           add_csv_options=False,
           add_mysql_options=False,
           add_psql_options=False,
           add_pipe_options=True,
           add_cluster_options=False,
-          add_output_options=False):
+          add_output_options=False,
+          return_parser=False):
     """set up an experiment.
 
     returns a tuple containing (options, args).
@@ -129,22 +187,38 @@ def Start(parser=None,
     """
 
     if not parser:
-        parser = optparse.OptionParser(
-            version="%prog version: $Id: Experiment.py 2803 2009-10-22 13:41:24Z andreas $")
+        parser = OptionParser(
+            version="%prog version: $Id$")
 
     global global_options, global_args, global_starting_time
 
+    # save default values given by user
+    user_defaults = copy.copy(parser.defaults)
+
     global_starting_time = time.time()
 
-    parser.add_option("-v", "--verbose", dest="loglevel", type="int",
-                      help="loglevel [%default]. The higher, the more output.")
+    group = OptionGroup(parser, "Script timing options")
 
-    parser.add_option("--timeit", dest='timeit_file', type="string",
-                      help="store timeing information in file [%default].")
-    parser.add_option("--timeit-name", dest='timeit_name', type="string",
-                      help="name in timing file for this class of jobs [%default].")
-    parser.add_option("--timeit-header", dest='timeit_header', action="store_true",
-                      help="add header for timing information [%default].")
+    group.add_option("--timeit", dest='timeit_file', type="string",
+                     help="store timeing information in file [%default].")
+    group.add_option("--timeit-name", dest='timeit_name', type="string",
+                     help="name in timing file for this class of jobs "
+                     "[%default].")
+    group.add_option("--timeit-header", dest='timeit_header',
+                     action="store_true",
+                     help="add header for timing information [%default].")
+    parser.add_option_group(group)
+
+    group = OptionGroup(parser, "Common options")
+
+    group.add_option("-v", "--verbose", dest="loglevel", type="int",
+                     help="loglevel [%default]. The higher, the more output.")
+
+    group.add_option("-?", dest="short_help", action="callback",
+                     callback=callbackShortHelp,
+                     help="output short help (command line options only.")
+
+    parser.add_option_group(group)
 
     if quiet:
         parser.set_defaults(loglevel=0)
@@ -158,7 +232,7 @@ def Start(parser=None,
     )
 
     if add_csv_options:
-        parser.add_option("--dialect", dest="csv_dialect", type="string",
+        parser.add_option("--csv-dialect", dest="csv_dialect", type="string",
                           help="csv dialect to use [%default].")
 
         parser.set_defaults(
@@ -167,95 +241,132 @@ def Start(parser=None,
         )
 
     if add_psql_options:
-        parser.add_option("-C", "--connection", dest="psql_connection", type="string",
-                          help="psql connection string [%default].")
-        parser.add_option("-U", "--user", dest="user", type="string",
-                          help="database user name [%default].")
-
-        parser.set_defaults(psql_connection="db:andreas")
+        group = OptionGroup(parser, "postgres options")
+        group.add_option("-C", "--connection", dest="psql_connection",
+                         type="string",
+                         help="psql connection string [%default].")
+        group.add_option("-U", "--user", dest="user", type="string",
+                         help="database user name [%default].")
+        parser.set_defaults(psql_connection="fgu202:postgres")
         parser.set_defaults(user="")
+        parser.add_option_group(group)
 
     if add_cluster_options:
-        parser.add_option("--use-cluster", dest="use_cluster", action="store_true",
-                          help="use cluster [%default].")
-        parser.add_option("--cluster-priority", dest="cluster_priority", type="int",
-                          help="set job priority on cluster [%default].")
-        parser.add_option("--cluster-queue", dest="cluster_queue", type="string",
-                          help="set cluster queue [%default].")
-        parser.add_option("--cluster-num-jobs", dest="cluster_num_jobs", type="int",
-                          help="number of jobs to submit to the queue execute in parallel [%default].")
-        parser.add_option("--cluster-options", dest="cluster_options", type="string",
-                          help="additional options for cluster jobs, passed on to qrsh [%default].")
+        group = OptionGroup(parser, "cluster options")
+        group.add_option("--no-cluster", "--local", dest="without_cluster",
+                         action="store_true",
+                         help="do no use cluster - run locally [%default].")
+        group.add_option("--cluster-priority", dest="cluster_priority",
+                         type="int",
+                         help="set job priority on cluster [%default].")
+        group.add_option("--cluster-queue", dest="cluster_queue",
+                         type="string",
+                         help="set cluster queue [%default].")
+        group.add_option("--cluster-num-jobs", dest="cluster_num_jobs",
+                         type="int",
+                         help="number of jobs to submit to the queue execute "
+                         "in parallel [%default].")
+        group.add_option("--cluster-parallel",
+                         dest="cluster_parallel_environment",
+                         type="string",
+                         help="name of the parallel environment to use "
+                         "[%default].")
+        group.add_option("--cluster-options", dest="cluster_options",
+                         type="string",
+                         help="additional options for cluster jobs, passed "
+                         "on to queuing system [%default].")
 
-        parser.set_defaults(use_cluster=False,
-                            cluster_queue="medium_jobs.q",
-                            cluster_priority=-10,
-                            cluster_num_jobs=100,
-                            cluster_options="")
+        parser.set_defaults(without_cluster=False,
+                            cluster_queue=None,
+                            cluster_priority=None,
+                            cluster_num_jobs=None,
+                            cluster_parallel_environment=None,
+                            cluster_options=None)
+        parser.add_option_group(group)
 
-    if add_output_options:
-        parser.add_option("-P", "--output-filename-pattern", dest="output_filename_pattern", type="string",
-                          help="OUTPUT filename pattern for various methods [%default].")
+    if add_output_options or add_pipe_options:
+        group = OptionGroup(parser, "Input/output options")
 
-        parser.add_option("-F",
-                          "--force-output",
-                          "--force", dest="output_force", action="store_true",
-                          help="force over-writing of existing files.")
+        if add_output_options:
+            group.add_option(
+                "-P", "--output-filename-pattern",
+                dest="output_filename_pattern", type="string",
+                help="OUTPUT filename pattern for various methods "
+                "[%default].")
 
-        parser.set_defaults(output_filename_pattern="%s",
-                            output_force=False)
+            group.add_option("-F", "--force-output", dest="output_force",
+                             action="store_true",
+                             help="force over-writing of existing files.")
 
-    if add_pipe_options:
-        parser.add_option("-I", "--stdin", dest="stdin", type="string",
-                          help="file to read stdin from [default = stdin].",
-                          metavar="FILE")
-        parser.add_option("-L", "--log", dest="stdlog", type="string",
-                          help="file with logging information [default = stdout].",
-                          metavar="FILE")
-        parser.add_option("-E", "--error", dest="stderr", type="string",
-                          help="file with error information [default = stderr].",
-                          metavar="FILE")
-        parser.add_option("-S", "--stdout", dest="stdout", type="string",
-                          help="file where output is to go [default = stdout].",
-                          metavar="FILE")
+            parser.set_defaults(output_filename_pattern="%s",
+                                output_force=False)
 
-        parser.set_defaults(stderr=sys.stderr)
-        parser.set_defaults(stdout=sys.stdout)
-        parser.set_defaults(stdlog=sys.stdout)
-        parser.set_defaults(stdin=sys.stdin)
+        if add_pipe_options:
+
+            group.add_option("-I", "--stdin", dest="stdin", type="string",
+                             help="file to read stdin from [default = stdin].",
+                             metavar="FILE")
+            group.add_option("-L", "--log", dest="stdlog", type="string",
+                             help="file with logging information "
+                             "[default = stdout].",
+                             metavar="FILE")
+            group.add_option("-E", "--error", dest="stderr", type="string",
+                             help="file with error information "
+                             "[default = stderr].",
+                             metavar="FILE")
+            group.add_option("-S", "--stdout", dest="stdout", type="string",
+                             help="file where output is to go "
+                             "[default = stdout].",
+                             metavar="FILE")
+
+            parser.set_defaults(stderr=sys.stderr)
+            parser.set_defaults(stdout=sys.stdout)
+            parser.set_defaults(stdlog=sys.stdout)
+            parser.set_defaults(stdin=sys.stdin)
+
+        parser.add_option_group(group)
 
     if add_mysql_options:
-        parser.add_option("-H", "--host", dest="host", type="string",
-                          help="mysql host [%default].")
-        parser.add_option("-D", "--database", dest="database", type="string",
-                          help="mysql database [%default].")
-        parser.add_option("-U", "--user", dest="user", type="string",
-                          help="mysql username [%default].")
-        parser.add_option("-P", "--password", dest="password", type="string",
-                          help="mysql password [%default].")
-        parser.add_option("-O", "--port", dest="port", type="int",
-                          help="mysql port [%default].")
+        group = OptionGroup(parser, "MYSQL connection options")
+        group.add_option("-H", "--host", dest="host", type="string",
+                         help="mysql host [%default].")
+        group.add_option("-D", "--database", dest="database", type="string",
+                         help="mysql database [%default].")
+        group.add_option("-U", "--user", dest="user", type="string",
+                         help="mysql username [%default].")
+        group.add_option("-P", "--password", dest="password", type="string",
+                         help="mysql password [%default].")
+        group.add_option("-O", "--port", dest="port", type="int",
+                         help="mysql port [%default].")
 
         parser.set_defaults(host="db",
                             port=3306,
                             user="",
                             password="",
                             database="")
+        parser.add_option_group(group)
 
-    (global_options, global_args) = parser.parse_args(argv[1:])
+    # restore user defaults
+    parser.defaults.update(user_defaults)
+
+    if return_parser:
+        return parser
+
+    if not no_parsing:
+        (global_options, global_args) = parser.parse_args(argv[1:])
 
     if add_pipe_options:
         if global_options.stdout != sys.stdout:
-            global_options.stdout = open(global_options.stdout, "w")
+            global_options.stdout = openFile(global_options.stdout, "w")
         if global_options.stderr != sys.stderr:
             if global_options.stderr == "stderr":
                 global_options.stderr = global_options.stderr
             else:
-                global_options.stderr = open(global_options.stderr, "w")
+                global_options.stderr = openFile(global_options.stderr, "w")
         if global_options.stdlog != sys.stdout:
-            global_options.stdlog = open(global_options.stdlog, "a")
+            global_options.stdlog = openFile(global_options.stdlog, "a")
         if global_options.stdin != sys.stdin:
-            global_options.stdin = open(global_options.stdin, "r")
+            global_options.stdin = openFile(global_options.stdin, "r")
     else:
         global_options.stderr = sys.stderr
         global_options.stdout = sys.stdout
@@ -263,8 +374,8 @@ def Start(parser=None,
         global_options.stdin = sys.stdin
 
     if global_options.loglevel >= 1:
-        global_options.stdlog.write(GetHeader() + "\n")
-        global_options.stdlog.write(GetParams(global_options) + "\n")
+        global_options.stdlog.write(getHeader() + "\n")
+        global_options.stdlog.write(getParams(global_options) + "\n")
         global_options.stdlog.flush()
 
     # configure logging
@@ -280,15 +391,20 @@ def Start(parser=None,
         lvl = logging.DEBUG
 
     if global_options.stdout == global_options.stdlog:
-        logging.basicConfig(
-            level=lvl,
-            format='# %(asctime)s %(levelname)s %(message)s',
-            stream=global_options.stdlog)
+        format = '# %(asctime)s %(levelname)s %(message)s'
     else:
-        logging.basicConfig(
-            level=lvl,
-            format='%(asctime)s %(levelname)s %(message)s',
-            stream=global_options.stdlog)
+        format = '%(asctime)s %(levelname)s %(message)s'
+
+    logging.basicConfig(
+        level=lvl,
+        format=format,
+        stream=global_options.stdlog)
+
+    # set up multi-line logging
+    # Note that .handlers is not part of the API, might change
+    # Solution is to configure handlers explicitely.
+    for handler in logging.getLogger().handlers:
+        handler.setFormatter(MultiLineFormatter(format))
 
     return global_options, global_args
 
@@ -308,7 +424,7 @@ def Stop():
             "#################################################################\n")
 
     if global_options.loglevel >= 1:
-        global_options.stdlog.write(GetFooter() + "\n")
+        global_options.stdlog.write(getFooter() + "\n")
 
     # close files
     if global_options.stdout != sys.stdout:
