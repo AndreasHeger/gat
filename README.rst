@@ -15,8 +15,7 @@ The software is available for download on pypi:
 
     pip install gat
 
-Please see http://www.cgat.org/~andreas/documentation/gat/ for a
-manual and tutorials.
+Please see http://gat.readthedocs.org/en/latest/ for a manual and tutorials.
 
 A GAT user group is at:
 

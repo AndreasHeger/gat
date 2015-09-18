@@ -1,3 +1,4 @@
+
 # cython: embedsignature=True
 # cython: profile=False
 
@@ -546,7 +547,7 @@ cdef class SamplerAnnotator(Sampler):
                 # add current sampled segments to list of segments
                 unintersected_segments.extend( sampled_segments )
                 # merge overlapping and adjacent segments
-                unintersected_segments.merge( 0 )
+                unintersected_segments.merge(0)
 
                 # reset sampled segments
                 sampled_segments.clear()
@@ -599,7 +600,7 @@ cdef class SamplerAnnotator(Sampler):
 
         # merge overlapping/adjacent
         intersected_segments = SegmentList( clone = unintersected_segments )
-        intersected_segments.merge( 0 )
+        intersected_segments.merge(0)
 
         # remove all segments outside workspace
         intersected_segments.filter( workspace )
@@ -1261,7 +1262,7 @@ cdef class SamplerGlobalPermutation(Sampler):
         
         # extend workspace segments with segments
         working_workspace.extend( working_segments )
-        working_workspace.merge( 0 )
+        working_workspace.merge(0)
 
         # get lengths of segments inside and extending from workspace
         lengths = [ x[1] - x[0] for x in working_segments ]
@@ -1379,51 +1380,61 @@ cdef class Counter:
     '''
 
 cdef class CounterNucleotideOverlap(Counter):
+    """return number of nucleotides overlapping between segments and
+    annotations."""
+
     name = "nucleotide-overlap"
 
-    def __call__(self, SegmentList segments, SegmentList annotations, SegmentList workspace = None ):
-        '''return number of nucleotides overlapping between segments and annotations.'''
-        return annotations.overlapWithSegments( segments )
+    def __call__(self, SegmentList segments,
+                 SegmentList annotations,
+                 SegmentList workspace=None ):
+        return annotations.overlapWithSegments(segments)
 
 cdef class CounterNucleotideDensity(Counter):
     name = "nucleotide-density"
 
-    def __call__(self, SegmentList segments, SegmentList annotations, SegmentList workspace ):
+    def __call__(self, SegmentList segments,
+                 SegmentList annotations,
+                 SegmentList workspace ):
         '''return number of nucleotides overlapping between segments and annotations.
         divided by the size of the workspace
         '''
         cdef Position l
         l = len(workspace)
-        if l == 0: return 0
-        return float(annotations.overlapWithSegments( segments )) / l
+        if l == 0:
+            return 0
+        return float(annotations.overlapWithSegments(segments)) / l
 
 cdef class CounterSegmentOverlap(Counter):
     name = "segment-overlap"
 
-    def __call__(self, segments, annotations, workspace = None ):
+    def __call__(self, segments, annotations, workspace=None):
         '''return number of segments overlapping with annotations.'''
-        return segments.intersectionWithSegments( annotations )
+        return segments.intersectionWithSegments(annotations)
 
 cdef class CounterSegmentMidpointOverlap(Counter):
     name = "segment-midoverlap"
 
-    def __call__(self, segments, annotations, workspace = None ):
+    def __call__(self, segments, annotations, workspace=None ):
         '''return number of segments overlapping with annotations.'''
-        return segments.intersectionWithSegments( annotations, mode = "midpoint" )
+        return segments.intersectionWithSegments(annotations,
+                                                 mode="midpoint")
 
 cdef class CounterAnnotationOverlap(Counter):
     name = "annotation-overlap"
 
-    def __call__(self, segments, annotations, workspace = None ):
-        '''return number of segments overlapping with annotations.'''
-        return annotations.intersectionWithSegments( segments )
+    def __call__(self, segments, annotations, workspace=None):
+        '''return number of annotations overlapping with segments.'''
+        return annotations.intersectionWithSegments(segments)
 
 cdef class CounterAnnotationMidpointOverlap(Counter):
     name = "annotation-midoverlap"
 
-    def __call__(self, segments, annotations, workspace = None ):
-        '''return number of segments overlapping with annotations.'''
-        return annotations.intersectionWithSegments( segments, mode = "midpoint" )
+    def __call__(self, segments, annotations, workspace=None):
+        '''return number of annotations overlapping with segments.'''
+        return annotations.intersectionWithSegments(
+            segments,
+            mode="midpoint")
 
 ############################################################
 ############################################################
@@ -2110,27 +2121,29 @@ def _append( counts, x,y,z): counts[y].append(z)
 def _set( counts, x,y,z) : counts[x].__setitem__( y, z )
 def _defdictfloat(): return collections.defaultdict(float)
 
-def computeCounts( counter, 
-                   aggregator, 
-                   segments, 
-                   annotations, 
-                   workspace,
-                   workspace_generator,
-                   append = False):
-    '''collect counts from *counter* between all combinations of *segments* and *annotations*.
+def computeCounts(counter, 
+                  aggregator, 
+                  segments, 
+                  annotations, 
+                  workspace,
+                  workspace_generator,
+                  append = False):
+    '''collect counts from *counter* between all combinations of
+    *segments* and *annotations*.
 
     *aggregator* determines how values are combined across isochores.
 
-    If *append* is set, values for each track in *segments* are appended to a list for
-    each track in *annotations*. This is useful for samples.  Otherwise, a nested dictionary is returned.
+    If *append* is set, values for each track in *segments* are
+    appended to a list for each track in *annotations*. This is useful
+    for samples.  Otherwise, a nested dictionary is returned.
 
     '''
         
     if append:
-        counts = collections.defaultdict( list )
+        counts = collections.defaultdict(list)
         f = _append
     else:
-        counts = collections.defaultdict( _defdictfloat )
+        counts = collections.defaultdict(_defdictfloat)
         f = _set
 
     isochores = workspace.keys()
@@ -2142,9 +2155,11 @@ def computeCounts( counter,
         for annotation in annotations.tracks:
             annos = annotations[annotation]
 
-            temp_segs, temp_annos, temp_workspace = workspace_generator( segs, annos, workspace )
-            vals = [ counter( segs[isochore], annos[isochore], workspace[isochore] ) for isochore in isochores ]
-            f(counts, track, annotation, aggregator(vals) )
+            temp_segs, temp_annos, temp_workspace = workspace_generator(
+                segs, annos, workspace)
+            vals = [counter(segs[isochore], annos[isochore], workspace[isochore])
+                    for isochore in isochores ]
+            f(counts, track, annotation, aggregator(vals))
 
     return counts
 
@@ -2413,7 +2428,9 @@ class bed_iterator(tsv_iterator):
 def _genie():
     return IntervalCollection(SegmentList)
 
-def readFromBed( filenames, allow_multiple = False ):
+def readFromBed(filenames,
+                bint allow_multiple=False,
+                bint ignore_tracks=False):
     '''read Segment Lists from one or more bed files.
 
     Segment lists are grouped by *contig* and *track*.
@@ -2425,45 +2442,59 @@ def readFromBed( filenames, allow_multiple = False ):
     If a *track* appears in multiple files, an error is raised
     unless *allow_multiple* is ``True``.
     
+    Arguments
+    ---------
+    ignore_tracks : bool
+        If True, ignore track information. There will only
+        be a single track called "merged".
+
     '''
     cdef SegmentList l
     cdef BedProxy bed
     cdef Position lineno
 
-    segment_lists = collections.defaultdict( IntervalDictionary )
+    segment_lists = collections.defaultdict(IntervalDictionary)
 
     tracks = {}
 
     if type(filenames) == str:
         filenames = (filenames,)
     for filename in filenames:
-        infile = IOTools.openFile( filename, "r")
-        default_name = os.path.basename( filename )
+        infile = IOTools.openFile(filename, "r")
+        default_name = os.path.basename(filename)
         lineno = 0
         try:
-            for bed in bed_iterator( infile ):
-                if bed.track:
-                    try:
-                        name = bed.track["name"]
-                    except KeyError:
-                        raise KeyError( "track without field 'name' in file '%s'" % filename)
-                elif bed.name: 
-                    name = bed.name
+            for bed in bed_iterator(infile):
+                if ignore_tracks:
+                    name = "merged"
                 else:
-                    name = default_name
+                    if bed.track:
+                        try:
+                            name = bed.track["name"]
+                        except KeyError:
+                            raise KeyError(
+                                "track without field 'name' in file '%s'" % filename)
+                    elif bed.name: 
+                        name = bed.name
+                    else:
+                        name = default_name
 
                 if name in tracks:
                     if tracks[name] != filename: 
                         if allow_multiple:
-                            E.warn( "track '%s' in multiple filenames: %s and %s" % (name, tracks[name], filename))
+                            E.warn(
+                                "track '%s' in multiple filenames: %s and %s" %
+                                (name, tracks[name], filename))
                         else:
-                            raise ValueError( "track '%s' in multiple filenames: %s and %s" % (name, tracks[name], filename) )
+                            raise ValueError(
+                                "track '%s' in multiple filenames: %s and %s" %
+                                (name, tracks[name], filename))
                         tracks[name] = filename
                 else:
                     tracks[name] = filename
                  
                 l = segment_lists[name][bed.contig]
-                l.add( atol(bed.fields[1]), atol(bed.fields[2]) )
+                l.add(atol(bed.fields[1]), atol(bed.fields[2]))
                 lineno += 1
 
         except IOError, msg:
@@ -2473,10 +2504,8 @@ def readFromBed( filenames, allow_multiple = False ):
 
     return segment_lists
 
-####################################################################
-####################################################################
-####################################################################
-cdef class IntervalContainer( object ):
+
+cdef class IntervalContainer(object):
     '''generic container class representing a collection of SegmentList objects.
     
     The base class implements sending/retrieving data to/from shared memory.
@@ -2633,13 +2662,13 @@ cdef class IntervalContainer( object ):
         '''extend each interval by a certain amount.'''
         cdef SegmentList segmentlist
         for segmentlist in self.getSegmentLists():
-            segmentlist.extend_segments( extension )
+            segmentlist.extend_segments(extension)
 
     def expand( self, expansion ):
         '''expand each interval by a certain amount.'''
         cdef SegmentList segmentlist
         for segmentlist in self.getSegmentLists():
-            segmentlist.expand_segments( expansion )
+            segmentlist.expand_segments(expansion)
 
     def normalize( self ):
         '''normalize all segment lists.'''
@@ -2775,13 +2804,13 @@ cdef class IntervalDictionary( IntervalContainer ):
         if normalize:
             # merge adjacent intervals (and normalize)
             for x in new.values(): 
-                x.merge( 0 )
+                x.merge(0)
                 
         self.intervals = new
 
-def buildIntervalDictionary( *args ):
+def buildIntervalDictionary(*args):
     '''unpickling - return a rebuilt SamplerShift object.'''
-    return IntervalCollection( unreduce = args )
+    return IntervalCollection(unreduce=args)
 
 #####################################################################
 #####################################################################
@@ -2796,31 +2825,36 @@ cdef class IntervalCollection(IntervalContainer):
     '''
 
 
-    def __init__(self, name = None, unreduce = None ):
-        self.intervals = collections.defaultdict( IntervalDictionary )
+    def __init__(self, name=None, unreduce=None):
+        self.intervals = collections.defaultdict(IntervalDictionary)
         self.name = name
         self.shared_fd = -1
         self.shared_fn = None
         if unreduce:
-            ( self.name, self.intervals ) = unreduce
+            (self.name, self.intervals) = unreduce
             # shared_fd and shared_fn remain unset - marks object as slave
 
     def __reduce__(self):
         return (buildIntervalCollection, (self.name, 
                                           self.intervals ))
 
-    def getSegmentLists( self ):
+    def setName(self, name):
+        """set name of collection."""
+        self.name = name
+
+    def getSegmentLists(self):
         '''yield all segment lists.'''
         for track,v in self.intervals.iteritems():
             for contig, segmentlist in v.iteritems():
                 yield segmentlist
 
-    def load( self, filenames, split_tracks = False ):
-        '''load segments from filenames and pre-process them.'''
-        self.intervals = readFromBed( filenames, split_tracks )
-        self.normalize()
+    def load(self, filenames, allow_multiple=False, ignore_tracks=False):
+        '''load segments from filenames.'''
+        self.intervals = readFromBed(filenames,
+                                     allow_multiple=allow_multiple,
+                                     ignore_tracks=ignore_tracks)
 
-    def save( self, outfile, prefix = "", **kwargs ):
+    def save(self, outfile, prefix = "", **kwargs):
         '''save in bed format to *outfile*.
         
         Each interval set will be saved as a different track with optional
@@ -2830,14 +2864,15 @@ cdef class IntervalCollection(IntervalContainer):
         '''
 
         for track, vv in self.intervals.iteritems():
-            outfile.write("track name=%s%s %s\n" % \
-                              (prefix, track,
-                               " ".join( ["%s=%s" % (x,y) for x,y in kwargs.iteritems() ] ) ) )
+            outfile.write(
+                "track name=%s%s %s\n" %
+                (prefix, track,
+                 " ".join(["%s=%s" % (x,y) for x,y in kwargs.iteritems()])))
             for contig, segmentlist in vv.items():
                 for start, end in segmentlist:
-                    outfile.write( "%s\t%i\t%i\n" % (contig, start, end))
+                    outfile.write("%s\t%i\t%i\n" % (contig, start, end))
 
-    def normalize( self ):
+    def normalize(self):
         '''normalize segment lists individually.
 
         Remove empty contigs.
@@ -2851,7 +2886,7 @@ cdef class IntervalCollection(IntervalContainer):
                 else:
                     segmentlist.normalize()
 
-    def outputStats( self, outfile ):
+    def outputStats(self, outfile):
         '''output segment statistics.'''
 
         outfile.write( "section\ttrack\tcontig\tnsegments\tlength\n" )
@@ -2876,26 +2911,34 @@ cdef class IntervalCollection(IntervalContainer):
                          "%i" % total_length ) ) + "\n" )
                  
                 
-    def merge( self, delete = False ):
+    def merge(self, delete=False):
         '''merge all tracks into a single segment list
         creating a new track called 'merged'.
 
         Overlapping intervals will be merged.
+        
+        .. note::
 
-        If *delete* == True, all tracks but the merged track
-        will be deleted.
+            The merged track will not be sorted or
+            normalized.
+
+        Arguments
+        ----------
+        delete : bool
+            If True, all tracks but the merged track
+            will be deleted.
+
         '''
         merged = IntervalDictionary()
         
         for track in self.intervals.keys():
             vv = self.intervals[track]
             for contig, segmentlist in vv.iteritems():
-                merged[contig].extend( segmentlist )
+                merged[contig].extend(segmentlist)
             if delete:
                 del self.intervals[track]
 
         self.intervals["merged"] = merged
-        self.normalize()
 
     def collapse( self ):
         '''collapse all tracks into a single segment list
@@ -2982,7 +3025,7 @@ cdef class IntervalCollection(IntervalContainer):
 
     def clone( self ):
         '''return a copy of self.'''
-        new = IntervalCollection( self.name )
+        new = IntervalCollection(self.name)
         for track,v in self.intervals.iteritems():
             for contig, segmentlist in v.iteritems():
                 new.add( track, contig, SegmentList( clone = segmentlist) )

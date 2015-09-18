@@ -120,6 +120,20 @@ def buildParser(usage=None):
         help="permit the same track to be in multiple "
         "files [default=%default]")
 
+    group.add_option(
+        "--overlapping-annotations", dest="overlapping_annotations",
+        action="store_true",
+        help="the annotations within a track are overlapping and should not "
+        "be merged. This is useful for working with short-read data. "
+        "[default=default]")
+
+    group.add_option(
+        "--annotations-label", dest="annotations_label",
+        type="string",
+        help="ignore tracks in annotations and instead set them "
+        "to label "
+        "[default=default]")
+
     parser.add_option_group(group)
 
     group = OptionGroup(parser, "Output options")
@@ -362,44 +376,45 @@ def buildParser(usage=None):
 
     parser.set_defaults(
         annotation_files=[],
-        segment_files=[],
-        workspace_files=[],
-        sample_files=[],
-        num_samples=1000,
-        nbuckets=100000,
+        annotations_label=None,
         bucket_size=0,
-        counters=[],
-        output_stats=[],
-        output_bed=[],
-        output_order="fold",
         cache=None,
+        conditional="unconditional",
+        conditional_expansion=None,
+        conditional_extension=None,
+        counters=[],
+        enable_split_tracks=False,
+        ignore_segment_tracks=True,
         input_filename_counts=None,
+        input_filename_descriptions=None,
         input_filename_results=None,
-        pvalue_method="empirical",
-        output_tables_pattern="%s.tsv.gz",
+        nbuckets=100000,
+        null="default",
+        num_samples=1000,
+        num_threads=0,
+        output_bed=[],
         output_counts_pattern=None,
+        output_order="fold",
         output_plots_pattern=None,
         output_samples_pattern=None,
-        qvalue_method="BH",
+        output_stats=[],
+        output_tables_pattern="%s.tsv.gz",
+        overlapping_annotations=False,
+        pseudo_count=1.0,
+        pvalue_method="empirical",
         qvalue_lambda=None,
+        qvalue_method="BH",
         qvalue_pi0_method="smoother",
-        sampler="annotator",
-        ignore_segment_tracks=True,
-        input_filename_descriptions=None,
-        conditional="unconditional",
-        conditional_extension=None,
-        conditional_expansion=None,
+        random_seed=None,
         restrict_workspace=False,
-        truncate_segments_to_workspace=False,
-        truncate_workspace_to_annotations=False,
-        enable_split_tracks=False,
+        sample_files=[],
+        sampler="annotator",
+        segment_files=[],
         shift_expansion=2.0,
         shift_extension=0,
-        # pseudo count for fold change computation to avoid 0 fc
-        pseudo_count=1.0,
-        null="default",
-        num_threads=0,
-        random_seed=None,
+        truncate_segments_to_workspace=False,
+        truncate_workspace_to_annotations=False,
+        workspace_files=[],
     )
 
     return parser

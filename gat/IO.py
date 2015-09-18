@@ -19,16 +19,12 @@ try:
 except (ImportError, RuntimeError):
     HASPLOT = False
 
-##################################################
-##################################################
-##################################################
-# process input
-
 
 def dumpStats(coll, section, options):
     if section in options.output_stats or \
             "all" in options.output_stats or \
-            len([x for x in options.output_stats if re.search(x, section)]) > 0:
+            len([x for x in options.output_stats
+                 if re.search(x, section)]) > 0:
         coll.outputStats(E.openOutputFile(section))
 
 
@@ -39,16 +35,35 @@ def dumpBed(coll, section, options):
         coll.save(E.openOutputFile(section + ".bed"))
 
 
-def readSegmentList(label, filenames, options, enable_split_tracks=False):
-    # read one or more segment files
+def readSegmentList(label,
+                    filenames,
+                    enable_split_tracks=False,
+                    ignore_tracks=False):
+    """read one or more segment files.
+
+    Arguments
+    ---------
+    label : string
+        Label to use for IntervalCollection.
+    filenames : list
+        List of filenames to load in :term:`bed` format.
+    enable_split_tracks : bool
+        If True, allow tracks to be split across multiple files.
+    ignore_tracks : int
+        If True, ignore track information.
+
+    Returns
+    -------
+    segments : IntervalCollection
+        The segment collection.
+    """
     results = GatEngine.IntervalCollection(name=label)
     E.info("%s: reading tracks from %i files" % (label, len(filenames)))
-    results.load(filenames, split_tracks=enable_split_tracks)
+    results.load(filenames,
+                 allow_multiple=enable_split_tracks,
+                 ignore_tracks=ignore_tracks)
     E.info("%s: read %i tracks from %i files" %
            (label, len(results), len(filenames)))
-    dumpStats(results, "stats_%s_raw" % label, options)
-    results.normalize()
-    dumpStats(results, "stats_%s_normed" % label, options)
     return results
 
 
@@ -97,11 +112,10 @@ def buildSegments(options):
         raise ValueError("please specify at least one workspace file")
 
     # read one or more segment files
-    segments = readSegmentList("segments", options.segment_files, options)
-    if options.ignore_segment_tracks:
-        segments.merge(delete=True)
-        E.info("merged all segments into one track with %i segments" %
-               len(segments))
+    segments = readSegmentList("segments",
+                               options.segment_files,
+                               ignore_tracks=options.ignore_segment_tracks)
+    segments.normalize()
 
     if segments.sum() == 0:
         E.critical("no segments in input file - run aborted")
@@ -113,11 +127,23 @@ def buildSegments(options):
             "or --ignore-segment-tracks" % len(segments))
 
     annotations = readSegmentList(
-        "annotations", options.annotation_files, options,
-        options.enable_split_tracks)
+        "annotations", options.annotation_files,
+        enable_split_tracks=options.enable_split_tracks,
+        ignore_tracks=options.annotations_label is not None)
+
+    if options.annotations_label is not None:
+        annotations.setName(options.annotations_label)
+
+    if options.overlapping_annotations:
+        # only sort, do not merge
+        annotations.sort()
+    else:
+        annotations.normalize()
+
     workspaces = readSegmentList(
         "workspaces", options.workspace_files, options,
         options.enable_split_tracks)
+    workspaces.normalize()
 
     # intersect workspaces to build a single workspace
     E.info("collapsing workspaces")
@@ -168,8 +194,8 @@ def applyIsochores(segments, annotations, workspaces,
                    ):
     '''apply isochores to segments and annotations.
 
-    Segments and annotations are filtered in place to keep 
-    only those overlapping the workspace.
+    Segments and annotations are filtered in place to keep only those
+    overlapping the workspace.
 
     If *isochores* are given, isochores are applied.
 
@@ -183,6 +209,7 @@ def applyIsochores(segments, annotations, workspaces,
     is truncated to keep only those parts that overlap annotations.
 
     returns a workspace divided into isochores.
+
     '''
 
     if isochores:
@@ -258,8 +285,9 @@ def applyIsochores(segments, annotations, workspaces,
     if "overlap" in options.output_stats or \
             "all" in options.output_stats:
         for track in segments.tracks:
-            workspaces.outputOverlapStats(E.openOutputFile("overlap_%s" % track),
-                                          segments[track])
+            workspaces.outputOverlapStats(
+                E.openOutputFile("overlap_%s" % track),
+                segments[track])
 
     return workspace
 
@@ -280,8 +308,9 @@ def readDescriptions(options):
                 data = line[:-1].split("\t")
 
                 if description_width:
-                    assert len(
-                        data) - 1 == description_width, "inconsistent number of descriptions in %s" % options.input_filename_descriptions
+                    assert len(data) - 1 == description_width, \
+                        "inconsistent number of descriptions in %s" %\
+                        options.input_filename_descriptions
                 else:
                     description_width = len(data) - 1
 
@@ -290,7 +319,8 @@ def readDescriptions(options):
                     first = False
                 else:
                     descriptions[data[0]] = data[1:]
-        assert len(description_header) == description_width, "number of descriptions (%i) inconsistent with header (%s) in %s" % \
+        assert len(description_header) == description_width, \
+            "number of descriptions (%i) inconsistent with header (%s) in %s" % \
             (description_width, len(description_header),
              options.input_filename_descriptions)
 
