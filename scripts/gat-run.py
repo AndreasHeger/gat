@@ -70,8 +70,8 @@ import gat
 import gat.Experiment as E
 import gat.IO as IO
 import gat.Stats as Stats
-import GatSegmentList
-import GatEngine
+import gat.SegmentList as SegmentList
+import gat.Engine as Engine
 
 
 def fromSegments(options, args):
@@ -82,13 +82,11 @@ def fromSegments(options, args):
 
     tstart = time.time()
 
-    ##################################################
     # build segments
     segments, annotations, workspaces, isochores = IO.buildSegments(options)
 
     E.info("intervals loaded in %i seconds" % (time.time() - tstart))
 
-    ##################################################
     # open various additional output files
     outfiles = {}
     for section in ("sample",
@@ -117,65 +115,61 @@ def fromSegments(options, args):
         truncate_workspace_to_annotations=options.truncate_workspace_to_annotations,
         restrict_workspace=options.restrict_workspace)
 
-    ##################################################
     # check memory requirements
     # previous algorithm: memory requirements if all samples are stored
     # counts = segments.countsPerTrack()
     # max_counts = max(counts.values())
     # memory = 8 * 2 * options.num_samples * max_counts * len(workspace)
 
-    ##################################################
     # initialize sampler
     if options.sampler == "annotator":
-        sampler = GatEngine.SamplerAnnotator(
+        sampler = Engine.SamplerAnnotator(
             bucket_size=options.bucket_size,
             nbuckets=options.nbuckets)
     elif options.sampler == "shift":
-        sampler = GatEngine.SamplerShift(
+        sampler = Engine.SamplerShift(
             radius=options.shift_expansion,
             extension=options.shift_extension)
     elif options.sampler == "segments":
-        sampler = GatEngine.SamplerSegments()
+        sampler = Engine.SamplerSegments()
     elif options.sampler == "local-permutation":
-        sampler = GatEngine.SamplerLocalPermutation()
+        sampler = Engine.SamplerLocalPermutation()
     elif options.sampler == "global-permutation":
-        sampler = GatEngine.SamplerGlobalPermutation()
+        sampler = Engine.SamplerGlobalPermutation()
     elif options.sampler == "brute-force":
-        sampler = GatEngine.SamplerBruteForce()
+        sampler = Engine.SamplerBruteForce()
     elif options.sampler == "uniform":
-        sampler = GatEngine.SamplerUniform()
+        sampler = Engine.SamplerUniform()
 
-    ##################################################
     # initialize counter
     counters = []
     for counter in options.counters:
         if counter == "nucleotide-overlap":
-            counters.append(GatEngine.CounterNucleotideOverlap())
+            counters.append(Engine.CounterNucleotideOverlap())
         elif counter == "nucleotide-density":
-            counters.append(GatEngine.CounterNucleotideDensity())
+            counters.append(Engine.CounterNucleotideDensity())
         elif counter == "segment-overlap":
-            counters.append(GatEngine.CounterSegmentOverlap())
-        elif counter == "annotations-overlap":
-            counters.append(GatEngine.CounterAnnotationsOverlap())
+            counters.append(Engine.CounterSegmentOverlap())
+        elif counter == "annotation-overlap":
+            counters.append(Engine.CounterAnnotationOverlap())
         elif counter == "segment-midoverlap":
-            counters.append(GatEngine.CounterSegmentMidpointOverlap())
-        elif counter == "annotations-midoverlap":
-            counters.append(GatEngine.CounterAnnotationsMidpointOverlap())
+            counters.append(Engine.CounterSegmentMidpointOverlap())
+        elif counter == "annotation-midoverlap":
+            counters.append(Engine.CounterAnnotationMidpointOverlap())
         else:
             raise ValueError("unknown counter '%s'" % counter)
 
-    ##################################################
     # initialize workspace generator
     if options.conditional == "unconditional":
-        workspace_generator = GatEngine.UnconditionalWorkspace()
+        workspace_generator = Engine.UnconditionalWorkspace()
     elif options.conditional == "cooccurance":
-        workspace_generator = GatEngine.ConditionalWorkspaceCooccurance()
+        workspace_generator = Engine.ConditionalWorkspaceCooccurance()
     elif options.conditional == "annotation-centered":
         if options.conditional_expansion is None:
             raise ValueError(
                 "please specify either --conditional-expansion or "
                 "--conditional-extension")
-        workspace_generator = GatEngine.ConditionalWorkspaceAnnotationCentered(
+        workspace_generator = Engine.ConditionalWorkspaceAnnotationCentered(
             options.conditional_extension,
             options.conditional_expansion)
     elif options.conditional == "segment-centered":
@@ -184,14 +178,13 @@ def fromSegments(options, args):
                 "please specify either --conditional-expansion or "
                 "--conditional-extension")
 
-        workspace_generator = GatEngine.ConditionalWorkspaceSegmentCentered(
+        workspace_generator = Engine.ConditionalWorkspaceSegmentCentered(
             options.conditional_extension,
             options.conditional_expansion)
     else:
         raise ValueError("unknown conditional workspace '%s'" %
                          options.conditional)
 
-    ##################################################
     # check if reference is compplete
     if options.reference:
         for track in segments.tracks:
@@ -204,7 +197,6 @@ def fromSegments(options, args):
                         "missing annotation '%s' in annotations for "
                         "track='%s'" % (annotation, track))
 
-    ##################################################
     # compute
     annotator_results = gat.run(
         segments,
@@ -247,7 +239,7 @@ def main(argv=None):
         options)
 
     ##################################################
-    size_pos, size_segment = GatSegmentList.getSegmentSize()
+    size_pos, size_segment = SegmentList.getSegmentSize()
     E.debug("sizes: pos=%i segment=%i, max_coord=%i" %
             (size_pos, size_segment, 2 ** (8 * size_pos)))
 
@@ -290,7 +282,7 @@ def main(argv=None):
 
     if options.input_filename_counts:
         # use pre-computed counts
-        annotator_results = GatEngine.fromCounts(options.input_filename_counts)
+        annotator_results = Engine.fromCounts(options.input_filename_counts)
 
     elif options.input_filename_results:
         # use previous results (re-computes fdr)
@@ -305,13 +297,13 @@ def main(argv=None):
     ##################################################
     if options.pvalue_method != "empirical":
         E.info("updating pvalues to %s" % options.pvalue_method)
-        GatEngine.updatePValues(annotator_results, options.pvalue_method)
+        Engine.updatePValues(annotator_results, options.pvalue_method)
 
     ##################################################
     # output
     IO.outputResults(annotator_results,
                      options,
-                     GatEngine.AnnotatorResultExtended.headers,
+                     Engine.AnnotatorResultExtended.headers,
                      description_header,
                      description_width,
                      descriptions)

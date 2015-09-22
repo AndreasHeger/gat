@@ -1,1 +1,0 @@
-../GatSegmentList/GatSegmentList.pxd

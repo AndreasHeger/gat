@@ -1,21 +1,27 @@
 # cython: embedsignature=True
 # cython: profile=False
 
-import types, collections, re, os, math, random
-
-from cpython cimport PyString_AsString, PyString_FromStringAndSize
-from cpython.version cimport PY_MAJOR_VERSION
+import math
+import random
 
 cimport cython
-# for UINT16_MAX
-from libc.stdint cimport *
 
-#####################################################
-#####################################################
+from cpython cimport PyString_AsString, PyString_FromStringAndSize
+from libc.stdlib cimport qsort, realloc, malloc, calloc, free
+from libc.stdint cimport UINT32_MAX
+from libc.string cimport memcpy, memmove
+from libc.errno cimport errno
+from libc.math cimport floor
+from posix.types cimport off_t
+from posix.mman cimport mmap, munmap, shm_open, shm_unlink
+from posix.mman cimport MAP_SHARED, PROT_READ, PROT_WRITE
+from posix.stat cimport S_IRUSR, S_IWUSR
+from posix.fcntl cimport O_CREAT, O_RDWR, O_RDONLY
+from posix.unistd cimport ftruncate
+
 #####################################################
 ## numpy import
 ## both import and cimport are necessary
-#####################################################
 import numpy
 cimport numpy
 DTYPE_INT = numpy.int
@@ -30,40 +36,50 @@ def getSegmentSize():
 # min/max are not optimized, so declare them as C functions
 # declare as signed comparisons as a Position might be negative
 @cython.profile(False)
-cdef inline PositionDifference lmin( PositionDifference a, PositionDifference b):
-    if a < b: return a
-    return b
-@cython.profile(False)
-cdef inline PositionDifference lmax( PositionDifference a, PositionDifference b):
-    if a > b: return a
+cdef inline PositionDifference lmin(PositionDifference a, PositionDifference b) nogil:
+    if a < b:
+        return a
     return b
 
 @cython.profile(False)
-cdef inline double dmin( double a, double b):
-    if a < b: return a
+cdef inline PositionDifference lmax(PositionDifference a, PositionDifference b) nogil:
+    if a > b:
+        return a
     return b
 
 @cython.profile(False)
-cdef inline double dmax( double a, double b):
-    if a > b: return a
+cdef inline double dmin(double a, double b) nogil:
+    if a < b:
+        return a
     return b
 
 @cython.profile(False)
-cdef inline PositionDifference segment_overlap( Segment a, Segment b ):
-    return lmax(0, <PositionDifference>lmin( a.end, b.end) - <PositionDifference>lmax(a.start, b.start))
+cdef inline double dmax(double a, double b) nogil:
+    if a > b:
+        return a
+    return b
 
 @cython.profile(False)
-cdef inline PositionDifference range_overlap( Position astart, Position aend, Position bstart, Position bend ):
+cdef inline PositionDifference segment_overlap(Segment a, Segment b) nogil:
+    """return number of positions overlapping between to Segments."""
+    return lmax(0,
+                <PositionDifference>lmin( a.end, b.end) -
+                <PositionDifference>lmax(a.start, b.start))
+
+@cython.profile(False)
+cdef inline PositionDifference range_overlap(
+    Position astart, Position aend, Position bstart, Position bend) nogil:
     return lmax(0, 
                 <PositionDifference>lmin( aend, bend) - 
                 <PositionDifference>lmax(astart, bstart))
 
 @cython.profile(False)
-cdef inline PositionDifference segment_overlap_raw(Segment a, Segment b):
-    return <PositionDifference>lmin(a.end, b.end) - <PositionDifference>lmax(a.start, b.start)
+cdef inline PositionDifference segment_overlap_raw(Segment a, Segment b) nogil:
+    return <PositionDifference>lmin(a.end, b.end) - \
+        <PositionDifference>lmax(a.start, b.start)
 
 @cython.profile(False)
-cdef inline PositionDifference segment_length(Segment a):
+cdef inline PositionDifference segment_length(Segment a) nogil:
     return <PositionDifference>a.end - <PositionDifference>a.start
 
 # trick to permit const void * in function definitions
@@ -71,22 +87,26 @@ cdef extern from *:
     ctypedef void * const_void_ptr "const void*"
 
 @cython.profile(False)
-cdef int cmpSegments( const_void_ptr s1, const_void_ptr s2 ):
-    return <PositionDifference>(<Segment *>s1).start - <PositionDifference>(<Segment *>s2).start
+cdef int cmpSegments(const_void_ptr s1, const_void_ptr s2) nogil:
+    return <PositionDifference>(<Segment *>s1).start - \
+        <PositionDifference>(<Segment *>s2).start
 
 @cython.profile(False)
-cdef int cmpSegmentsStartAndEnd( const_void_ptr s1, const_void_ptr s2 ):
+cdef int cmpSegmentsStartAndEnd(const_void_ptr s1, const_void_ptr s2) nogil:
     cdef int x
-    x = <PositionDifference>(<Segment *>s1).start - <PositionDifference>(<Segment *>s2).start
-    if x != 0: return x
-    return <PositionDifference>(<Segment *>s1).end - <PositionDifference>(<Segment *>s2).end
+    x = <PositionDifference>(<Segment *>s1).start - \
+        <PositionDifference>(<Segment *>s2).start
+    if x != 0:
+        return x
+    return <PositionDifference>(<Segment *>s1).end - \
+        <PositionDifference>(<Segment *>s2).end
 
 @cython.profile(False)
-cdef int cmpPosition( const_void_ptr s1, const_void_ptr s2 ):
+cdef int cmpPosition(const_void_ptr s1, const_void_ptr s2) nogil:
     return (<Position*>s1)[0] - (<Position*>s2)[0]
 
 @cython.profile(False)
-cdef int cmpDouble( const_void_ptr s1, const_void_ptr s2 ):
+cdef int cmpDouble( const_void_ptr s1, const_void_ptr s2 ) nogil:
     return <int>((<double*>s1)[0] - (<double*>s2)[0])
 
 # Flag for Segment list status
@@ -105,12 +125,12 @@ cdef class SegmentList:
     Call normalize to merge overlapping segments.
     '''
     def __init__(self, 
-                 int allocate = 0,
-                 SegmentList clone = None,
-                 iter = None,
-                 normalize = False,
-                 SegmentList share = None,
-                 unreduce = None ):
+                 int allocate=0,
+                 SegmentList clone=None,
+                 iter=None,
+                 normalize=False,
+                 SegmentList share=None,
+                 unreduce=None):
         '''create empty list of segments.
         
         Creating is a lazy operation, no memory is allocated unless
@@ -168,6 +188,9 @@ cdef class SegmentList:
         self.shared_fd = -1
         self.key = None
 
+        self.is_shared = False
+        self.is_slave = False
+
         # initialize list from shared memory
         # allocated is 0
         if share != None:
@@ -176,7 +199,9 @@ cdef class SegmentList:
                 assert share.shared_fd >= 0, "sharing from a non-shared SegmentList"
 
                 self.allocated = 0
-                self.flag = share.flag | SEG_SHARED | SEG_SLAVE
+                self.flag = share.flag
+                self.is_shared = True
+                self.is_slave = True
                 self.chunk_size = share.chunk_size
                 retval = <Segment*>mmap(NULL, 
                                         self.nsegments * sizeof(Segment),
@@ -187,15 +212,18 @@ cdef class SegmentList:
 
                 error_number = errno
 
-                if retval == MAP_FAILED:
-                    raise ValueError("could not read list from shared segment - error=%i" % error_number )
+                if retval == <void*>-1:
+                    raise ValueError(
+                        "could not read list from shared segment - error=%i" %
+                        error_number)
                 self.segments = <Segment *>retval
 
         # create from pickled representation
         # if a shared object is pickled, it will be re-constituted 
         # as a slave list.
         elif unreduce:
-            self.nsegments, self.allocated, self.flag, self.chunk_size, self.key = unreduce[:5]
+            self.nsegments, self.allocated, self.flag, \
+                self.chunk_size, self.key = unreduce[:5]
             if type(unreduce[5]) == int:
                 # shared memory
                 shared_fd = unreduce[5]
@@ -209,27 +237,29 @@ cdef class SegmentList:
 
                 error_number = errno
 
-                if retval == MAP_FAILED:
-                    raise ValueError( "could not unpickle as slave - error=%i" % error_number)
+                if retval == <void*>-1:
+                    raise ValueError(
+                        "could not unpickle as slave - error=%i" % error_number)
 
                 self.segments = <Segment *>retval
 
                 # mark memory as slave - nothing allocated and no shared_fd
                 self.allocated = 0
                 self.shared_fd = -1
-                self.flag |= SEG_SHARED | SEG_SLAVE
+                self.is_shared = True
+                self.is_slave = True
             else:
                 p = PyString_AsString(unreduce[5])
-                self.segments = <Segment*>malloc( self.nsegments * sizeof( Segment ) )
-                memcpy( self.segments, p, cython.sizeof( Position ) * 2 * self.nsegments )
+                self.segments = <Segment*>malloc(self.nsegments * sizeof(Segment))
+                memcpy(self.segments, p, cython.sizeof(Position) * 2 * self.nsegments)
 
         # clone from another list
         elif clone != None:
             self.nsegments = self.allocated = clone.nsegments
-            self.segments = <Segment*>calloc( clone.nsegments, sizeof( Segment ) )
-            memcpy( self.segments,
-                    clone.segments,
-                    clone.nsegments * sizeof(Segment ) )
+            self.segments = <Segment*>calloc(clone.nsegments, sizeof( Segment))
+            memcpy(self.segments,
+                   clone.segments,
+                   clone.nsegments * sizeof(Segment))
             self.flag = clone.flag & SEG_NORMALIZED
             
         # create from an iterable
@@ -237,45 +267,47 @@ cdef class SegmentList:
             a = tuple(iter)
             nsegments = len(a)
             self.nsegments = self.allocated = nsegments
-            self.segments = <Segment*>calloc( self.nsegments, sizeof( Segment ) )
+            self.segments = <Segment*>calloc(self.nsegments, sizeof(Segment))
             idx = 0
             for start, end in a:
-                self.segments[idx] = Segment( start, end )
+                self.segments[idx] = Segment(start, end)
                 idx += 1
             self.flag = 0
 
         # allocated memory, list remains empty
         elif allocate:
             self.allocated = allocate
-            self.segments = <Segment*>calloc( allocate, sizeof( Segment ) )
+            self.segments = <Segment*>calloc(allocate, sizeof(Segment))
 
-        if normalize: self.normalize()
+        if normalize:
+            self.normalize()
 
-    def __reduce__( self ):
+    def __reduce__(self):
         '''pickling function - returns class contents as a tuple.'''
 
         cdef str data
 
         if self.shared_fd >= 0:
-            return (buildSegmentList, ( self.nsegments, 
-                                        self.allocated, 
-                                        self.flag, 
-                                        self.chunk_size, 
-                                        self.key,
-                                        self.shared_fd) )
+            return (buildSegmentList, (self.nsegments, 
+                                       self.allocated, 
+                                       self.flag, 
+                                       self.chunk_size, 
+                                       self.key,
+                                       self.shared_fd))
 
         else:
-            data = PyString_FromStringAndSize(<char*>self.segments, \
-                                                   self.nsegments * cython.sizeof( Position ) * 2 )
+            data = PyString_FromStringAndSize(
+                <char*>self.segments, \
+                self.nsegments * cython.sizeof(Position) * 2)
         
-            return (buildSegmentList, ( self.nsegments, 
-                                        self.allocated, 
-                                        self.flag, 
-                                        self.chunk_size, 
-                                        self.key,
-                                        data) )
+            return (buildSegmentList, (self.nsegments, 
+                                       self.allocated, 
+                                       self.flag, 
+                                       self.chunk_size, 
+                                       self.key,
+                                       data))
 
-    cpdef share( self, key ):
+    cpdef share(self, key):
         '''share data as a memory map.
         
         The data is shared under 'key'.
@@ -312,7 +344,7 @@ cdef class SegmentList:
                  fd, 
                  0);
         
-        if p == MAP_FAILED:
+        if p == <void*>-1:
             raise ValueError("could not create memory mapped file" )
         
         # copy data to shared memory location
@@ -321,12 +353,12 @@ cdef class SegmentList:
         
         # free allocated private memory
         self.allocated = 0
-        free( self.segments )
+        free(self.segments)
 
         self.segments = <Segment *>p
-        self.flag |= SEG_SHARED
+        self.is_shared = True
         
-    def unshare( self ):
+    def unshare(self):
         '''take ownership of shared data.
         '''
         # empty lists are not shared
@@ -334,35 +366,35 @@ cdef class SegmentList:
             return
 
         cdef int fd
-        assert self.flag & SEG_SHARED
-        assert self.flag & ~SEG_SLAVE
+        assert self.is_shared
+        assert not self.is_slave
         
         if self.shared_fd == -1:
             raise ValueError("unsharing unshared SegmentList")
 
-        fd = shm_unlink( self.key )
+        fd = shm_unlink(self.key)
         if fd == -1:
             raise OSError( "could not unlink shared memory" )
 
         # copy data back to unshared memory
         cdef Segment * s
         cdef off_t nbytes = sizeof(Segment) * self.nsegments
-        s = <Segment *>malloc( nbytes )
+        s = <Segment *>malloc(nbytes)
         if s == NULL:
             raise ValueError( "could not allocate memory when unsharing" )
         
-        memcpy( s, self.segments, nbytes )
+        memcpy(s, self.segments, nbytes)
         
         # unmap
-        if munmap( self.segments, nbytes ) == -1:
-            raise ValueError( "error while unmapping memory")
+        if munmap(self.segments, nbytes) == -1:
+            raise ValueError("error while unmapping memory")
         
         self.segments = s
         self.allocated = self.nsegments
         self.shared_fd = -1
-        self.flag &= ~SEG_SHARED
+        self.is_shared = False
 
-    cdef void fromMMAP( self ):
+    cdef void fromMMAP(self):
         '''retrieve data from mmapped location to private copy.
         '''
         # copy data back to unshared memory
@@ -372,20 +404,21 @@ cdef class SegmentList:
         if self.nsegments == 0:
             return
 
-        s = <Segment *>malloc( nbytes )
+        s = <Segment *>malloc(nbytes)
         if s == NULL:
             raise ValueError( "could not allocate memory when unsharing" )
         
-        memcpy( s, self.segments, nbytes )
+        memcpy(s, self.segments, nbytes)
         
         self.segments = s
         self.allocated = self.nsegments
-        self.flag &= ~(SEG_SHARED+SEG_SLAVE)
+        self.is_shared = False
+        self.is_slave = False
 
-    cdef off_t toMMAP( self, 
-                       void * mmap, 
-                       int shared_fd, 
-                       off_t offset ):
+    cdef off_t toMMAP(self, 
+                      void * mmap, 
+                      int shared_fd, 
+                      off_t offset):
         '''move contents of segment list to shared memory 
         at *mmap* with *offset*.
         '''
@@ -400,27 +433,29 @@ cdef class SegmentList:
         cdef Segment * p = <Segment *>mmap + offset
 
         # copy data
-        memcpy( p, self.segments, nbytes )
+        memcpy(p, self.segments, nbytes)
 
         # free allocated private memory
         self.allocated = 0
-        free( self.segments )
+        free(self.segments)
         self.segments = p
 
-        self.flag |= SEG_SHARED | SEG_SLAVE
+        self.is_shared = True
+        self.is_slave = True
 
         return offset + self.nsegments
 
     cpdef sort(self):
         '''sort segments.'''
-        if self.nsegments == 0: return
+        if self.nsegments == 0:
+            return
 
         qsort(<void*>self.segments,
               self.nsegments,
               sizeof(Segment),
               &cmpSegments)
 
-    cpdef SegmentList extend( self, SegmentList other ):
+    cpdef SegmentList extend(self, SegmentList other):
         '''extend a list of segments with segments in other list.
 
         The list will not be normalized automatically - call
@@ -453,24 +488,29 @@ cdef class SegmentList:
         '''
 
         if self.allocated == 0:
-            self.segments = <Segment*>malloc( self.chunk_size * sizeof( Segment ) )
-            if not self.segments: raise MemoryError( "out of memory when allocation %i bytes" % sizeof( self.chunk_size * sizeof(Segment)))
+            self.segments = <Segment*>malloc(self.chunk_size * sizeof(Segment))
+            if not self.segments:
+                raise MemoryError("out of memory when allocation %i bytes" %
+                                  sizeof( self.chunk_size * sizeof(Segment)))
             self.allocated = self.chunk_size
         elif self.nsegments == self.allocated:
             self.allocated *= 2
             self.segments = <Segment*>realloc(self.segments,
                                               self.allocated * sizeof(Segment))
-            if not self.segments: raise MemoryError( "out of memory when allocation %i bytes" % sizeof(self.allocated * sizeof(Segment)))
+            if not self.segments:
+                raise MemoryError(
+                    "out of memory when allocation %i bytes" %
+                    sizeof(self.allocated * sizeof(Segment)))
 
         self.segments[self.nsegments] = segment
         self.nsegments += 1
         self.flag = 0
 
-    cpdef add( self, Position start, Position end ):
+    cpdef add(self, Position start, Position end):
         cdef Segment segment
         assert start <= end, "attempting to add invalid segment %i-%i" % (start, end)
-        segment = Segment( start, end)
-        self._add( segment )
+        segment = Segment(start, end)
+        self._add(segment)
 
     cpdef trim_ends( self, Position pos, Position size, int forward ):
         '''trim segment list by removing *size* nucleotides from
@@ -500,8 +540,8 @@ cdef class SegmentList:
         if forward:
             while s > 0:
                 seg = self.segments[idx]
-                l = segment_length( seg )
-                if segment_length( seg ) < s:
+                l = segment_length(seg)
+                if segment_length(seg) < s:
                     self.segments[idx] = Segment(0,0)
                     s -= l
                 else:
@@ -529,31 +569,37 @@ cdef class SegmentList:
     cdef _resize(self, int nsegments):
         '''resize segment list to nsegments.'''
         # do not free all if there are no segments
-        if nsegments == 0: nsegments = 1
+        if nsegments == 0:
+            nsegments = 1
 
         assert nsegments >= self.nsegments, "resizing will loose segments"
         
         if self.allocated == 0:
-            self.segments = <Segment*>malloc( nsegments * sizeof( Segment ) )
-            if not self.segments: raise MemoryError( "out of memory when allocation %i bytes" % sizeof( nsegments * sizeof( Segment ) ))
+            self.segments = <Segment*>malloc(nsegments * sizeof(Segment))
+            if not self.segments:
+                raise MemoryError("out of memory when allocation %i bytes" %
+                                  sizeof(nsegments * sizeof(Segment)))
         else:
-            self.segments = <Segment*>realloc( self.segments,
-                                               nsegments * sizeof( Segment ) )
-            if not self.segments: raise MemoryError( "out of memory when allocation %i bytes" % sizeof( self.nsegments * sizeof( Segment ) ))
+            self.segments = <Segment*>realloc(self.segments,
+                                              nsegments * sizeof(Segment))
+            if not self.segments:
+                raise MemoryError("out of memory when allocation %i bytes" %
+                                  sizeof(self.nsegments * sizeof(Segment)))
 
         self.allocated = nsegments
 
     cdef insert(self, int idx, Segment seg):
         '''insert Segment *seg* at position *idx*'''
-        if idx < 0: raise ValueError( "only positive indices accepted (%i)" % idx )
+        if idx < 0:
+            raise ValueError("only positive indices accepted (%i)" % idx)
         
-        idx = max( idx, self.nsegments )
+        idx = max(idx, self.nsegments)
         if self.allocated == self.nsegments:
-            self._resize( self.allocated * 2)
+            self._resize(self.allocated * 2)
 
-        memmove( &self.segments[idx+1],
-                 &self.segments[idx],
-                 sizeof( Segment ) * (self.nsegments - idx) )
+        memmove(&self.segments[idx+1],
+                &self.segments[idx],
+                sizeof(Segment) * (self.nsegments - idx))
 
         self.nsegments += 1
         self.segments[idx] = seg
@@ -660,7 +706,9 @@ cdef class SegmentList:
             if self.segments[idx].start >= max_end:
                 self.segments[insertion_idx].end = max_end
                 insertion_idx += 1
-                assert insertion_idx < self.nsegments, "insertion_idx out of range: %i >= %i" % (insertion_idx, self.nsegments)
+                assert insertion_idx < self.nsegments, \
+                    "insertion_idx out of range: %i >= %i" % \
+                    (insertion_idx, self.nsegments)
                 self.segments[insertion_idx].start = self.segments[idx].start
 
             max_end = lmax(self.segments[idx].end, max_end)
@@ -795,11 +843,11 @@ cdef class SegmentList:
         if other.end <= self.segments[0].start: 
             return -1
 
-        idx = searchsorted( self.segments,
-                            self.nsegments,
-                            sizeof( Segment ),
-                            &other,
-                            &cmpSegments )
+        idx = searchsorted(self.segments,
+                           self.nsegments,
+                           sizeof(Segment),
+                           &other,
+                           &cmpSegments)
 
         if idx == self.nsegments:
             return idx-1
@@ -821,7 +869,7 @@ cdef class SegmentList:
     property isEmpty:
         def __get__(self): return self.nsegments == 0
 
-    cpdef Position getRandomPosition( self ):
+    cpdef Position getRandomPosition(self):
         '''return a random position within the workspace.
 
         Not efficient, see the specialized samplers instead if
@@ -838,62 +886,112 @@ cdef class SegmentList:
                 return self.segments[idx].start + pos
         assert False
 
-    cdef Position overlap( self, Segment other ):
-        '''return the size of intersection between
-           segment list and Segment other'''
+    cdef Position overlap(self, Segment other):
+        """return the number of nucleotides overlapping with other.
+
+        Arguments
+        ---------
+        other : Segment
+            Segment to compute overlap with
+
+        Returns
+        ------
+        overlap : int
+            Number of residues overlapping
+        """
         assert self.flag & SEG_NORMALIZED, "non-normalized segment list"
 
         cdef int idx
-        idx = self._getInsertionPoint( other )
+        idx = self._getInsertionPoint(other)
 
         # deal with border cases
         # permit partial overlap
-        if idx == self.nsegments: idx -=1
-        elif idx == -1: idx=0
+        if idx == self.nsegments:
+            idx -=1
+        elif idx == -1:
+            idx=0
 
         cdef Position count
         count = 0
 
         while idx < self.nsegments and self.segments[idx].start <= other.end:
-            count += segment_overlap( self.segments[idx], other )
+            count += segment_overlap(self.segments[idx], other)
             idx += 1
         return count
 
-    cdef SegmentList getOverlappingSegments( self, Segment other ):
-        '''return the segments overlapping
-           segment list and Segment other'''
+    cdef SegmentList getOverlappingSegments(self, Segment other):
+        """return the segments overlapping with other.
+
+        Arguments
+        ---------
+        other : Segment
+            Segment to compare to.
+
+        Returns
+        -------
+        segmentlist : SegmentList
+            A new segment list
+        """
 
         assert self.flag & SEG_NORMALIZED, "non-normalized segment list"
         cdef int idx
-        idx = self._getInsertionPoint( other )
+        idx = self._getInsertionPoint(other)
 
         # deal with border cases
         # permit partial overlap
-        if idx == self.nsegments: idx -=1
-        elif idx == -1: idx=0
+        if idx == self.nsegments:
+            idx -=1
+        elif idx == -1:
+            idx=0
 
         count = 0
         cdef SegmentList result = SegmentList()
         
         while idx < self.nsegments and self.segments[idx].start <= other.end:
-            result._add( self.segments[idx] )
+            result._add(self.segments[idx])
             idx += 1
-        result.normalize()
         return result
 
-    cpdef Position overlapWithRange( self, Position start, Position end ):
-        '''return the size of intersection between
-           segment list and Segment other'''
+    cpdef Position overlapWithRange(self, Position start, Position end):
+        """return the number of nucleotides overlapping with a range.
+
+        Arguments
+        ---------
+        start : int
+            Begin of range.
+        end : int
+            End of range.
+
+        Returns
+        ------
+        overlap : int
+            Number of residues overlapping
+        """
 
         cdef Segment s
-        s = Segment( start, end )
-        return self.overlap( s )
+        s = Segment(start, end)
+        return self.overlap(s)
 
-    cpdef SegmentList getOverlappingSegmentsWithRange( self, Position start, Position end ):
-        '''return a list with segments overlapping range.'''
+    cpdef SegmentList getOverlappingSegmentsWithRange(
+        self, Position start, Position end):
+        """return the segments overlapping with a range.
+
+        Arguments
+        ---------
+        start : int
+            Begin of range.
+        end : int
+            End of range.
+
+        Returns
+        -------
+        segmentlist : SegmentList
+            A new segment list
+        """
+
         cdef Segment s
-        s = Segment( start, end )
-        return self.getOverlappingSegments( s )
+        s = Segment(start, end)
+        return self.getOverlappingSegments(s)
 
     cpdef Position overlapWithSegments(self, SegmentList other):
         '''return the number of nucleotides overlapping between this and *other*.
@@ -947,18 +1045,29 @@ cdef class SegmentList:
 
         return overlap
 
-    cpdef Position intersectionWithSegments(self, 
-                                            SegmentList other, 
-                                            mode="base"):
-        '''return number of segments overlapping with *other*.
+    cpdef Position intersectionWithSegments(
+        self,
+        SegmentList other, 
+        mode="base"):
+        """return number of segments overlapping with *other*.
 
-        *mode* can be either ``base`` or ``midpoint``. With ``base``,
+        `mode` can be either ``base`` or ``midpoint``. With ``base``,
         an overlap is recorded if a single ``base`` in self overlaps a
         interval in other. With ``midpoint``, an overlap is counted
-        only if the midpoint of an interval overlaps any interval in
-        ``other``.
+        if the midpoint of a segment overlaps any interval in other.
 
-        '''
+        Arguments
+        ---------
+        other : SegmentList
+             SegmentList to overlap with
+        mode : string
+             Overlap mode.
+
+        Returns
+        -------
+        overlap : int
+            Number of overlapping segments
+        """
 
         assert self.flag & SEG_NORMALIZED, "intersection from non-normalized list"
         assert other.flag & SEG_NORMALIZED, "intersection with non-normalized list"
@@ -966,7 +1075,7 @@ cdef class SegmentList:
         # avoid self-self comparison
         if other.segments == self.segments: return self.sum()
 
-        cdef int this_idx, other_idx, working_idx, last_this_idx, last_other_idx
+        cdef int this_idx, other_idx, last_this_idx, last_other_idx
         this_idx = other_idx = 0
         last_this_idx = last_other_idx = -1
         cdef Segment this_segment = Segment(0,0)
@@ -996,7 +1105,8 @@ cdef class SegmentList:
             else:
                 # deal with overlap
                 if midpoint_overlap:
-                    if other_segment.start <= this_segment.start + (this_segment.end - this_segment.start) // 2 \
+                    if other_segment.start <= this_segment.start + \
+                       (this_segment.end - this_segment.start) // 2 \
                             < other_segment.end:
                         noverlap += 1
                 else:
@@ -1022,25 +1132,28 @@ cdef class SegmentList:
         cdef numpy.ndarray[DTYPE_INT_t, ndim=1] histogram
         histogram = numpy.zeros( nbuckets, dtype=numpy.int )
         if bucket_size == 0:
-            bucket_size = int( math.ceil( segment_length(self.largest()) / float(nbuckets)) )
+            bucket_size = int(math.ceil(segment_length(self.largest()) / float(nbuckets)))
             
         for idx from 0 <= idx < self.nsegments:
             l = segment_length(self.segments[idx])
             i = <int>((l+bucket_size-1)/bucket_size)
             if i >= nbuckets:
-                raise ValueError( "segment %i-%i too large: %i >= %i, increase nbuckets (%i) or bucket_size (%i) such that nbuckets * bucket_size > %i" %\
-                                      ( self.segments[idx].start,
-                                        self.segments[idx].end,
-                                        l, 
-                                        nbuckets * bucket_size,
-                                        nbuckets,
-                                        bucket_size,
-                                        l
-                                        ) )
+                raise ValueError(
+                    "segment %i-%i too large: %i >= %i, "
+                    "increase nbuckets (%i) or bucket_size (%i) "
+                    "such that nbuckets * bucket_size > %i" %
+                    (self.segments[idx].start,
+                      self.segments[idx].end,
+                      l, 
+                      nbuckets * bucket_size,
+                      nbuckets,
+                      bucket_size,
+                      l
+                  ))
             histogram[i] += 1
         return histogram, bucket_size
 
-    cdef SegmentList truncate( self, Segment other ):
+    cdef void truncate(self, Segment other):
         '''truncate Segment list to range given by segment *other*.'''
         
         cdef int idx
@@ -1057,9 +1170,8 @@ cdef class SegmentList:
                 if s.end > end: s.end = end
 
         self.normalize()
-        return self
 
-    cpdef SegmentList subtract( self, SegmentList other ):
+    cpdef void subtract(self, SegmentList other):
         '''subtract residues in *other* segment list with from this on.
 
         Intervals are truncated, any residues overlapping with *other*
@@ -1074,9 +1186,10 @@ cdef class SegmentList:
         # if self-self comparison, clear all residues
         if other.segments == self.segments: 
             self.clear()
-            return self
+            return
 
-        if self.nsegments == 0: return self
+        if self.nsegments == 0:
+            return
 
         cdef int this_idx, other_idx, working_idx, last_this_idx, last_other_idx
         working_idx = this_idx = other_idx = 0
@@ -1091,14 +1204,15 @@ cdef class SegmentList:
 
         new_segments =<Segment*>malloc( allocated * sizeof( Segment ) )
         if not new_segments: 
-            raise MemoryError( "out of memory when allocation %i bytes" % sizeof( allocated * sizeof( Segment ) ))
+            raise MemoryError("out of memory when allocation %i bytes" %
+                              sizeof(allocated * sizeof(Segment)))
 
         while this_idx < self.nsegments and other_idx < other.nsegments:
 
             # re-allocated before adding
             if working_idx >= allocated:
                 allocated *= 2
-                new_segments = <Segment*>realloc( new_segments, allocated * sizeof(Segment ) )
+                new_segments = <Segment*>realloc(new_segments, allocated * sizeof(Segment))
                 assert new_segments != NULL
 
             # print "this=", this_idx, self.nsegments, this_segment, "other=", other_idx, other.nsegments, other.segments[other_idx]
@@ -1135,13 +1249,12 @@ cdef class SegmentList:
             new_segments[working_idx].end = this_segment.end
             working_idx += 1
 
-        free( self.segments )
+        free(self.segments)
         self.segments = new_segments
         self.nsegments = working_idx
         self.allocated = allocated
-        return self
 
-    cpdef summarize( self ):
+    cpdef summarize(self):
         '''returns summary statistics for segments.'''
         
         cdef int idx
@@ -1180,7 +1293,7 @@ cdef class SegmentList:
            '''
 
         if remainder > self.sum():
-            return SegmentList( clone = self )
+            return SegmentList(clone=self)
 
         cdef SegmentList result = SegmentList()
 
@@ -1198,10 +1311,10 @@ cdef class SegmentList:
             if self.segments[idx].end < start: 
                 pass
             else:
-                start = lmax( self.segments[idx].start, start )
-                end = lmin( self.segments[idx].end, start + remainder )
+                start = lmax(self.segments[idx].start, start)
+                end = lmin(self.segments[idx].end, start + remainder)
                 remainder -= end - start
-                result._add( Segment( start, end ) )
+                result._add(Segment(start, end))
                 
             idx += 1
             if idx == self.nsegments:
@@ -1211,7 +1324,8 @@ cdef class SegmentList:
         result.normalize()
         return result
 
-    cpdef SegmentList getFilledSegmentsFromEnd( self, Position end, PositionDifference remainder ):
+    cpdef SegmentList getFilledSegmentsFromEnd(
+        self, Position end, PositionDifference remainder):
         '''start filling segment from *end* until *remainder*
            bases have been covered. Fill in reverse order.
 
@@ -1223,7 +1337,7 @@ cdef class SegmentList:
            '''
 
         if remainder > self.sum():
-            return SegmentList( clone = self )
+            return SegmentList(clone=self)
 
         cdef SegmentList result = SegmentList()
 
@@ -1254,22 +1368,26 @@ cdef class SegmentList:
         result.normalize()
         return result
 
-    cpdef SegmentList filter( self, SegmentList other ):
+    cpdef void filter(self, SegmentList other):
         '''remove all segments that are not in *other*
 
         Both this and other are assumed to have been normalized.
         '''
 
         # avoid self-self comparison
-        if other.segments == self.segments: return self
-        if self.nsegments == 0: return self
+        if other.segments == self.segments:
+            return
+        if self.nsegments == 0:
+            return
 
         cdef Segment * new_segments
         cdef size_t allocated
         # create new list
-        new_segments =<Segment*>malloc( self.nsegments * sizeof( Segment ) )
+        new_segments =<Segment*>malloc( self.nsegments * sizeof(Segment))
         if not new_segments: 
-            raise MemoryError( "out of memory when allocation %i bytes" % sizeof( self.nsegments * sizeof( Segment ) ))
+            raise MemoryError(
+                "out of memory when allocation %i bytes" %
+                sizeof(self.nsegments * sizeof(Segment)))
 
         cdef int this_idx, other_idx, working_idx, last_this_idx, last_other_idx
         working_idx = this_idx = other_idx = 0
@@ -1312,13 +1430,12 @@ cdef class SegmentList:
                     this_idx += 1
                     other_idx += 1
 
-        free( self.segments )
+        free(self.segments)
         self.nsegments = working_idx
         self.segments = new_segments
         self._resize(self.nsegments)
-        return self
 
-    cpdef SegmentList intersect(self, SegmentList other):
+    cpdef void intersect(self, SegmentList other):
         '''intersect this segment list with another.
 
         Intervals are truncated to the overlap between this and
@@ -1336,10 +1453,10 @@ cdef class SegmentList:
 
         # avoid self-self comparison
         if other.segments == self.segments:
-            return self
+            return
 
         if self.nsegments == 0:
-            return self
+            return
 
         cdef Segment * new_segments
         cdef size_t allocated
@@ -1399,7 +1516,6 @@ cdef class SegmentList:
         self.segments = new_segments
         self.nsegments = working_idx
         self.allocated = allocated
-        return self
 
     cpdef extend_segments(self, int extension):
         '''extend all intervals by a certain amount.
@@ -1443,7 +1559,7 @@ cdef class SegmentList:
             s.end += extension
         self.flag = False
 
-    def shift( self, PositionDifference offset ):
+    def shift(self, PositionDifference offset):
         '''shift segments by a certain offset.
         
         raises ValueError if segment coordinates become negative.
@@ -1454,9 +1570,10 @@ cdef class SegmentList:
             s = &self.segments[idx]
             s.end += offset
             s.start += offset
-            if s.start < 0: raise ValueError( "shift creates negative coordinates" )
+            if s.start < 0:
+                raise ValueError("shift creates negative coordinates")
 
-    cpdef Position sum( self ):
+    cpdef Position sum(self):
         '''return total length of all segments.'''
         cdef Position total
         cdef int idx
@@ -1467,13 +1584,14 @@ cdef class SegmentList:
             total += s.end - s.start
         return total
 
-    def largest( self ):
+    def largest(self):
         '''return largest segment.
 
         If there are multiple segments of the same size, the first
         will be returned.
         '''
-        if self.nsegments == 0: raise ValueError( "largest segment from empty list" )
+        if self.nsegments == 0:
+            raise ValueError("largest segment from empty list")
         cdef int idx
         cdef int max_idx = 0
         cdef Position max_value = 0
@@ -1486,25 +1604,35 @@ cdef class SegmentList:
                 max_value = l
         return self.segments[max_idx]
 
-    cpdef Position max( self ):
+    cpdef Position max(self):
         '''return maximum coordinate.'''
         assert self.flag & SEG_NORMALIZED, "maximum from non-normalized list"
         if self.nsegments == 0: return 0
         return self.segments[self.nsegments - 1].end
 
-    cpdef Position min( self ):
+    cpdef Position min(self):
         '''return minimum coordinate.'''
         assert self.flag & SEG_NORMALIZED, "minimum from non-normalized list"
         if self.nsegments == 0: return 0
         return self.segments[0].start
 
-    cpdef clear( self ):
+    cpdef clear(self):
         '''removes all segments from list.
 
         Note that this method does not shrink the allocated memory.
         '''
         self.nsegments = 0
         self.flag = 1
+
+    cpdef SegmentList clone(self):
+        """return a copy of self."""
+        clone = SegmentList(allocate=self.nsegments)
+        memcpy(clone.segments,
+               self.segments,
+               self.nsegments * sizeof(Segment))
+        clone.nsegments = self.nsegments
+        clone.flag = self.flag
+        return clone
 
     def __len__(self):
         return self.nsegments
@@ -1514,21 +1642,21 @@ cdef class SegmentList:
         
         if self.segments != NULL:
             # unshared memory
-            if self.flag & SEG_SHARED:
-                if self.flag & SEG_SLAVE:
+            if self.is_shared:
+                if self.is_slave:
                     pass
                 else:
                     # free shared memory as master
-                    munmap( self.segments, 
-                            self.nsegments * sizeof(Segment))
+                    munmap(self.segments, 
+                           self.nsegments * sizeof(Segment))
             else:
                 # free private copy
-                free( self.segments )
+                free(self.segments)
 
         if self.shared_fd != -1:
-            fd = shm_unlink( self.key )
+            fd = shm_unlink(self.key)
             if fd == -1:
-                raise OSError( "could not unlink shared memory" )
+                raise OSError("could not unlink shared memory")
 
     def __str__(self):
         return str(self.asList())
@@ -1538,7 +1666,7 @@ cdef class SegmentList:
         cdef int idx
         result = []
         for idx from 0 <= idx < self.nsegments:
-            result.append( (self.segments[idx].start, self.segments[idx].end) )
+            result.append((self.segments[idx].start, self.segments[idx].end))
         return result
 
     def asLengths( self ):
@@ -1549,28 +1677,31 @@ cdef class SegmentList:
         return result
 
     def __iter__( self ):
-        return SegmentListIterator( self )
+        return SegmentListIterator(self)
 
-    def __getitem__(self, key ):
+    def __getitem__(self, key):
         if key >= self.nsegments:
-            raise IndexError( "index out of range" )
+            raise IndexError("index out of range")
         return self.segments[key].start, self.segments[key].end
 
-    def __cmp__(self, SegmentList other ):
+    def __cmp__(self, SegmentList other):
         cdef int idx
         x = self.__len__().__cmp__(len(other))
-        if x != 0: return x
+        if x != 0:
+            return x
         for idx from 0 <= idx < self.nsegments:
-            x = cmpSegmentsStartAndEnd( &self.segments[idx], &other.segments[idx] )
-            if x != 0: return x
+            x = cmpSegmentsStartAndEnd(&self.segments[idx], &other.segments[idx])
+            if x != 0:
+                return x
         return 0
 
-def buildSegmentList( *args ):
+
+def buildSegmentList(*args):
     '''pickling helper function.
     
     Return a re-constructed SegmentList object.
     '''
-    return SegmentList( unreduce = args )
+    return SegmentList(unreduce=args)
 
 # SegmentTuple = collections.namedtuple( "SegmentTuple", "start, end" )
 
@@ -1579,11 +1710,12 @@ cdef class SegmentListIterator:
     cdef SegmentList segment_list
     cdef Position idx
 
-    def __init__(self, SegmentList container ):
+    def __init__(self, SegmentList container):
         self.idx = 0
         self.segment_list = container
 
-    def __iter__(self): return self
+    def __iter__(self):
+        return self
 
     def __next__(self):
         cdef Position t

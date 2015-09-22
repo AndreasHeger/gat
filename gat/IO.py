@@ -10,8 +10,8 @@ import gat.Experiment as E
 import gat.Stats as Stats
 import numpy
 
-import GatSegmentList
-import GatEngine
+import gat.SegmentList as SegmentList
+import gat.Engine as Engine
 
 try:
     import matplotlib.pyplot as plt
@@ -57,7 +57,7 @@ def readSegmentList(label,
     segments : IntervalCollection
         The segment collection.
     """
-    results = GatEngine.IntervalCollection(name=label)
+    results = Engine.IntervalCollection(name=label)
     E.info("%s: reading tracks from %i files" % (label, len(filenames)))
     results.load(filenames,
                  allow_multiple=enable_split_tracks,
@@ -134,6 +134,9 @@ def buildSegments(options):
     if options.annotations_label is not None:
         annotations.setName(options.annotations_label)
 
+    if options.annotations_to_points:
+        annotations.toPositions(options.annotations_to_points)
+
     if options.overlapping_annotations:
         # only sort, do not merge
         annotations.sort()
@@ -158,7 +161,7 @@ def buildSegments(options):
     if options.isochore_files:
 
         # read one or more isochore files
-        isochores = GatEngine.IntervalCollection(name="isochores")
+        isochores = Engine.IntervalCollection(name="isochores")
         E.info("%s: reading isochores from %i files" %
                ("isochores", len(options.isochore_files)))
         isochores.load(options.isochore_files)
@@ -364,16 +367,16 @@ class SegmentsSummary:
         self.all_nucleotides = segments.sum()
 
         # build segments overlapping workspace
-        segments_overlapping_workspace = GatSegmentList.SegmentList(
+        segments_overlapping_workspace = SegmentList.SegmentList(
             clone=segments)
         segments_overlapping_workspace.filter(workspace)
 
         # build segments truncated by workspace
-        truncated_segments = GatSegmentList.SegmentList(
+        truncated_segments = SegmentList.SegmentList(
             clone=segments_overlapping_workspace)
         truncated_segments.intersect(workspace)
 
-        segments_extending_workspace = GatSegmentList.SegmentList(
+        segments_extending_workspace = SegmentList.SegmentList(
             clone=segments)
         segments_extending_workspace.subtract(truncated_segments)
 
@@ -470,7 +473,7 @@ def outputResults(results,
     # compute global fdr
     ##################################################
     E.info("computing FDR statistics")
-    qvalues = GatEngine.getQValues(pvalues,
+    qvalues = Engine.getQValues(pvalues,
                                    method=options.qvalue_method,
                                    vlambda=options.qvalue_lambda,
                                    pi0_method=options.qvalue_pi0_method)
@@ -605,7 +608,7 @@ def plotResults(results, options):
         plt.legend()
 
         # hist, bins = numpy.histogram( \
-        #     [r.pvalue for r in GatEngine.iterator_results(annotator_results) ],
+        #     [r.pvalue for r in Engine.iterator_results(annotator_results) ],
         #     bins = 20 )
         # plt.plot( bins[:-1], hist, label = key )
 
