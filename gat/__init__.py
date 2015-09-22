@@ -11,7 +11,7 @@ import gat.Experiment as E
 import gat.Stats as Stats
 import gat.IO as IO
 
-import GatEngine
+import Engine as Engine
 
 import multiprocessing.pool
 import multiprocessing
@@ -26,7 +26,7 @@ def readFromBedOld(filenames, name="track"):
     '''
 
     segment_lists = collections.defaultdict(
-        lambda: collections.defaultdict(GatEngine.SegmentList))
+        lambda: collections.defaultdict(Engine.SegmentList))
 
     if name == "track":
         f = lambda x: x.mTrack["name"]
@@ -134,6 +134,14 @@ def buildParser(usage=None):
         "to label "
         "[default=default]")
 
+    group.add_option(
+        "--annotations-to-points", dest="annotations_to_points",
+        type="choice",
+        choices=("midpoint", "start", "end"),
+        help="convert annotations from segments to positions. Available "
+        "methods are 'midpoint', 'start' or 'end'. "
+        "[default=default]")
+
     parser.add_option_group(group)
 
     group = OptionGroup(parser, "Output options")
@@ -209,8 +217,8 @@ def buildParser(usage=None):
                  "nucleotide-density",
                  "segment-overlap",
                  "segment-midoverlap",
-                 "annotations-overlap",
-                 "annotations-midoverlap"),
+                 "annotation-overlap",
+                 "annotation-midoverlap"),
         help="quantity to use for estimating enrichment "
         "[default=%default].")
 
@@ -377,6 +385,7 @@ def buildParser(usage=None):
     parser.set_defaults(
         annotation_files=[],
         annotations_label=None,
+        annotations_to_points=None,
         bucket_size=0,
         cache=None,
         conditional="unconditional",
@@ -517,7 +526,7 @@ def computeSample(args):
             outf_samples.close()
             lock.release()
 
-    sample = GatEngine.IntervalDictionary()
+    sample = Engine.IntervalDictionary()
 
     for isochore in segs.keys():
 
@@ -631,7 +640,7 @@ class UnconditionalSampler:
                     max(lengths)))) + "\n")
 
         if sample_id != self.last_sample_id:
-            if self.last_sample_id != None:
+            if self.last_sample_id is not None:
                 _write(self.last_sample_id, "all", numpy.sort(
                     numpy.array(self.all_lengths)))
             self.all_lengths = []
@@ -922,7 +931,7 @@ def run(segments,
     E.info("collecting observed counts")
     observed_counts = []
     for counter in counters:
-        observed_counts.append(GatEngine.computeCounts(
+        observed_counts.append(Engine.computeCounts(
             counter=counter,
             aggregator=sum,
             segments=segments,
@@ -939,7 +948,7 @@ def run(segments,
 
     if cache:
         E.info("samples are cached in %s" % cache)
-        samples = GatEngine.SamplesCached(filename=cache)
+        samples = Engine.SamplesCached(filename=cache)
     elif sample_files:
         if not output_samples_pattern:
             raise ValueError(
@@ -947,11 +956,11 @@ def run(segments,
         # build regex
         regex = re.compile(re.sub("%s", "(\S+)", output_samples_pattern))
         E.info("loading samples from %i files" % len(sample_files))
-        samples = GatEngine.SamplesFile(
+        samples = Engine.SamplesFile(
             filenames=sample_files,
             regex=regex)
     else:
-        samples = GatEngine.Samples()
+        samples = Engine.Samples()
 
     sampled_counts = {}
 
@@ -1019,19 +1028,14 @@ def run(segments,
             # clean up samples
             del samples[track]
 
-    E.info("sampling finished: %s" % str(counts))
+    E.info("sampling finished")
 
-    ##################################################
-    ##################################################
-    ##################################################
     # build annotator results
-    ##################################################
     E.info("computing PValue statistics")
 
     annotator_results = list()
     counter_id = 0
     for counter, observed_count in zip(counters, observed_counts):
-
         for track, r in observed_count.iteritems():
             for annotation, observed in r.iteritems():
                 temp_segs, temp_annos, temp_workspace = workspace_generator(
@@ -1051,7 +1055,7 @@ def run(segments,
                 else:
                     ref = None
 
-                annotator_results.append(GatEngine.AnnotatorResultExtended(
+                annotator_results.append(Engine.AnnotatorResultExtended(
                     track=track,
                     annotation=annotation,
                     counter=counter.name,
@@ -1064,11 +1068,7 @@ def run(segments,
                     pseudo_count=pseudo_count))
         counter_id += 1
 
-    ##################################################
-    ##################################################
-    ##################################################
-    # dump large table with counts
-    ##################################################
+    # dump (large) table with counts
     if output_counts_pattern:
         for counter in counters:
             name = counter.name
@@ -1107,7 +1107,7 @@ def fromCounts(filename):
             samples = numpy.array(
                 map(float, counts.split(",")), dtype=numpy.float)
             observed = float(observed)
-            annotator_results.append(GatEngine.AnnotatorResult(
+            annotator_results.append(Engine.AnnotatorResult(
                 track=track,
                 annotation=annotation,
                 counter="na",
