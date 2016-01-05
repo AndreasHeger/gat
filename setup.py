@@ -89,7 +89,7 @@ else:
 
 install_requires = []
 
-for requirement in (l.strip() for l in open('requires.txt')
+for requirement in (l.strip() for l in open('requirements.txt')
                     if not l.startswith("#")):
     install_requires.append(requirement)
 
