@@ -16,6 +16,7 @@ addons:
       - liblapack-dev
       - libblas-dev
       - libatlas-dev
+      - gfortran
 
 script:
   - python setup.py install

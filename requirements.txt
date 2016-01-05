@@ -2,6 +2,6 @@
 setuptools>=1.1
 cython>=0.19
 numpy>=1.6.1
-scipy>=0.9.0
-matplotlib>=1.0
+# scipy>=0.9.0
+# matplotlib>=1.0
 
