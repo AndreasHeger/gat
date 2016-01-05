@@ -13,6 +13,9 @@ addons:
       - python-matplotlib
       - python-scipy
       - cython
+      - liblapack-dev
+      - libblas-dev
+      - libatlas-dev
 
 script:
   - python setup.py install
