@@ -1,7 +1,7 @@
 # latest setutools required for automatic cythonization
 setuptools>=1.1
 cython>=0.19
-numpy>=1.7
-scipy>=0.11
-matplotlib>=1.1.1
+numpy>=1.6.1
+scipy>=0.9.0
+matplotlib>=1.1.0
 
