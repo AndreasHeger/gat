@@ -6,8 +6,14 @@ python:
 #  - "3.3"
 #  - "3.4"
 
-script: 
-  - sudo ./install.sh --travis
+addons:
+  apt:
+    packages:
+      numpy-python
+      numpy-matplotlib
+
+script:
+  - python setup.py install
 
 notifications:
   email:
