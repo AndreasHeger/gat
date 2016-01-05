@@ -11,6 +11,7 @@ addons:
     packages:
       numpy-python
       numpy-matplotlib
+      cython
 
 script:
   - python setup.py install
