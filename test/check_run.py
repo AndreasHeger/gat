@@ -1,18 +1,5 @@
 import unittest
-import random
-import tempfile
-import shutil
-import os
-import re
-import gzip
-import sys
-import subprocess
-import collections
-import numpy
-import math
-
-from GatSegmentList import SegmentList
-import GatEngine
+import gat.Engine as Engine
 import gat
 import gat.IO
 import gat.Stats
@@ -64,11 +51,11 @@ class TestRunning(unittest.TestCase):
                                                options,
                                                isochores)
 
-        self.sampler = GatEngine.SamplerAnnotator(
+        self.sampler = Engine.SamplerAnnotator(
             bucket_size=1, nbuckets=100000)
 
-        self.counters = [GatEngine.CounterNucleotideOverlap()]
-        self.workspace_generator = GatEngine.UnconditionalWorkspace()
+        self.counters = [Engine.CounterNucleotideOverlap()]
+        self.workspace_generator = Engine.UnconditionalWorkspace()
 
         self.reference_data = gat.IO.readAnnotatorResults(
             'data/output_single.tsv')

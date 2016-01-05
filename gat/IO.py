@@ -1,9 +1,6 @@
-import sys
 import re
 import os
 import glob
-import collections
-
 import gat
 import gat.IOTools as IOTools
 import gat.Experiment as E

@@ -1,16 +1,14 @@
 """test gat implementation."""
 
 import unittest
-import random
 import os
 import numpy
-import pickle
 
-from GatEngine import AnnotatorResult, IntervalCollection, \
+from gat.Engine import AnnotatorResult, IntervalCollection, \
     Samples, SamplesCached, computeFDR, \
     SamplerAnnotator
 
-from GatSegmentList import SegmentList
+from gat.SegmentList import SegmentList
 
 
 class GatTest(unittest.TestCase):

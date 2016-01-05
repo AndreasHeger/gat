@@ -2,15 +2,14 @@
 
 
 import multiprocessing
-import GatSegmentList
-import time
+from gat.SegmentList import SegmentList
 
 nsegments = 100000000
 nsegments = 10000000
 ncpu = 2
 nwork = 100
 
-s = GatSegmentList.SegmentList(
+s = SegmentList(
     iter=[(x, x + 1) for x in xrange(0, nsegments, 2)], normalize=True)
 
 print "built list"

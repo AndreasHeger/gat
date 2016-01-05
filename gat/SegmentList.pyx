@@ -1374,8 +1374,9 @@ cdef class SegmentList:
         Both this and other are assumed to have been normalized.
         '''
 
-        # avoid self-self comparison
+        # if self-self comparison, remove all
         if other.segments == self.segments:
+            self.clear()
             return
         if self.nsegments == 0:
             return

@@ -6,12 +6,15 @@ python:
 #  - "3.3"
 #  - "3.4"
 
+sudo: false
+
 addons:
   apt:
     packages:
       - python-numpy
       - python-matplotlib
       - python-scipy
+      - python-nose
       - cython
       - liblapack-dev
       - libblas-dev
@@ -19,7 +22,7 @@ addons:
       - gfortran
 
 script:
-  - python setup.py install
+  - python setup.py develop && nosetest -v test
 
 notifications:
   email:

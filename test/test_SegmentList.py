@@ -369,37 +369,36 @@ class TestSegmentListOverlap(GatTest):
 class TestSegmentListIntersection(GatTest):
 
     def setUp(self):
-        #[(0, 10), (100, 110), (200, 210), (300, 310), (400, 410), (500, 510), (600, 610), (700, 710), (800, 810), (900, 910)]
-        self.a = SegmentList(iter=((x, x + 10)
-                                   for x in range(0, 1000, 100)), normalize = True)
+        self.a = SegmentList(
+            iter=((x, x + 10) for x in range(0, 1000, 100)), normalize=True)
 
     def testIntersectionFull(self):
         b = SegmentList(iter=[(0, 1000)], normalize=True)
-        r = b.intersect(self.a)
-        self.assertEqual(r.asList(), self.a.asList())
+        b.intersect(self.a)
+        self.assertEqual(b.asList(), self.a.asList())
 
     def testIntersectionSelf(self):
-        r = self.a.intersect(self.a)
-        self.assertEqual(r.asList(), self.a.asList())
+        self.a.intersect(self.a)
+        self.assertEqual(self.a.asList(), self.a.asList())
 
     def testIntersectionCopy(self):
         b = SegmentList(clone=self.a)
-        r = b.intersect(self.a)
-        self.assertEqual(r.asList(), self.a.asList())
+        b.intersect(self.a)
+        self.assertEqual(b.asList(), self.a.asList())
 
     def testNoIntersection(self):
         b = SegmentList(iter=((x, x + 10)
                               for x in range(10, 1000, 100)), normalize = True)
-        r = b.intersect(self.a)
-        self.assertEqual(r.asList(), [])
-        self.assertEqual(r.isEmpty, True)
+        b.intersect(self.a)
+        self.assertEqual(b.asList(), [])
+        self.assertEqual(b.isEmpty, True)
 
     def testPartialIntersection(self):
         b = SegmentList(iter=((x, x + 10)
                               for x in range(5, 1000, 100)), normalize = True)
-        r = b.intersect(self.a)
-        self.assertEqual(len(r), len(self.a))
-        self.assertEqual(r.sum(), self.a.sum() / 2)
+        b.intersect(self.a)
+        self.assertEqual(len(b), len(self.a))
+        self.assertEqual(b.sum(), self.a.sum() / 2)
 
     def testOverlap(self):
         '''test if number of segments intersection is correct.'''
@@ -425,61 +424,64 @@ class TestSegmentListIntersection(GatTest):
     def testFilter(self):
 
         b = SegmentList(iter=((x, x + 5)
-                              for x in range(500, 2000, 100)), normalize = True)
-        self.assertEqual(b.filter(self.a).asList(), [
-                         (500, 505), (600, 605), (700, 705), (800, 805), (900, 905)])
+                              for x in range(500, 2000, 100)), normalize=True)
+        b.filter(self.a)
+        self.assertEqual(b.asList(), [
+            (500, 505), (600, 605), (700, 705), (800, 805),
+            (900, 905)])
 
         b = SegmentList(iter=((0, 56), ))
         c = SegmentList(iter=[(0, 50), (75, 125)])
-        self.assertEqual(b.filter(c).asList(), [(0, 56)])
+        b.filter(c)
+        self.assertEqual(b.asList(), [(0, 56)])
 
         b = SegmentList(iter=((0, 56), ))
         c = SegmentList(iter=[(0, 10)])
-        self.assertEqual(b.filter(c).asList(), [(0, 56)])
+        b.filter(c)
+        self.assertEqual(b.asList(), [(0, 56)])
 
 
 class TestSegmentListSubtract(GatTest):
 
     def setUp(self):
-        #[(0, 10), (100, 110), (200, 210), (300, 310), (400, 410), (500, 510), (600, 610), (700, 710), (800, 810), (900, 910)]
-        self.a = SegmentList(iter=((x, x + 10)
-                                   for x in range(0, 1000, 100)), normalize = True)
+        self.a = SegmentList(
+            iter=((x, x + 10) for x in range(0, 1000, 100)), normalize=True)
 
     def testCompleteOverlap(self):
         b = SegmentList(iter=[(0, 1000)], normalize=True)
-        r = b.subtract(self.a)
+        b.subtract(self.a)
         c = [(10L, 100L), (110L, 200L), (210L, 300L), (310L, 400L), (410L, 500L),
              (510L, 600L), (610L, 700L), (710L, 800L), (810L, 900L), (910L, 1000L)]
-        self.assertEqual(r.asList(), c)
+        self.assertEqual(b.asList(), c)
 
     def testFullSubtraction(self):
         b = SegmentList(iter=[(0, 1000)], normalize=True)
-        r = self.a.subtract(b)
-        self.assertEqual(len(r), 0)
+        self.a.subtract(b)
+        self.assertEqual(len(self.a), 0)
 
     def testSelfSubtraction(self):
-        r = self.a.subtract(self.a)
-        self.assertEqual(len(r), 0)
+        self.a.subtract(self.a)
+        self.assertEqual(len(self.a), 0)
 
     def testSameSubtraction(self):
         b = SegmentList(clone=self.a)
-        r = b.subtract(self.a)
-        self.assertEqual(len(r), 0)
+        b.subtract(self.a)
+        self.assertEqual(len(b), 0)
 
     def testOverlap(self):
 
         b = SegmentList(iter=((x, x + 10)
                               for x in range(5, 1000, 100)), normalize = True)
-        r = b.subtract(self.a)
+        b.subtract(self.a)
         c = [(10L, 15L), (110L, 115L), (210L, 215L), (310L, 315L), (410L, 415L),
              (510L, 515L), (610L, 615L), (710L, 715L), (810L, 815L), (910L, 915L)]
-        self.assertEqual(r.asList(), c)
+        self.assertEqual(b.asList(), c)
 
     def testSingleSegmentSubtraction(self):
         a = SegmentList(iter=[(0, 12000)], normalize=True)
         b = SegmentList(iter=[(0, 10000)], normalize=True)
-        r = a.subtract(b)
-        self.assertEqual(r.asList(), [(10000, 12000)])
+        a.subtract(b)
+        self.assertEqual(a.asList(), [(10000, 12000)])
 
 
 if __name__ == '__main__':

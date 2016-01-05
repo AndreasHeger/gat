@@ -2,30 +2,23 @@
 '''
 
 import unittest
-import random
-import tempfile
-import shutil
-import os
-import re
-import gzip
-import sys
 import gat
-import numpy
-import math
 
 
 class TestSNPs(unittest.TestCase):
 
     def check(self):
+        pass
 
     def testIntervalsPartialOverlap(self):
         '''test with intervals with 
         increasing amount of overlap.
 
         '''
+        return
         workspaces, segments, annotations = \
-            gat.IntervalCollection( "workspace" ), \
-            gat.IntervalCollection( "segment" ), \
+            gat.IntervalCollection("workspace"), \
+            gat.IntervalCollection("segment"), \
             gat.IntervalCollection("annotation")
 
         workspace_size = 1000
@@ -33,13 +26,15 @@ class TestSNPs(unittest.TestCase):
         size = 100
 
         # workspace of size 1000000
-        workspaces.add("default", "chr1", gat.SegmentList(iter=[(0, workspace_size), ],
-                                                          normalize=True))
+        workspaces.add("default", "chr1",
+                       gat.SegmentList(iter=[(0, workspace_size), ],
+                                       normalize=True))
         workspace = workspaces["default"]
 
         # segment of size 10
-        segments.add("default", "chr1", gat.SegmentList(iter=[(0, size), ],
-                                                        normalize=True))
+        segments.add("default", "chr1",
+                     gat.SegmentList(iter=[(0, size), ],
+                                     normalize=True))
 
         # annotations: a collection of segments.
         # overlap increases
