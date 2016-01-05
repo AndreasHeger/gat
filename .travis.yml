@@ -22,7 +22,7 @@ addons:
       - gfortran
 
 script:
-  - python setup.py develop && nosetest -v test
+  - python setup.py develop && nosetests -v test/test_*.py
 
 notifications:
   email:
