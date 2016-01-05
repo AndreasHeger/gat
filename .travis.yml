@@ -9,8 +9,9 @@ python:
 addons:
   apt:
     packages:
-      numpy-python
-      numpy-matplotlib
+      python-numpy
+      python-matplotlib
+      python-scipy
       cython
 
 script:
