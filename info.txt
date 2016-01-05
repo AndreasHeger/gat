@@ -112,7 +112,6 @@ Sampler - returns a sample of randomly placed segments
 
 Quantifiers
 
-
 .. glossary::
   
    Interval
