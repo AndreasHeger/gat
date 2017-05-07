@@ -6,7 +6,9 @@ import random
 
 cimport cython
 
-from cpython cimport PyString_AsString, PyString_FromStringAndSize
+from cpython.version cimport PY_MAJOR_VERSION, PY_MINOR_VERSION
+from cpython.bytes cimport PyBytes_AsString, PyBytes_FromStringAndSize
+from cpython cimport PyBytes_Check, PyUnicode_Check
 from libc.stdlib cimport qsort, realloc, malloc, calloc, free
 from libc.stdint cimport UINT32_MAX
 from libc.string cimport memcpy, memmove
@@ -18,6 +20,33 @@ from posix.mman cimport MAP_SHARED, PROT_READ, PROT_WRITE
 from posix.stat cimport S_IRUSR, S_IWUSR
 from posix.fcntl cimport O_CREAT, O_RDWR, O_RDONLY
 from posix.unistd cimport ftruncate
+
+
+cdef bytes force_bytes(object s, encoding="ascii"):
+    """convert string or unicode object to bytes, assuming
+    ascii encoding.
+    """
+    if s is None:
+        return None
+    elif PyBytes_Check(s):
+        return s
+    elif PyUnicode_Check(s):
+        return s.encode(encoding)
+    else:
+        raise TypeError("Argument must be string, bytes or unicode.")
+
+cdef force_str(object s, encoding="ascii"):
+    """Return s converted to str type of current Python
+    (bytes in Py2, unicode in Py3)"""
+    if s is None:
+        return None
+    if PY_MAJOR_VERSION < 3:
+        return s
+    elif PyBytes_Check(s):
+        return s.decode(encoding)
+    else:
+        # assume unicode
+        return s
 
 #####################################################
 ## numpy import
@@ -249,7 +278,7 @@ cdef class SegmentList:
                 self.is_shared = True
                 self.is_slave = True
             else:
-                p = PyString_AsString(unreduce[5])
+                p = PyBytes_AsString(unreduce[5])
                 self.segments = <Segment*>malloc(self.nsegments * sizeof(Segment))
                 memcpy(self.segments, p, cython.sizeof(Position) * 2 * self.nsegments)
 
@@ -285,7 +314,7 @@ cdef class SegmentList:
     def __reduce__(self):
         '''pickling function - returns class contents as a tuple.'''
 
-        cdef str data
+        cdef bytes data
 
         if self.shared_fd >= 0:
             return (buildSegmentList, (self.nsegments, 
@@ -296,7 +325,7 @@ cdef class SegmentList:
                                        self.shared_fd))
 
         else:
-            data = PyString_FromStringAndSize(
+            data = PyBytes_FromStringAndSize(
                 <char*>self.segments, \
                 self.nsegments * cython.sizeof(Position) * 2)
         
@@ -324,7 +353,8 @@ cdef class SegmentList:
             return
 
         cdef int fd
-        fd = shm_open( key, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR)
+        key = force_bytes(key)
+        fd = shm_open(key, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR)
         if fd == -1:
             error = errno
             raise OSError( "could not create shared memory at %s; ERRNO=%i" % (key, error ))
@@ -1684,17 +1714,28 @@ cdef class SegmentList:
         if key >= self.nsegments:
             raise IndexError("index out of range")
         return self.segments[key].start, self.segments[key].end
-
-    def __cmp__(self, SegmentList other):
+    
+    def compare(self, SegmentList other):
         cdef int idx
-        x = self.__len__().__cmp__(len(other))
-        if x != 0:
-            return x
+        cdef int l1 = self.__len__()
+        if other is None:
+            return -1
+        cdef int l2 = len(other)
+        if l2 - l1 != 0:
+            return l2 - l1
         for idx from 0 <= idx < self.nsegments:
             x = cmpSegmentsStartAndEnd(&self.segments[idx], &other.segments[idx])
             if x != 0:
                 return x
         return 0
+
+    def __richcmp__(self, SegmentList other, int op):
+        if op == 2:  # == operator
+            return self.compare(other) == 0
+        elif op == 3:  # != operator
+            return self.compare(other) != 0
+        else:
+            return NotImplemented
 
 
 def buildSegmentList(*args):

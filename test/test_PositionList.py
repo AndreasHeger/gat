@@ -64,7 +64,7 @@ class TestPositionList(GatTest):
     def testOverlapWithRange(self):
 
         # single point per position
-        pp = PositionList(iter=range(0, 1000, 100), sort=True)
+        pp = PositionList(iter=list(range(0, 1000, 100)), sort=True)
 
         for x in range(0, 1050, 10):
             if x % 100 == 0:
@@ -76,7 +76,7 @@ class TestPositionList(GatTest):
                 self.assertEqual(0, pp.overlapWithRange(x, x+10))
 
         # two points per positions
-        pp = PositionList(iter=range(0, 1000, 100) + range(0, 1000, 100),
+        pp = PositionList(iter=list(range(0, 1000, 100)) + list(range(0, 1000, 100)),
                           sort=True)
 
         for x in range(0, 1050, 10):
@@ -91,7 +91,7 @@ class TestPositionList(GatTest):
     def testOverlapWithSegments(self):
 
         # single point per position
-        pp = PositionList(iter=range(0, 1000, 100), sort=True)
+        pp = PositionList(iter=list(range(0, 1000, 100)), sort=True)
 
         for o in range(0, 200, 10):
             ss = SegmentList(
@@ -112,7 +112,7 @@ class TestPositionList(GatTest):
 
         for o in range(0, 200, 10):
             # single point per position
-            pp = PositionList(iter=range(0, 1000, 100), sort=True)
+            pp = PositionList(iter=list(range(0, 1000, 100)), sort=True)
 
             ss = SegmentList(
                 iter=[(x, x + 1) for x in range(0 + o, 1000 + o, 100)],

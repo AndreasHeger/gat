@@ -20,6 +20,9 @@ cdef extern from "gat_utils.h":
     int toCompressedFile(unsigned char *, size_t, FILE *)
     int fromCompressedFile(unsigned char *, size_t, FILE *)
 
+cdef bytes force_bytes(object s, encoding=*)
+cdef force_str(object s, encoding=*)
+
 #####################################################
 #####################################################
 ## type definitions

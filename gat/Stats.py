@@ -8,6 +8,7 @@ statistical functions
 import math
 import numpy
 import types
+from functools import reduce
 
 try:
     import scipy.interpolate
@@ -91,12 +92,12 @@ def computeQValues(pvalues,
                 mse = numpy.zeros(len(vlambda), numpy.float)
                 pi0_boot = numpy.zeros(len(vlambda), numpy.float)
 
-                for i in xrange(100):
+                for i in range(100):
                     # sample pvalues
                     idx_boot = numpy.random.random_integers(0, m - 1, m)
                     pvalues_boot = pvalues[idx_boot]
 
-                    for x in xrange(len(vlambda)):
+                    for x in range(len(vlambda)):
                         # compute number of pvalues larger than lambda[x]
                         pi0_boot[x] = numpy.mean(
                             pvalues_boot > vlambda[x]) / (1.0 - vlambda[x])
@@ -126,7 +127,7 @@ def computeQValues(pvalues,
     val2bin = len(bins) - numpy.digitize(pvalues, bins)
     v = numpy.zeros(m, dtype=numpy.int)
     lastbin = None
-    for x in xrange(m - 1, -1, -1):
+    for x in range(m - 1, -1, -1):
         bin = val2bin[idx[x]]
         if bin != lastbin:
             c = x
@@ -139,7 +140,7 @@ def computeQValues(pvalues,
 
     # bound qvalues by 1 and make them monotonic
     qvalues[idx[m - 1]] = min(qvalues[idx[m - 1]], 1.0)
-    for i in xrange(m - 2, -1, -1):
+    for i in range(m - 2, -1, -1):
         qvalues[idx[i]] = min(min(qvalues[idx[i]], qvalues[idx[i + 1]]), 1.0)
 
     # fill result
@@ -293,10 +294,10 @@ class Result(object):
         return getattr(self._data, key)
 
     def keys(self):
-        return self._data.keys()
+        return list(self._data.keys())
 
     def values(self):
-        return self._data.values()
+        return list(self._data.values())
 
     def __len__(self):
         return self._data.__len__()
@@ -358,7 +359,7 @@ class Summary(Result):
 
             # convert
             self._nerrors = 0
-            if type(values[0]) not in (types.IntType, types.FloatType):
+            if type(values[0]) not in (int, float):
                 n = []
                 for x in values:
                     try:
