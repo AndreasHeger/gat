@@ -196,7 +196,7 @@ def main(argv=None):
     results = []
 
     if len(all_annotator_results) == 1:
-        E.info("performing pairwise comparison within a file")
+        E.info("performing pairwise comparison within a single file")
 
         # collect all annotations
         annotations, segments = list(), set()
@@ -241,7 +241,7 @@ def main(argv=None):
             results.append(result)
 
     else:
-        E.info("performing pairwise comparison between files")
+        E.info("performing pairwise comparison between multiple files")
 
         ##################################################
         # perform pairwise comparison
@@ -257,56 +257,62 @@ def main(argv=None):
             bb = collections.defaultdict(dict)
             for x in b:
                 bb[x.track][x.annotation] = x
+            
+            tracks_a = set(aa.keys())
+            tracks_b = set(bb.keys())
+            shared_tracks = tracks_a.intersection(tracks_b)
+            if len(shared_tracks) == 0:
+                E.warn("no shared tracks between {} and {}".format(
+                        index1, index2))
+                
+            for track in sorted(shared_tracks):
+                E.debug("computing results for track {}".format(track))
+                # get shared annotations
+                annotations1 = aa[track].keys()
+                annotations2 = bb[track].keys()
+                shared_annotations = list(
+                    set(annotations1).intersection(set(annotations2)))
+                E.info("%i shared annotations" % len(shared_annotations))
 
-            if len(aa.keys()) != 1 or len(bb.keys()) != 1:
-                raise NotImplementedError("multiple segments of interest")
+                for annotation in shared_annotations:
 
-            track = "merged"
-            # get shared annotations
-            annotations1 = aa[track].keys()
-            annotations2 = bb[track].keys()
-            shared_annotations = list(
-                set(annotations1).intersection(set(annotations2)))
-            E.info("%i shared annotations" % len(shared_annotations))
+                    # if not annotation.startswith("Ram:"): continue
 
-            for annotation in shared_annotations:
+                    data1 = aa[track][annotation]
+                    data2 = bb[track][annotation]
 
-                # if not annotation.startswith("Ram:"): continue
+                    # note that fold changes can be very large if there are 0 samples
+                    # this is fine for getting the distributional params (mean,
+                    # stddev)
+                    fold_changes1 = data1.observed / (data1.samples + pseudo_count)
+                    fold_changes2 = data2.observed / (data2.samples + pseudo_count)
 
-                data1 = aa[track][annotation]
-                data2 = bb[track][annotation]
+                    # add a separate fc pseudo-count to avoid 0 values
+                    fold_changes1 += 0.0001
+                    fold_changes2 += 0.0001
 
-                # note that fold changes can be very large if there are 0 samples
-                # this is fine for getting the distributional params (mean,
-                # stddev)
-                fold_changes1 = data1.observed / (data1.samples + pseudo_count)
-                fold_changes2 = data2.observed / (data2.samples + pseudo_count)
+                    # Test is if relative fold change rfc is different from 1
+                    # note: rfc = fc1 / fc2 = obs1 / exp1 * obs2 / exp2
+                    #                       = obs1 / obs2 * exp2 / exp1
+                    # Thus, it is equivalent to test rfc = obs1/obs2 versus exp2 / exp1
+                    #
+                    # Convert to log space for easier plotting
+                    # Move the observed fold ratio in order to get an idea of the magnitude
+                    # of the underlying fold change
+                    delta_fold = data2.fold - data1.fold
+                    sampled_delta_fold = numpy.log(
+                        fold_changes1 / fold_changes2) + delta_fold
+                    observed_delta_fold = 0.0 + delta_fold
 
-                # add a separate fc pseudo-count to avoid 0 values
-                fold_changes1 += 0.0001
-                fold_changes2 += 0.0001
+                    result = GatEngine.AnnotatorResult(track,
+                                                       annotation,
+                                                       "na",
+                                                       observed_delta_fold,
+                                                       sampled_delta_fold,
+                                                       reference=None,
+                                                       pseudo_count=0)
 
-                # Test is if relative fold change rfc is different from 1
-                # note: rfc = fc1 / fc2 = obs1 / exp1 * obs2 / exp2
-                #                       = obs1 / obs2 * exp2 / exp1
-                # Thus, it is equivalent to test rfc = obs1/obs2 versus exp2 / exp1
-                #
-                # Convert to log space for easier plotting
-                # Move the observed fold ratio in order to get an idea of the magnitude
-                # of the underlying fold change
-                delta_fold = data2.fold - data1.fold
-                sampled_delta_fold = numpy.log(
-                    fold_changes1 / fold_changes2) + delta_fold
-                observed_delta_fold = 0.0 + delta_fold
-
-                result = GatEngine.AnnotatorResult(track, annotation,
-                                                   "na",
-                                                   observed_delta_fold,
-                                                   sampled_delta_fold,
-                                                   reference=None,
-                                                   pseudo_count=0)
-
-                results.append(result)
+                    results.append(result)
 
     if len(results) == 0:
         E.critical("no results found")

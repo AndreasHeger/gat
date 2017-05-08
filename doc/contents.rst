@@ -42,7 +42,8 @@ Contents
    performance.rst
    background.rst
    glossary.rst
-
+   release.rst
+   
 Developers' notes
 ====================
 
