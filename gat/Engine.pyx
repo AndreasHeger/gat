@@ -2382,11 +2382,13 @@ class Track(object):
                 self._d[k] = v
 
         self._line = line[:-1]
+
     def __str__(self):
         return self._line
 
     def __getitem__(self, key):
         return self._d[key]
+
     def __setitem__(self, key,val):
         self._d[key] = val
 
@@ -2453,6 +2455,9 @@ class tsv_iterator:
 
         raise StopIteration
 
+    # Python 2
+    next = __next__
+    
 
 class bed_iterator(tsv_iterator):
     '''iterate over ``infile``.
