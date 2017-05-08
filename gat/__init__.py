@@ -11,7 +11,7 @@ import gat.Experiment as E
 import gat.Stats as Stats
 import gat.IO as IO
 
-import Engine as Engine
+import gat.Engine as Engine
 
 import multiprocessing.pool
 import multiprocessing
@@ -431,8 +431,8 @@ def buildParser(usage=None):
 
 def iterator_results(annotator_results):
     '''iterate over all results.'''
-    for k1, v1 in annotator_results.iteritems():
-        for k2, v2 in v1.iteritems():
+    for k1, v1 in annotator_results.items():
+        for k2, v2 in v1.items():
             yield v2
 
 
@@ -453,7 +453,7 @@ class DummyAnnotatorResult:
         x.track, x.annotation = data[:2]
         x.counter = "na"
         x.observed, x.expected, x.lower95, x.upper95, x.stddev, x.fold, x.l2fold, x.pvalue, x.qvalue = \
-            map(float, data[2:11])
+            list(map(float, data[2:11]))
         if len(data) > 11:
             (track_nsegments,
              track_size,
@@ -467,7 +467,7 @@ class DummyAnnotatorResult:
              percent_overlap_nsegments_track,
              percent_overlap_size_track,
              percent_overlap_nsegments_annotation,
-             percent_overlap_size_annotation) = map(float, data[11:24])
+             percent_overlap_size_annotation) = list(map(float, data[11:24]))
 
         return x
 
@@ -528,7 +528,7 @@ def computeSample(args):
 
     sample = Engine.IntervalDictionary()
 
-    for isochore in segs.keys():
+    for isochore in list(segs.keys()):
 
         counts.pairs += 1
 
@@ -584,7 +584,7 @@ def computeSample(args):
                 counter(sample[contig],
                         contig_annotations[annotation][contig],
                         contig_workspace[contig])
-                for contig in sample.keys()])
+                for contig in list(sample.keys())])
 
     # E.debug("track=%s, sample=%s - completed" % (track,str(sample_id )))
 
@@ -1036,8 +1036,8 @@ def run(segments,
     annotator_results = list()
     counter_id = 0
     for counter, observed_count in zip(counters, observed_counts):
-        for track, r in observed_count.iteritems():
-            for annotation, observed in r.iteritems():
+        for track, r in observed_count.items():
+            for annotation, observed in r.items():
                 temp_segs, temp_annos, temp_workspace = workspace_generator(
                     segments[track],
                     annotations[annotation],
@@ -1105,7 +1105,7 @@ def fromCounts(filename):
         for line in infile:
             track, annotation, observed, counts = line[:-1].split("\t")
             samples = numpy.array(
-                map(float, counts.split(",")), dtype=numpy.float)
+                list(map(float, counts.split(","))), dtype=numpy.float)
             observed = float(observed)
             annotator_results.append(Engine.AnnotatorResult(
                 track=track,

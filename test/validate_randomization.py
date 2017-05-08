@@ -26,7 +26,7 @@ class Runner:
     def run(self, segments, workspace):
         samples = []
 
-        for x in xrange(self.ntests):
+        for x in range(self.ntests):
             sample = self.getSample(segments, workspace)
             samples.append(sample)
 
@@ -82,7 +82,7 @@ class SegmentGenerator:
 
         result = []
         start, end = self.workspace_gap, self.workspace_gap
-        for x in xrange(self.workspace_nregions):
+        for x in range(self.workspace_nregions):
             end = start + self.workspace_length
             result.append((start, end))
             start = end + self.workspace_gap
@@ -112,7 +112,7 @@ class SegmentGenerator:
         start = max(0, workspace[workspace_idx][0] - (self.segment_length - 1))
         segments = []
 
-        for x in xrange(self.nsegments):
+        for x in range(self.nsegments):
             end = start + self.segment_length
             segments.append((start, end))
 
@@ -279,16 +279,16 @@ def smooth(x, window_len=11, window='hanning'):
     """
 
     if x.ndim != 1:
-        raise ValueError, "smooth only accepts 1 dimension arrays."
+        raise ValueError("smooth only accepts 1 dimension arrays.")
 
     if x.size < window_len:
-        raise ValueError, "Input vector needs to be bigger than window size."
+        raise ValueError("Input vector needs to be bigger than window size.")
 
     if window_len < 3:
         return x
 
     if not window in ['flat', 'hanning', 'hamming', 'bartlett', 'blackman']:
-        raise ValueError, "Window is on of 'flat', 'hanning', 'hamming', 'bartlett', 'blackman'"
+        raise ValueError("Window is on of 'flat', 'hanning', 'hamming', 'bartlett', 'blackman'")
 
     s = numpy.r_[2 * x[0] - x[window_len:1:-1],
                  x, 2 * x[-1] - x[-1:-window_len:-1]]
@@ -329,7 +329,7 @@ class SamplePlot:
 
         width = workspace.max()
 
-        print height, width
+        print(height, width)
 
         root = SVGdraw.drawing()
         canvas = SVGdraw.svg((0, 0, width, heigh), "100%", "100%")
@@ -363,10 +363,10 @@ def plotCounts(filename,
     # plt.axes( [0.1,0.1,0.51,0.5] )
 
     plt.subplot("311")
-    plt.plot(xrange(len(counts_within_workspace)),
+    plt.plot(range(len(counts_within_workspace)),
              counts_within_workspace, '.', label="coverage")
 
-    plt.plot(xrange(len(counts_within_workspace)), newy, '-',
+    plt.plot(range(len(counts_within_workspace)), newy, '-',
              label="smooth (%i)" % dx)
 
     plt.title("%s : density = %6.4f" % (filename, density))
@@ -375,17 +375,17 @@ def plotCounts(filename,
     plt.ylabel("counts")
     if expected_coverage:
         d = expected_coverage * 0.1
-        plt.plot(xrange(len(counts_within_workspace)), [expected_coverage] * len(counts_within_workspace),
+        plt.plot(range(len(counts_within_workspace)), [expected_coverage] * len(counts_within_workspace),
                  '-', label="expected")
-        plt.plot(xrange(len(counts_within_workspace)), [expected_coverage - d] * len(counts_within_workspace),
+        plt.plot(range(len(counts_within_workspace)), [expected_coverage - d] * len(counts_within_workspace),
                  '--')
-        plt.plot(xrange(len(counts_within_workspace)), [expected_coverage + d] * len(counts_within_workspace),
+        plt.plot(range(len(counts_within_workspace)), [expected_coverage + d] * len(counts_within_workspace),
                  '--')
     plt.legend(loc=(1.03, 0.2))
 
     plt.subplot("312")
     segment_sizes.sort()
-    segment_sizes = zip(*segment_sizes)
+    segment_sizes = list(zip(*segment_sizes))
     plt.plot(segment_sizes[0], label="stddev")
     plt.plot(segment_sizes[1], label="min")
     plt.plot(segment_sizes[2], label="max")
@@ -638,16 +638,16 @@ def test_segmented_workspaces():
     nworkspaces = (5,)
 
     # workspace_length
-    workspace_length = xrange(10, 100, 20)
+    workspace_length = range(10, 100, 20)
 
     # workspace gaps
-    workspace_gap = xrange(0, 100, 20)
+    workspace_gap = range(0, 100, 20)
 
     # segment lengths
-    segment_length = xrange(1, 100, 20)
+    segment_length = range(1, 100, 20)
 
     # number of segments
-    nsegments = xrange(1, 50, 10)
+    nsegments = range(1, 50, 10)
 
     for _nworkspaces, _workspace_length, _workspace_gap, _segment_length, _nsegments in \
             itertools.product(nworkspaces, workspace_length, workspace_gap, segment_length, nsegments):

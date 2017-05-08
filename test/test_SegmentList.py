@@ -152,8 +152,8 @@ class TestSegmentList(GatTest):
     def testTrim(self):
         '''test trimming over full range of insertion points and deletions.'''
 
-        for point in xrange(0, 1000):
-            for size in xrange(0, 300):
+        for point in range(0, 1000):
+            for size in range(0, 300):
                 ss = [(x, x + 100) for x in range(0, 1000, 100)]
                 s = SegmentList(iter=ss,
                                 normalize=True)
@@ -170,7 +170,7 @@ class TestSegmentList(GatTest):
         s = SegmentList(iter=ss,
                         normalize=True)
 
-        for point in xrange(0, 100):
+        for point in range(0, 100):
             p = s.getInsertionPoint(point, point + 1)
             self.assertEqual(p, point // 10)
 
@@ -178,7 +178,7 @@ class TestSegmentList(GatTest):
         s = SegmentList(iter=ss,
                         normalize=True)
 
-        for point in xrange(0, 100):
+        for point in range(0, 100):
             p = s.getInsertionPoint(point, point + 1)
             if point >= 90:
                 self.assertEqual(p, len(s))
@@ -189,7 +189,7 @@ class TestSegmentList(GatTest):
         s = SegmentList(iter=ss,
                         normalize=True)
 
-        for point in xrange(0, 100):
+        for point in range(0, 100):
             p = s.getInsertionPoint(point, point + 1)
             self.assertEqual(p, (point - 10) // 20)
 
@@ -199,7 +199,7 @@ class TestSegmentList(GatTest):
         s = SegmentList(iter=ss,
                         normalize=False)
 
-        for point in xrange(0, 100):
+        for point in range(0, 100):
             self.assertRaises(
                 AssertionError, s.getInsertionPoint, point, point + 1)
 
@@ -450,8 +450,8 @@ class TestSegmentListSubtract(GatTest):
     def testCompleteOverlap(self):
         b = SegmentList(iter=[(0, 1000)], normalize=True)
         b.subtract(self.a)
-        c = [(10L, 100L), (110L, 200L), (210L, 300L), (310L, 400L), (410L, 500L),
-             (510L, 600L), (610L, 700L), (710L, 800L), (810L, 900L), (910L, 1000L)]
+        c = [(10, 100), (110, 200), (210, 300), (310, 400), (410, 500),
+             (510, 600), (610, 700), (710, 800), (810, 900), (910, 1000)]
         self.assertEqual(b.asList(), c)
 
     def testFullSubtraction(self):
@@ -473,8 +473,8 @@ class TestSegmentListSubtract(GatTest):
         b = SegmentList(iter=((x, x + 10)
                               for x in range(5, 1000, 100)), normalize = True)
         b.subtract(self.a)
-        c = [(10L, 15L), (110L, 115L), (210L, 215L), (310L, 315L), (410L, 415L),
-             (510L, 515L), (610L, 615L), (710L, 715L), (810L, 815L), (910L, 915L)]
+        c = [(10, 15), (110, 115), (210, 215), (310, 315), (410, 415),
+             (510, 515), (610, 615), (710, 715), (810, 815), (910, 915)]
         self.assertEqual(b.asList(), c)
 
     def testSingleSegmentSubtraction(self):

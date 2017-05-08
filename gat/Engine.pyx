@@ -30,7 +30,7 @@ from CoordinateList cimport CoordinateList
 
 cimport SegmentList
 import SegmentList
-from SegmentList cimport SegmentList, PositionDifference, Segment, Position
+from SegmentList cimport SegmentList, PositionDifference, Segment, Position, force_bytes, force_str
 
 from PositionList cimport PositionList
 
@@ -2348,7 +2348,7 @@ cdef class BedProxy(TupleProxy):
 
    property contig:
        def __get__(self):
-           return self.fields[0]
+           return force_str(self.fields[0])
 
    property start:
        def __get__(self):
@@ -2371,7 +2371,7 @@ cdef class BedProxy(TupleProxy):
 
 class Track(object):
     '''bed track information.'''
-    def __init__(self, line ):
+    def __init__(self, line):
         r= re.compile('([^\s=]+) *= *("[^"]*"|[^ ]*)')
 
         self._d = {}
@@ -2382,11 +2382,16 @@ class Track(object):
                 self._d[k] = v
 
         self._line = line[:-1]
+
     def __str__(self):
         return self._line
 
-    def __getitem__(self, key): return self._d[key]
-    def __setitem__(self, key,val): self._d[key] = val
+    def __getitem__(self, key):
+        return self._d[key]
+
+    def __setitem__(self, key,val):
+        self._d[key] = val
+
 
 class tsv_iterator:
     '''iterate over ``infile``.
@@ -2400,13 +2405,13 @@ class tsv_iterator:
     def __iter__(self):
         return self
 
-    def preparse( self, line ):
+    def preparse(self, line ):
         return True
 
-    def create( self):
+    def create(self):
         return TupleProxy()
 
-    def next(self):
+    def __next__(self):
 
         cdef char * b
 
@@ -2418,21 +2423,23 @@ class tsv_iterator:
         while 1:
 
             line = self.infile.readline()
-            if not line: break
-
-            # string conversion - b references internal string in python object
-            b = line
-
-            # nbytes includes new line but not \0
-            nbytes = len( line )
+            if not line:
+                break
 
             # skip comments
-            if (b[0] == '#'): continue
+            if line.startswith("#") or line.startswith("\n"):
+                continue
 
-            # skip empty lines
-            if b[0] == '\0' or b[0] == '\n': continue
+            if not self.preparse(line):
+                continue
 
-            if not self.preparse(line): continue
+            # string conversion - b references internal string in python object
+
+            # nbytes includes new line but not \0
+            nbytes = len(line)
+
+            line = force_bytes(line)
+            b = line
 
             # make sure that entry is complete
             if b[nbytes-1] != '\n':
@@ -2443,10 +2450,14 @@ class tsv_iterator:
 
             # create a copy
             r = self.create()
-            r.copy( b, nbytes )
+            r.copy(b, nbytes)
             return r
 
         raise StopIteration
+
+    # Python 2
+    next = __next__
+    
 
 class bed_iterator(tsv_iterator):
     '''iterate over ``infile``.
@@ -2457,7 +2468,7 @@ class bed_iterator(tsv_iterator):
         tsv_iterator.__init__(self, infile)
         self.track = None
 
-    def preparse(self, line ):
+    def preparse(self, line):
         if line.startswith("track"):
             self.track = Track(line)
             return False
@@ -2465,6 +2476,7 @@ class bed_iterator(tsv_iterator):
 
     def create( self ):
         return BedProxy(self.track)
+
 
 def readFromBed(filenames,
                 bint allow_multiple=False,
@@ -2497,49 +2509,50 @@ def readFromBed(filenames,
     tracks = {}
 
     if type(filenames) == str:
-        filenames = (filenames,)
+        filenames = [filenames]
+
     for filename in filenames:
-        infile = IOTools.openFile(filename, "r")
-        default_name = os.path.basename(filename)
-        lineno = 0
-        try:
-            for bed in bed_iterator(infile):
-                if ignore_tracks:
-                    name = "merged"
-                else:
-                    if bed.track:
-                        try:
-                            name = bed.track["name"]
-                        except KeyError:
-                            raise KeyError(
-                                "track without field 'name' in file '%s'" % filename)
-                    elif bed.name: 
-                        name = bed.name
+        with IOTools.openFile(filename, "r") as infile:
+            default_name = os.path.basename(filename)
+            lineno = 0
+            try:
+                for bed in bed_iterator(infile):
+                    if ignore_tracks:
+                        name = "merged"
                     else:
-                        name = default_name
-
-                if name in tracks:
-                    if tracks[name] != filename: 
-                        if allow_multiple:
-                            E.warn(
-                                "track '%s' in multiple filenames: %s and %s" %
-                                (name, tracks[name], filename))
+                        if bed.track:
+                            try:
+                                name = bed.track["name"]
+                            except KeyError:
+                                raise KeyError(
+                                    "track without field 'name' in file '%s'" % filename)
+                        elif bed.name: 
+                            name = bed.name
                         else:
-                            raise ValueError(
-                                "track '%s' in multiple filenames: %s and %s" %
-                                (name, tracks[name], filename))
-                        tracks[name] = filename
-                else:
-                    tracks[name] = filename
-                 
-                l = segment_lists[name][bed.contig]
-                l.add(atol(bed.fields[1]), atol(bed.fields[2]))
-                lineno += 1
+                            name = default_name
 
-        except IOError, msg:
-            raise IOError("malformatted entry in line %s:%i, msg=%s" % (filename,
-                                                                        lineno,
-                                                                        msg))
+                    if name in tracks:
+                        if tracks[name] != filename: 
+                            if allow_multiple:
+                                E.warn(
+                                    "track '%s' in multiple filenames: %s and %s" %
+                                    (name, tracks[name], filename))
+                            else:
+                                raise ValueError(
+                                    "track '%s' in multiple filenames: %s and %s" %
+                                    (name, tracks[name], filename))
+                            tracks[name] = filename
+                    else:
+                        tracks[name] = filename
+
+                    l = segment_lists[name][bed.contig]
+                    l.add(atol(bed.fields[1]), atol(bed.fields[2]))
+                    lineno += 1
+
+            except IOError, msg:
+                raise IOError("malformatted entry in line %s:%i, msg=%s" % (filename,
+                                                                            lineno,
+                                                                            msg))
 
     return segment_lists
 
@@ -2591,7 +2604,9 @@ cdef class IntervalContainer(object):
         cdef int fd
         filename = self._getSharedMemoryName(filename)
         assert filename.startswith("/")
-        fd = shm_open(filename,
+        f = force_bytes(filename)
+        cdef char * c_filename = f
+        fd = shm_open(c_filename,
                       O_CREAT | O_RDWR, 
                       S_IRUSR | S_IWUSR)
         if fd == -1:
@@ -2646,7 +2661,7 @@ cdef class IntervalContainer(object):
             # disconnect from mmap
             # munmap( self.mmap, 
             #        self.mmap_bytes)
-            fn = self.shared_fn 
+            fn = force_bytes(self.shared_fn)
             fd = shm_unlink(fn)
             error = errno
             if fd == -1:
@@ -2747,7 +2762,7 @@ cdef class IntervalDictionary(IntervalContainer):
 
     def getSegmentLists( self ):
         '''yield all segment lists.'''
-        for contig, segmentlist in self.intervals.iteritems():
+        for contig, segmentlist in self.intervals.items():
             yield segmentlist
 
     def intersect(self, other):
@@ -2793,13 +2808,13 @@ cdef class IntervalDictionary(IntervalContainer):
     def __contains__(self, key ):
         return key in self.intervals
 
-    def iteritems(self):
-        return self.intervals.iteritems()
+    def items(self):
+        return self.intervals.items()
 
     def clone(self):
         '''return a copy of the data.'''
         r = IntervalDictionary()
-        for contig, segmentlist in self.intervals.iteritems():
+        for contig, segmentlist in self.intervals.items():
             r[contig] = segmentlist.clone()
         return r
 
@@ -2819,8 +2834,9 @@ cdef class IntervalDictionary(IntervalContainer):
 
         The IntervalDictionary is modified in-place.
         '''
-        for contig, segmentlist in self.intervals.items():
-            for other_track, other_vv in isochores.iteritems():
+        for contig in list(self.intervals.keys()):
+            segmentlist = self.intervals[contig]
+            for other_track, other_vv in isochores.items():
                 newlist = segmentlist.clone()
                 if truncate:
                     newlist.intersect(other_vv[contig])
@@ -2887,8 +2903,8 @@ cdef class IntervalCollection(IntervalContainer):
 
     def getSegmentLists(self):
         '''yield all segment lists.'''
-        for track,v in self.intervals.iteritems():
-            for contig, segmentlist in v.iteritems():
+        for track,v in self.intervals.items():
+            for contig, segmentlist in v.items():
                 yield segmentlist
 
     def load(self, filenames, allow_multiple=False, ignore_tracks=False):
@@ -2906,11 +2922,11 @@ cdef class IntervalCollection(IntervalContainer):
         Additional *kwargs* will be added to the tracks line as key=value pairs.
         '''
 
-        for track, vv in self.intervals.iteritems():
+        for track, vv in self.intervals.items():
             outfile.write(
                 "track name=%s%s %s\n" %
                 (prefix, track,
-                 " ".join(["%s=%s" % (x,y) for x,y in kwargs.iteritems()])))
+                 " ".join(["%s=%s" % (x,y) for x,y in kwargs.items()])))
             for contig, segmentlist in vv.items():
                 for start, end in segmentlist:
                     outfile.write("%s\t%i\t%i\n" % (contig, start, end))
@@ -2921,7 +2937,7 @@ cdef class IntervalCollection(IntervalContainer):
         Remove empty contigs.
         '''
 
-        for track, vv in self.intervals.iteritems():
+        for track, vv in self.intervals.items():
             for contig in vv.keys():
                 segmentlist = vv[contig]
                 if len(segmentlist) == 0: 
@@ -2937,9 +2953,9 @@ cdef class IntervalCollection(IntervalContainer):
         cdef Position total_length = 0
         cdef Position total_segments = 0
         cdef Position length, segments
-        for track, vv in self.intervals.iteritems():
+        for track, vv in self.intervals.items():
             total_length, total_segments = 0, 0
-            for contig, segmentlist in vv.iteritems():
+            for contig, segmentlist in vv.items():
                 segments = len(segmentlist)
                 length = segmentlist.sum()
                 outfile.write( "\t".join( \
@@ -2976,7 +2992,7 @@ cdef class IntervalCollection(IntervalContainer):
         
         for track in self.intervals.keys():
             vv = self.intervals[track]
-            for contig, segmentlist in vv.iteritems():
+            for contig, segmentlist in vv.items():
                 merged[contig].extend(segmentlist)
             if delete:
                 del self.intervals[track]
@@ -2994,15 +3010,15 @@ cdef class IntervalCollection(IntervalContainer):
         
         # get list of contigs present in all data sets
         contigs = collections.defaultdict( int )
-        for track, vv in self.intervals.iteritems():
+        for track, vv in self.intervals.items():
             for contig in vv.keys():
                 contigs[contig] += 1
 
         ntracks = len( self.intervals )
-        shared_contigs = set( [ x for x,y in contigs.iteritems() if y == ntracks ] )
+        shared_contigs = set( [ x for x,y in contigs.items() if y == ntracks ] )
         
-        for track, vv in self.intervals.iteritems():
-            for contig, segmentlist in vv.iteritems():
+        for track, vv in self.intervals.items():
+            for contig, segmentlist in vv.items():
                 if contig not in shared_contigs: continue
                 if contig not in result:
                     result[contig] = segmentlist.clone()
@@ -3014,16 +3030,16 @@ cdef class IntervalCollection(IntervalContainer):
     def countsPerTrack(self):
         '''return number of all segments in all segments lists.'''
         counts = {}
-        for track, vv in self.intervals.iteritems():
+        for track, vv in self.intervals.items():
             s = 0
-            for contig, segmentlist in vv.iteritems():
+            for contig, segmentlist in vv.items():
                 s += len(segmentlist)
             counts[track] = s 
         return counts
         
     def intersect(self, other):
         '''intersect with intervals in other.'''
-        for track, vv in self.intervals.iteritems():
+        for track, vv in self.intervals.items():
             for contig, segmentlist in vv.items():
                 if contig in other:
                     segmentlist.intersect( other[contig] )
@@ -3032,7 +3048,7 @@ cdef class IntervalCollection(IntervalContainer):
 
     def filter(self, other):
         '''remove all intervals not overlapping with intervals in other.'''
-        for track, vv in self.intervals.iteritems():
+        for track, vv in self.intervals.items():
             for contig, segmentlist in vv.items():
                 if contig in other:
                     segmentlist.filter( other[contig] )
@@ -3058,17 +3074,17 @@ cdef class IntervalCollection(IntervalContainer):
 
         The IntervalCollection is modified in-place.
         '''
-        for track, vv in self.intervals.iteritems():
+        for track, vv in self.intervals.items():
             vv.toIsochores(isochores, truncate)
 
     def fromIsochores(self):
         '''merge isochores together.'''
-        for track, vv in self.intervals.iteritems():
+        for track, vv in self.intervals.items():
             vv.fromIsochores()
 
     def toPositions(self, method="mid-point"):
         """convert SegmentLists to PositionLists"""
-        for track, vv in self.intervals.iteritems():
+        for track, vv in self.intervals.items():
             for contig, segmentlist in vv.items():
                 p = PositionList()
                 p.fromSegmentList(segmentlist, method=method)
@@ -3077,8 +3093,8 @@ cdef class IntervalCollection(IntervalContainer):
     def clone(self):
         '''return a copy of self.'''
         new = IntervalCollection(self.name)
-        for track,v in self.intervals.iteritems():
-            for contig, segmentlist in v.iteritems():
+        for track,v in self.intervals.items():
+            for contig, segmentlist in v.items():
                 new.add(track, contig, segmentlist.clone())
         return new
 
@@ -3107,10 +3123,10 @@ cdef class IntervalCollection(IntervalContainer):
     def __str__(self):
         return "%s:%s" % (
             self.name,
-            ",".join( ["%s:%s" % (x,y) for x,y in self.intervals.iteritems()]))
+            ",".join( ["%s:%s" % (x,y) for x,y in self.intervals.items()]))
 
-    def iteritems(self):
-        return self.intervals.iteritems()
+    def items(self):
+        return self.intervals.items()
     
     def items(self):
         return self.intervals.items()
@@ -3119,8 +3135,8 @@ cdef class IntervalCollection(IntervalContainer):
 
         outfile.write("section\ttrack\tcontig\toverlap\tlength\tdensity\n")
         
-        for track, vv in self.intervals.iteritems():
-            for contig, segmentlist in vv.iteritems():
+        for track, vv in self.intervals.items():
+            for contig, segmentlist in vv.items():
                 length = segmentlist.sum()
                 if length == 0: continue
                 overlap = segmentlist.overlapWithSegments(other[contig])
@@ -3195,11 +3211,12 @@ cdef class SamplesFile( Samples ):
         for filename in filenames:
             track = regex.search(filename).groups()[0]
             s = IntervalCollection( track )
-            s.load( filename )
+            s.load( filename)
             self.samples[track] = s
             
-    def load( self, track, sample_id, isochore ):
+    def load(self, track, sample_id, isochore ):
         return True
+
 
 cdef class SamplesCached( Samples ):
     '''a collection of samples.
@@ -3534,11 +3551,11 @@ cdef inline int isSampleSignificantAtPvalue( EnrichmentStatistics * stats,
 
 #         if not self.cache: return
 
-#         for track, samples in self.samples.iteritems():
+#         for track, samples in self.samples.items():
 #             group = self.cache.createGroup( self.cache.root, track, track)
-#             for sample_id, sample in samples.iteritems():
+#             for sample_id, sample in samples.items():
 #                 subgroup = self.cache.createGroup( group, str(sample_id), str(sample_id) )
-#                 for isochore, seglist in sample.iteritems():
+#                 for isochore, seglist in sample.items():
 #                     l = len(seglist)
 #                     if l == 0: continue
 #                     carr = self.cache.createCArray( subgroup,

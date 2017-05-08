@@ -56,16 +56,16 @@ def smooth(x, window_len=11, window='hanning'):
     """
 
     if x.ndim != 1:
-        raise ValueError, "smooth only accepts 1 dimension arrays."
+        raise ValueError("smooth only accepts 1 dimension arrays.")
 
     if x.size < window_len:
-        raise ValueError, "Input vector needs to be bigger than window size."
+        raise ValueError("Input vector needs to be bigger than window size.")
 
     if window_len < 3:
         return x
 
     if not window in ['flat', 'hanning', 'hamming', 'bartlett', 'blackman']:
-        raise ValueError, "Window is on of 'flat', 'hanning', 'hamming', 'bartlett', 'blackman'"
+        raise ValueError("Window is on of 'flat', 'hanning', 'hamming', 'bartlett', 'blackman'")
 
     s = numpy.r_[2 * x[0] - x[window_len:1:-1],
                  x, 2 * x[-1] - x[-1:-window_len:-1]]
@@ -143,7 +143,7 @@ def writeAnnotatorSegments2(outfile, segmentlists, section):
     elif section == "annotations":
         prefix = "##Id\t0"
 
-    for contig, segmentlist in segmentlists.items():
+    for contig, segmentlist in list(segmentlists.items()):
         os.write(outfile,
                  "%s\t%s\t%s\n" % (
                      prefix,
@@ -160,9 +160,9 @@ def writeAnnotatorAnnotations(outfile, annotations):
 
     prefix = "##Id\t"
     nid = 0
-    for track, segmentlists in annotations.iteritems():
+    for track, segmentlists in annotations.items():
         nids = []
-        for contig, segmentlist in segmentlists.items():
+        for contig, segmentlist in list(segmentlists.items()):
             os.write(outfile,
                      "%s\t%i\t%s\t%s\n" % (
                          prefix,
@@ -243,7 +243,7 @@ def getAnnotatorSamples(segments,
             break
         z, fold, pvalue, observed, expected, lower95, upper95, stddev, annotation = data
         pvalue, observed, expected, lower95, upper95, stddev = \
-            map(float, (pvalue, observed, expected, lower95, upper95, stddev))
+            list(map(float, (pvalue, observed, expected, lower95, upper95, stddev)))
 
         try:
             fold = observed / expected
@@ -304,8 +304,8 @@ class TestSamplerLength(GatTest):
 
         delta = 1.0
 
-        self.assert_(abs(numpy.mean(samples) - 100.0) < delta)
-        self.assert_(abs(numpy.std(samples) - 10.0) < delta)
+        self.assertTrue(abs(numpy.mean(samples) - 100.0) < delta)
+        self.assertTrue(abs(numpy.std(samples) - 10.0) < delta)
 
     def testSamplingSNPs(self):
 
@@ -408,7 +408,7 @@ class TestSegmentTrimming(GatTest):
                                                      density=segment_density)
 
         d = abs(counts_within_workspace.mean() - expected) / float(expected)
-        self.assert_(d < 0.1, "expected counts (%f) != sampled counts (%f" % (expected,
+        self.assertTrue(d < 0.1, "expected counts (%f) != sampled counts (%f" % (expected,
                                                                               counts_within_workspace.mean()))
 
         d = numpy.std(counts_within_workspace)
@@ -425,7 +425,7 @@ class TestSegmentTrimming(GatTest):
         amount = 4
 
         segments = SegmentList(iter=[(x, x + segment_size) for x in
-                                     xrange(0,
+                                     range(0,
                                             nsegments *
                                             (segment_size + space),
                                             segment_size + space)],
@@ -479,7 +479,7 @@ class TestPositionSampling(GatTest):
                                                      density=segment_density)
 
         d = abs(counts_within_workspace.mean() - expected) / float(expected)
-        self.assert_(d < 0.1, "expected counts (%f) != sampled counts (%f" % (expected,
+        self.assertTrue(d < 0.1, "expected counts (%f) != sampled counts (%f" % (expected,
                                                                               counts_within_workspace.mean()))
 
         d = numpy.std(counts_within_workspace)
@@ -642,12 +642,12 @@ def getWorkspaceCounts(workspace,
     # plt.axes( [0.1,0.1,0.51,0.5] )
 
     plt.subplot("511")
-    plt.plot(xrange(len(counts_within_workspace)),
+    plt.plot(range(len(counts_within_workspace)),
              counts_within_workspace,
              '.',
              label="coverage")
 
-    plt.plot(xrange(len(counts_within_workspace)), newy, '-',
+    plt.plot(range(len(counts_within_workspace)), newy, '-',
              label="smooth (%i)" % dx)
 
     plt.title("%s : density = %6.4f" % (filename, density))
@@ -656,17 +656,17 @@ def getWorkspaceCounts(workspace,
     plt.ylabel("counts")
     if expected:
         d = expected * 0.1
-        plt.plot(xrange(len(counts_within_workspace)), [expected] * len(counts_within_workspace),
+        plt.plot(range(len(counts_within_workspace)), [expected] * len(counts_within_workspace),
                  '-', label="expected")
-        plt.plot(xrange(len(counts_within_workspace)), [expected - d] * len(counts_within_workspace),
+        plt.plot(range(len(counts_within_workspace)), [expected - d] * len(counts_within_workspace),
                  '--')
-        plt.plot(xrange(len(counts_within_workspace)), [expected + d] * len(counts_within_workspace),
+        plt.plot(range(len(counts_within_workspace)), [expected + d] * len(counts_within_workspace),
                  '--')
     plt.legend(loc=(1.03, 0.2))
 
     plt.subplot("512")
     segment_sizes.sort()
-    segment_sizes = zip(*segment_sizes)
+    segment_sizes = list(zip(*segment_sizes))
     plt.plot(segment_sizes[0], label="stddev")
     plt.plot(segment_sizes[1], label="min")
     plt.plot(segment_sizes[2], label="max")
@@ -745,7 +745,7 @@ class TestSegmentSamplingSamplerAnnotator(GatTest):
         '''return a list of samples.'''
         samples = []
 
-        for x in xrange(self.ntests):
+        for x in range(self.ntests):
             sample = self.getSample(segments, workspace)
             samples.append(sample)
 
@@ -766,7 +766,7 @@ class TestSegmentSamplingSamplerAnnotator(GatTest):
                                       values_input,
                                       values_sample):
                 d = abs(inp - samp) / float(inp)
-                self.assert_(d < 0.1,
+                self.assertTrue(d < 0.1,
                              "segment length distribution in sample %i: expected %s (%f) != observed %s (%f)" %
                              (i, val, inp, val, samp))
 
@@ -841,7 +841,7 @@ class TestSegmentSamplingSamplerAnnotator(GatTest):
             d = abs(counts_within_workspace.mean() -
                     expected) / float(expected)
 
-            self.assert_(d < 0.1, "expected counts (%f) != sampled counts (%f)" % (expected,
+            self.assertTrue(d < 0.1, "expected counts (%f) != sampled counts (%f)" % (expected,
                                                                                    counts_within_workspace.mean()))
 
         if self.check_uniform_coverage:
@@ -849,7 +849,7 @@ class TestSegmentSamplingSamplerAnnotator(GatTest):
             stddev = numpy.std(counts_within_workspace)
             d = stddev / float(expected)
 
-            self.assert_(d < 0.1, "coverage variation too large : stddev (%f) / %f = %f > 0.01" %
+            self.assertTrue(d < 0.1, "coverage variation too large : stddev (%f) / %f = %f > 0.01" %
                          (stddev,
                           expected,
                           d))
@@ -1274,7 +1274,7 @@ class TestSegmentSamplingSamplerTheAnnotator(TestSegmentSamplingSamplerAnnotator
             if not line.startswith("##Segments"):
                 continue
             data = line.split("\t")[2:]
-            coords = [map(int, x[1:-1].split(",")) for x in data]
+            coords = [list(map(int, x[1:-1].split(","))) for x in data]
             # print "annotator", coords
             samples.append(SegmentList(iter=coords))
 
@@ -1393,7 +1393,7 @@ class TestStatsSNPSampling(GatTest):
                 expected_pvalue = 1.0
                 error = 0.1
 
-            self.assert_(abs(result.expected - expected_without) < error,
+            self.assertTrue(abs(result.expected - expected_without) < error,
                          "simulated results deviate from hypergeometric expectation for annotation `%s`: sizes(seg=%i/anno=%i/work=%i) observed=%f, expected=%f (%f, margin=%f)" %
                          (annotation,
                           segment_size,
@@ -1579,12 +1579,12 @@ class TestStatsSNPSampling(GatTest):
 
         # workspace of size 1000000
         workspaces.add("default", "chr1",
-                       SegmentList(iter=[(x, x + 1000) for x in xrange(0, workspace_size, 2000)],
+                       SegmentList(iter=[(x, x + 1000) for x in range(0, workspace_size, 2000)],
                                    normalize=True))
 
         # SNPs every 100bp
         segments.add("default", "chr1",
-                     SegmentList(iter=[(x, x + 1) for x in xrange(0, workspace_size, 100)],
+                     SegmentList(iter=[(x, x + 1) for x in range(0, workspace_size, 100)],
                                  normalize=True))
 
         start = 0
@@ -1605,19 +1605,19 @@ class TestStatsSNPSampling(GatTest):
 
         # workspace of size 1000000
         workspaces.add("default", "chr1",
-                       SegmentList(iter=[(x, x + 1000) for x in xrange(0, workspace_size, 2000)],
+                       SegmentList(iter=[(x, x + 1000) for x in range(0, workspace_size, 2000)],
                                    normalize=True))
 
         # SNPs every 100bp
         segments.add("default", "chr1",
-                     SegmentList(iter=[(x, x + 1) for x in xrange(0, workspace_size, 100)],
+                     SegmentList(iter=[(x, x + 1) for x in range(0, workspace_size, 100)],
                                  normalize=True))
 
         size = 1000
-        for start in xrange(0, size, 100):
+        for start in range(0, size, 100):
             annotations.add("%03i" % start, "chr1",
                             SegmentList(iter=[(start + x, start + x + size)
-                                              for x in xrange(0, workspace_size, 2000)],
+                                              for x in range(0, workspace_size, 2000)],
                                         normalize=True))
 
         self.check(workspaces["default"], annotations, segments)
@@ -1743,7 +1743,7 @@ class TestStatsGat(GatTest):
             # segment_size, self.sample_size, result.observed, result.expected,
             # result.pvalue, expected_pvalue, result.stddev, expected_std
 
-            self.assert_(abs(result.expected - expected_without) < error,
+            self.assertTrue(abs(result.expected - expected_without) < error,
                          "simulated results deviates from hypergeometric expectation for annotation `%s`: sizes(seg=%i/anno=%i/work=%i) observed=%f, expected=%f (%f, margin=%f)" %
                          (annotation,
                           segment_size,
@@ -1930,19 +1930,19 @@ class TestStatsGat(GatTest):
 
         # workspace of size 1000000
         workspaces.add("default", "chr1",
-                       SegmentList(iter=[(x, x + 1000) for x in xrange(0, workspace_size, 2000)],
+                       SegmentList(iter=[(x, x + 1000) for x in range(0, workspace_size, 2000)],
                                    normalize=True))
 
         # SNPs every 100bp
         segments.add("default", "chr1",
-                     SegmentList(iter=[(x, x + 1) for x in xrange(0, workspace_size, 100)],
+                     SegmentList(iter=[(x, x + 1) for x in range(0, workspace_size, 100)],
                                  normalize=True))
 
         size = 1000
-        for start in xrange(0, size, 100):
+        for start in range(0, size, 100):
             annotations.add("%03i" % start, "chr1",
                             SegmentList(iter=[(start + x, start + x + size)
-                                              for x in xrange(0, workspace_size, 2000)],
+                                              for x in range(0, workspace_size, 2000)],
                                         normalize=True))
 
         self.check(workspaces["default"], annotations, segments)
@@ -1972,7 +1972,7 @@ class TestStatsGat(GatTest):
 
         # segments every 100bp
         segments.add("default", "chr1",
-                     SegmentList(iter=[(x, x + segment_size) for x in xrange(0, workspace_size, segment_spacing)],
+                     SegmentList(iter=[(x, x + segment_size) for x in range(0, workspace_size, segment_spacing)],
                                  normalize=True))
 
         x = 0
@@ -2056,7 +2056,7 @@ class TestStatsTheAnnotator(TestStatsGat):
                 break
             z, fold, pvalue, observed, expected, lower95, upper95, stddev, annotation = data
             pvalue, observed, expected, lower95, upper95, stddev = \
-                map(float, (pvalue, observed, expected, lower95, upper95, stddev))
+                list(map(float, (pvalue, observed, expected, lower95, upper95, stddev)))
 
             try:
                 fold = observed / expected
@@ -2102,17 +2102,17 @@ class TestTrimming(GatTest):
         for size in range(2, 3 * segment):
 
             plt.figure()
-            full = sum([range(x + size, x + segment - size)
+            full = sum([list(range(x + size, x + segment - size))
                         for x in range(0, npoints, 2 * segment)], [])
-            trimmed = sum([range(x, min(npoints - 1, x + size)) for x in range(0, npoints, 2 * segment)] +
-                          [range(max(0, x + segment - size), x + segment) for x in range(0, npoints, 2 * segment)], [])
+            trimmed = sum([list(range(x, min(npoints - 1, x + size))) for x in range(0, npoints, 2 * segment)] +
+                          [list(range(max(0, x + segment - size), x + segment)) for x in range(0, npoints, 2 * segment)], [])
 
             total = numpy.zeros(len(trimmed), numpy.int)
 
             for repeat in range(nrepeats):
                 counts = numpy.zeros(npoints, numpy.int)
                 for y in range(0, npoints, 2 * segment):
-                    for point in xrange(y, y + segment):
+                    for point in range(y, y + segment):
                         ss = [(x, x + segment)
                               for x in range(0, npoints, 2 * segment)]
                         s = SegmentList(iter=ss,
@@ -2127,7 +2127,7 @@ class TestTrimming(GatTest):
                         f), "min=%i, npoints=%i, size=%i" % (min(f), npoints, size))
                 total += t
 
-            plt.plot(xrange(len(total)), total)
+            plt.plot(range(len(total)), total)
 
         plt.show()
 
@@ -2165,7 +2165,7 @@ class TestEnrichmentGat(GatTest):
 
         workspace_generator = GatEngine.UnconditionalWorkspace()
 
-        for x in xrange(self.ntests):
+        for x in range(self.ntests):
             result.append(
                 gat.run(segments,
                         annotations,
@@ -2241,8 +2241,8 @@ class TestEnrichmentGat(GatTest):
                         width, yy + width, color='g')
             plt.axhline(1.0, 0, 1, color='r', ls='--')
 
-        all_vals = observed.values()
-        for x in expected.values():
+        all_vals = list(observed.values())
+        for x in list(expected.values()):
             all_vals.extend(x)
         # plt.ylim( min(all_vals) - 10, max(all_vals) + 10 )
         if self.counter == "NucleotideOverlap":
@@ -2254,7 +2254,7 @@ class TestEnrichmentGat(GatTest):
         exp = sum([numpy.mean(expected[x]) for x in annos])
         obs = sum(observed[x] for x in annos)
         d = abs(obs - exp) / float(exp)
-        self.assert_(d < 0.1, "variation too large :  %f / %f = %f > 10%%" %
+        self.assertTrue(d < 0.1, "variation too large :  %f / %f = %f > 10%%" %
                      (obs,
                       exp,
                       d))
@@ -2289,7 +2289,7 @@ class TestEnrichmentGat(GatTest):
         workspaces.add("default", "chr1", workspace)
 
         segments.add("default", "chr1",
-                     SegmentList(iter=[(x, x + segment_size) for x in xrange(0, workspace_size, segment_spacing)],
+                     SegmentList(iter=[(x, x + segment_size) for x in range(0, workspace_size, segment_spacing)],
                                  normalize=True))
 
         for i, y in enumerate(annotation_sizes):
@@ -2369,10 +2369,10 @@ class TestEnrichmentGat(GatTest):
 
         # add segments in first half of workspace as before
         intervals = [(x, x + segment_size)
-                     for x in xrange(0, workspace_size / 2, segment_spacing)]
+                     for x in range(0, workspace_size / 2, segment_spacing)]
         # only add overlap with segments 0 and 2
         intervals.extend([(x, x + segment_size)
-                          for x in xrange(workspace_size / 2, workspace_size, segment_spacing * 2)])
+                          for x in range(workspace_size / 2, workspace_size, segment_spacing * 2)])
         segments.add("default", "chr1",
                      SegmentList(iter=intervals,
                                  normalize=True))
@@ -2457,7 +2457,7 @@ class TestSpacingGat(GatTest):
         workspace_size = workspace.max()
 
         segments = SegmentList(iter=[(x, x + p.segment_size)
-                                     for x in xrange(0, workspace_size, p.segment_spacing)],
+                                     for x in range(0, workspace_size, p.segment_spacing)],
                                normalize=True)
 
         annotations = {}
@@ -2484,7 +2484,7 @@ class TestSpacingGat(GatTest):
         workspace_generator = GatEngine.UnconditionalWorkspace()
 
         result = collections.defaultdict(list)
-        for x in xrange(self.nsamples_sampler):
+        for x in range(self.nsamples_sampler):
             r = gat.run(segments,
                         annotations,
                         workspace,
@@ -2493,7 +2493,7 @@ class TestSpacingGat(GatTest):
                         workspace_generator=workspace_generator,
                         num_samples=nsamples)
 
-            for anno, v in r["default"].iteritems():
+            for anno, v in r["default"].items():
                 result[anno].append(v)
 
         return result
@@ -2503,7 +2503,7 @@ class TestSpacingGat(GatTest):
         ss = GatEngine.IntervalCollection("segment")
         ss.add("default", "chr1", segments)
         aa = GatEngine.IntervalCollection("annotation")
-        for key, x in annotations.iteritems():
+        for key, x in annotations.items():
             aa.add(key, "chr1", x)
 
         ww = GatEngine.IntervalCollection("workspace")
@@ -2545,10 +2545,10 @@ class TestSpacingGat(GatTest):
 
             if r2 > 0.1:
                 if ntries == 1:
-                    print "segs", segments
-                    print "work", workspace
-                    print "anno-0", annotations["anno-0"]
-                    print "anno-1", annotations["anno-1"]
+                    print("segs", segments)
+                    print("work", workspace)
+                    print("anno-0", annotations["anno-0"])
+                    print("anno-1", annotations["anno-1"])
                     sys.exit(0)
 
                 ntries += 1
@@ -2570,7 +2570,7 @@ class TestSpacingGat(GatTest):
         random_segments = self.runSampler(segments, workspace, annotations,
                                           self.nsamples_pvalues)
 
-        print random_segments["anno-1"][0]
+        print(random_segments["anno-1"][0])
 
     def testAnnotations(self):
         # segment_size, segment_spacing,

@@ -15,7 +15,7 @@ for line in sys.stdin:
 
     data = line[:-1].split("\t")[1:]
     contig = data[0]
-    coords = [map(int, x[1:-1].split(",")) for x in data[1:]]
+    coords = [list(map(int, x[1:-1].split(","))) for x in data[1:]]
     # print "annotator", coords
 
     for start, end in coords:

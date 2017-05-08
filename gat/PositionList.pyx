@@ -3,7 +3,8 @@
 
 cimport cython
 
-from cpython cimport PyString_AsString, PyString_FromStringAndSize
+from cpython.bytes cimport PyBytes_AsString, PyBytes_FromStringAndSize
+from cpython cimport PyBytes_Check, PyUnicode_Check
 from libc.stdlib cimport qsort, calloc, malloc, realloc, free
 from libc.string cimport memcpy
 from libc.errno cimport errno
@@ -14,6 +15,20 @@ from posix.stat cimport S_IRUSR, S_IWUSR
 from posix.fcntl cimport O_CREAT, O_RDWR, O_RDONLY
 
 from SegmentList cimport Position, Segment, SegmentList
+
+cdef bytes force_bytes(object s, encoding="ascii"):
+    """convert string or unicode object to bytes, assuming
+    ascii encoding.
+    """
+    if s is None:
+        return None
+    elif PyBytes_Check(s):
+        return s
+    elif PyUnicode_Check(s):
+        return s.encode(encoding)
+    else:
+        raise TypeError("Argument must be string, bytes or unicode.")
+
 
 # trick to permit const void * in function definitions
 cdef extern from *:
@@ -142,7 +157,7 @@ cdef class PositionList:
                 self.is_shared = True
                 self.is_slave = True
             else:
-                p = PyString_AsString(unreduce[6])
+                p = PyBytes_AsString(unreduce[6])
                 self.positions = <Position*>malloc(self.npositions * sizeof(Position))
                 memcpy(self.positions, p, cython.sizeof(Position) * self.npositions)
 
@@ -182,7 +197,7 @@ cdef class PositionList:
     def __reduce__(self):
         '''pickling function - returns class contents as a tuple.'''
 
-        cdef str data
+        cdef bytes data
 
         if self.shared_fd >= 0:
             return (buildPositionList, (self.npositions, 
@@ -194,7 +209,7 @@ cdef class PositionList:
                                         self.shared_fd))
 
         else:
-            data = PyString_FromStringAndSize(
+            data = PyBytes_FromStringAndSize(
                 <char*>self.positions, \
                 self.npositions * cython.sizeof(Position) * 2)
         

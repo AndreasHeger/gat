@@ -224,7 +224,7 @@ def getRegularSegmentsInAnnotations(annotations, segment_size, segment_density):
     '''
 
     merged = gat.SegmentList()
-    for x, i in annotations.iteritems():
+    for x, i in annotations.items():
         merged.extend(i)
     merged.normalize()
 
@@ -332,7 +332,7 @@ class GatTest(unittest.TestCase):
 
         result = collections.defaultdict(list)
 
-        for x in xrange(self.nsamples_sampler):
+        for x in range(self.nsamples_sampler):
             r = gat.run(segments,
                         annotations,
                         workspace,
@@ -340,7 +340,7 @@ class GatTest(unittest.TestCase):
                         counter,
                         num_samples=nsamples)
 
-            for anno, v in r["default"].iteritems():
+            for anno, v in r["default"].items():
                 result[anno].append(v)
 
         return result
@@ -353,7 +353,7 @@ class GatTest(unittest.TestCase):
         annotations.save(self.bedfile, prefix="annotations_", color="0,255,0")
 
         self.bedfile.write("track name=workspace_%s color=0,0,255\n" % track)
-        for contig, v in workspace.iteritems():
+        for contig, v in workspace.items():
             for start, end in v:
                 self.bedfile.write("%s\t%i\t%i\n" % (contig, start, end))
 
@@ -368,7 +368,7 @@ class GatTest(unittest.TestCase):
 
         fail = []
 
-        for key, rr in sorted(result.iteritems()):
+        for key, rr in sorted(result.items()):
 
             folds = []
             for r in rr:
@@ -398,7 +398,7 @@ class GatTest(unittest.TestCase):
 
         # check if pvalues are uniformly distributed between 0 and 1
         # a certain proportion of tests may pass
-        print pvalues
+        print(pvalues)
 
         if fail:
             for f in fail:
@@ -430,7 +430,7 @@ class GatTest(unittest.TestCase):
         ss.add("default", "chr1", segments)
 
         aa = gat.IntervalCollection("annotation")
-        for key, x in annotations.iteritems():
+        for key, x in annotations.items():
             aa.add(key, "chr1", x)
 
         ww = {"chr1": workspace}
@@ -453,7 +453,7 @@ class GatTest(unittest.TestCase):
             if s:
                 ss.add("default", c, s)
 
-            for key, x in a.iteritems():
+            for key, x in a.items():
                 if x:
                     aa.add(key, c, x)
 
