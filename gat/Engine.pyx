@@ -2836,7 +2836,8 @@ cdef class IntervalDictionary(IntervalContainer):
         normalize = False
         # isochores might or might not be present
         for isochore, segmentlist in self.intervals.items():
-            if "." in isochore:
+            isochore = isochore.strip()
+            if "." in isochore and isochore != ".":
                 contig, iso = isochore.split(".")
                 new[contig].extend(segmentlist)
                 normalize = True
