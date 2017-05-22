@@ -272,6 +272,7 @@ def applyIsochores(segments, annotations, workspaces,
 
         E.info("truncating workspace to annotations")
         annotations.merge()
+        annotations["merged"].normalize()
         workspace.intersect(annotations["merged"])
         del annotations["merged"]
 

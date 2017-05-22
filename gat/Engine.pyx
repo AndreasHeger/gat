@@ -2398,14 +2398,13 @@ class tsv_iterator:
 
     Permits the use of file-like objects for example from the gzip module.
     '''
-    def __init__(self, infile ):
-
+    def __init__(self, infile):
         self.infile = infile
 
     def __iter__(self):
         return self
 
-    def preparse(self, line ):
+    def preparse(self, line):
         return True
 
     def create(self):
@@ -2527,10 +2526,10 @@ def readFromBed(filenames,
                                 raise KeyError(
                                     "track without field 'name' in file '%s'" % filename)
                         elif bed.name: 
-                            name = bed.name
+                            name = force_str(bed.name)
                         else:
                             name = default_name
-
+                    
                     if name in tracks:
                         if tracks[name] != filename: 
                             if allow_multiple:
@@ -3060,9 +3059,10 @@ cdef class IntervalCollection(IntervalContainer):
         if restrict in (list, tuple, set):
             r = set(restrict)
         else:
-            r = set( [restrict,] )
+            r = set([restrict,])
 
-        for track in self.intervals.keys():
+        keys = list(self.intervals.keys())
+        for track in keys:
             if track not in r:
                 del self.intervals[track]
 

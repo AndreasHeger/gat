@@ -1,25 +1,3 @@
-##########################################################################
-#
-#   MRC FGU Computational Genomics Group
-#
-#   $Id$
-#
-#   Copyright (C) 2009 Andreas Heger
-#
-#   This program is free software; you can redistribute it and/or
-#   modify it under the terms of the GNU General Public License
-#   as published by the Free Software Foundation; either version 2
-#   of the License, or (at your option) any later version.
-#
-#   This program is distributed in the hope that it will be useful,
-#   but WITHOUT ANY WARRANTY; without even the implied warranty of
-#   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#   GNU General Public License for more details.
-#
-#   You should have received a copy of the GNU General Public License
-#   along with this program; if not, write to the Free Software
-#   Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
-##########################################################################
 '''
 IOTools - tools for I/O operations
 ==================================
@@ -399,177 +377,6 @@ def isEmpty(filename):
     return os.stat(filename)[stat.ST_SIZE] == 0
 
 
-class FilePool:
-
-    """manage a pool of output files
-
-    This class will keep a large number of files open. To
-    see if you can handle this, check the limit within the shell::
-
-       ulimit -n
-
-    The number of currently open and maximum open files in the system:
-
-      cat /proc/sys/fs/file-nr
-
-    Changing these limits might not be easy for a user.
-
-    This class is inefficient if the number of files is larger than
-    :attr:`maxopen` and calls to `write` do not group keys together.
-    """
-
-    maxopen = 5000
-
-    def __init__(self,
-                 output_pattern=None,
-                 header=None,
-                 force=True):
-
-        self.mFiles = {}
-        self.mOutputPattern = output_pattern
-        if output_pattern and output_pattern.endswith(".gz"):
-            self.open = gzip.open
-        else:
-            self.open = open
-
-        self.mCounts = collections.defaultdict(int)
-        self.mHeader = header
-        if force and output_pattern:
-            for f in glob.glob(re.sub("%s", "*", output_pattern)):
-                os.remove(f)
-
-    def __del__(self):
-        """close all open files."""
-        for file in list(self.mFiles.values()):
-            file.close()
-
-    def __len__(self):
-        return len(self.mCounts)
-
-    def close(self):
-        """close all open files."""
-        for file in list(self.mFiles.values()):
-            file.close()
-
-    def values(self):
-        return list(self.mCounts.values())
-
-    def keys(self):
-        return list(self.mCounts.keys())
-
-    def iteritems(self):
-        return iter(self.mCounts.items())
-
-    def items(self):
-        return list(self.mCounts.items())
-
-    def __iter__(self):
-        return self.mCounts.__iter__()
-
-    def getFile(self, identifier):
-        return identifier
-
-    def getFilename(self, identifier):
-        """get filename for an identifier."""
-
-        if self.mOutputPattern:
-            return re.sub("%s", str(identifier), self.mOutputPattern)
-        else:
-            return identifier
-
-    def setHeader(self, header):
-        self.mHeader = header
-
-    def openFile(self, filename, mode="w"):
-        """open file.
-
-        If file is in a new directory, create directories.
-        """
-        if mode in ("w", "a"):
-            dirname = os.path.dirname(filename)
-            if dirname and not os.path.exists(dirname):
-                os.makedirs(dirname)
-
-        return self.open(filename, mode)
-
-    def write(self, identifier, line):
-
-        filename = self.getFilename(identifier)
-
-        if filename not in self.mFiles:
-
-            if self.maxopen and len(self.mFiles) > self.maxopen:
-                for f in list(self.mFiles.values()):
-                    f.close()
-                self.mFiles = {}
-
-            self.mFiles[filename] = self.openFile(filename, "a")
-            if self.mHeader:
-                self.mFiles[filename].write(self.mHeader)
-
-        try:
-            self.mFiles[filename].write(line)
-        except ValueError as msg:
-            raise ValueError(
-                "error while writing to %s: msg=%s" % (filename, msg))
-        self.mCounts[filename] += 1
-
-    def deleteFiles(self, min_size=0):
-        """delete all files below a minimum size."""
-
-        ndeleted = 0
-        for filename, counts in list(self.mCounts.items()):
-            if counts < min_size:
-                os.remove(filename)
-                ndeleted += 1
-
-        return ndeleted
-
-
-class FilePoolMemory(FilePool):
-
-    """manage a pool of output files
-
-    The data is cached in memory before writing to disk.
-    """
-
-    maxopen = 5000
-
-    def __init__(self, *args, **kwargs):
-        FilePool.__init__(self, *args, **kwargs)
-
-        self.data = collections.defaultdict(list)
-        self.isClosed = False
-
-    def __del__(self):
-        """close all open files.
-        """
-        if not self.isClosed:
-            self.close()
-
-    def close(self):
-        """close all open files.
-        writes the data to disk.
-        """
-        if self.isClosed:
-            raise IOError("write on closed FilePool in close()")
-
-        for filename, data in self.data.items():
-            f = self.openFile(filename, "a")
-            if self.mHeader:
-                f.write(self.mHeader)
-            f.write("".join(data))
-            f.close()
-
-        self.isClosed = True
-
-    def write(self, identifier, line):
-
-        filename = self.getFilename(identifier)
-        self.data[filename].append(line)
-        self.mCounts[filename] += 1
-
-
 def prettyFloat(val, format="%5.2f"):
     """output a float or "na" if not defined"""
     try:
@@ -693,11 +500,8 @@ def iterate_tabular(infile, sep="\t"):
         yield line[:-1].split(sep)
 
 
-def openFile(filename, mode="r", create_dir=False):
-    '''open file in *filename* with mode *mode*.
-
-    If *create* is set, the directory containing filename
-    will be created if it does not exist.
+def openFile(filename, mode="r", create_dir=False, encoding="utf-8"):
+    '''open file called *filename* with mode *mode*.
 
     gzip - compressed files are recognized by the
     suffix ``.gz`` and opened transparently.
@@ -706,7 +510,18 @@ def openFile(filename, mode="r", create_dir=False):
     like objects returned, for example in the
     ability to seek.
 
-    returns a file or file-like object.
+    Arguments
+    ---------
+    filename : string
+    mode : string
+       File opening mode
+    create_dir : bool
+       If True, the directory containing filename
+       will be created if it does not exist.
+
+    Returns
+    -------
+    File or file-like object in case of gzip compressed files.
     '''
 
     _, ext = os.path.splitext(filename)
@@ -716,7 +531,16 @@ def openFile(filename, mode="r", create_dir=False):
         if dirname and not os.path.exists(dirname):
             os.makedirs(dirname)
 
-    if ext.lower() in (".gz", ):
-        return gzip.open(filename, mode)
+    if ext.lower() in (".gz", ".z"):
+        if sys.version_info.major >= 3:
+            if mode == "r":
+                return gzip.open(filename, 'rt', encoding=encoding)
+            elif mode == "w":
+                return gzip.open(filename, 'wt', encoding=encoding)
+            elif mode == "a":
+                return gzip.open(filename, 'wt', encoding=encoding)
+        else:
+            return gzip.open(filename, mode)
     else:
-        return open(filename, mode)
+        return open(filename, mode, encoding=encoding)
+
