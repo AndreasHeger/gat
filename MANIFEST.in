@@ -10,6 +10,6 @@ include KNOWN_BUGS
 include THANKS
 include requirements.txt
 include install.sh
-include GatEngine/GatEngine.*
-include GatSegmentList/GatSegmentList.*
+include gat/*.pyx
+include gat/*.pxd
 include utils/gat_utils.*
