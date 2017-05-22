@@ -8,7 +8,7 @@ include COPYING
 include INSTALL
 include KNOWN_BUGS
 include THANKS
-include requires.txt
+include requirements.txt
 include install.sh
 include GatEngine/GatEngine.*
 include GatSegmentList/GatSegmentList.*

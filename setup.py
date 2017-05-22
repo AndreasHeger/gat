@@ -95,7 +95,7 @@ for requirement in (l.strip() for l in open('requirements.txt')
 
 
 name = "gat"
-version = "1.3.0"
+version = "1.3.1"
 
 classifiers = """
 Development Status :: 4 - Beta
