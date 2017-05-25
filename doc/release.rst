@@ -2,6 +2,9 @@
 Release Notes
 =============
 
+1.3.4:
+  * Bugifxes to (hopefully) complete python 2/3 compatibility.
+
 1.3.0:
 
   * GAT now works under python 2 and python 3

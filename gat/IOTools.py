@@ -542,5 +542,8 @@ def openFile(filename, mode="r", create_dir=False, encoding="utf-8"):
         else:
             return gzip.open(filename, mode)
     else:
-        return open(filename, mode, encoding=encoding)
+        if sys.version_info.major >= 3:
+            return open(filename, mode, encoding=encoding)
+        else:
+            return open(filename, mode)
 
