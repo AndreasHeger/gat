@@ -2,6 +2,9 @@
 Release Notes
 =============
 
+1.3.5:
+  * Bugfixes - do not delete during container iteration
+
 1.3.4:
   * Bugifxes to (hopefully) complete python 2/3 compatibility.
 

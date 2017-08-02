@@ -2766,19 +2766,25 @@ cdef class IntervalDictionary(IntervalContainer):
 
     def intersect(self, other):
         '''intersect with intervals in other.'''
+        to_delete = []
         for contig, segmentlist in self.intervals.items():
             if contig in other:
                 segmentlist.intersect(other[contig])
             else:
-                del self.intervals[contig]
+                to_delete.append(contig)
+        for contig in to_delete:
+            del self.intervals[contig]
 
     def truncate( self, other ):
         '''truncate intervals with intervals in other.'''
+        to_delete = []
         for contig, segmentlist in self.intervals.items():
             if contig in other:
                 segmentlist.truncate(other[contig])
             else:
-                del self.intervals[contig]
+                to_delete.append(contig)
+        for contig in to_delete:
+            del self.intervals[contig]
 
     def __len__(self):
         return len(self.intervals)
@@ -2819,11 +2825,14 @@ cdef class IntervalDictionary(IntervalContainer):
 
     def filter(self, other):
         '''remove all intervals not overlapping with intervals in other.'''
+        to_delete = []
         for contig, segmentlist in self.intervals.items():
             if contig in other:
                 segmentlist.filter(other[contig])
             else:
-                del self.intervals[contig]
+                to_delete.append(contig)
+        for contig in to_delete:
+            del self.intervals[contig]
 
     def toIsochores(self, isochores, truncate=False):
         '''split per-contig segmentlists into per-isochore segmentlist.
@@ -2937,12 +2946,15 @@ cdef class IntervalCollection(IntervalContainer):
         '''
 
         for track, vv in self.intervals.items():
+            to_delete = []
             for contig in vv.keys():
                 segmentlist = vv[contig]
-                if len(segmentlist) == 0: 
-                    del vv[contig]
-                else:
+                if len(segmentlist):
                     segmentlist.normalize()
+                else:
+                    to_delete.append(contig)
+            for contig in to_delete:
+                del vv[contig]
 
     def outputStats(self, outfile):
         '''output segment statistics.'''
@@ -2989,7 +3001,7 @@ cdef class IntervalCollection(IntervalContainer):
         '''
         merged = IntervalDictionary()
         
-        for track in self.intervals.keys():
+        for track in list(self.intervals.keys()):
             vv = self.intervals[track]
             for contig, segmentlist in vv.items():
                 merged[contig].extend(segmentlist)
@@ -3038,21 +3050,27 @@ cdef class IntervalCollection(IntervalContainer):
         
     def intersect(self, other):
         '''intersect with intervals in other.'''
+        to_delete = []
         for track, vv in self.intervals.items():
             for contig, segmentlist in vv.items():
                 if contig in other:
                     segmentlist.intersect( other[contig] )
                 else:
-                    del vv[contig]
+                    to_delete.append(contig)
+            for contig in to_delete:
+                del vv[contig]
 
     def filter(self, other):
         '''remove all intervals not overlapping with intervals in other.'''
+        to_delete = []
         for track, vv in self.intervals.items():
             for contig, segmentlist in vv.items():
                 if contig in other:
                     segmentlist.filter( other[contig] )
                 else:
-                    del vv[contig]
+                    to_delete.append(contig)
+            for contig in to_delete:
+                del vv[contig]
 
     def restrict(self, restrict):
         '''remove all tracks except those in restrict.'''
@@ -3062,9 +3080,9 @@ cdef class IntervalCollection(IntervalContainer):
             r = set([restrict,])
 
         keys = list(self.intervals.keys())
-        for track in keys:
-            if track not in r:
-                del self.intervals[track]
+        to_delete = [track for track in keys if track not in r]
+        for track in to_delete:
+            del self.intervals[track]
 
     def toIsochores(self, isochores, truncate=False):
         '''split per-contig segmentlists into per-isochore segmentlist.
