@@ -11,7 +11,7 @@ PAPEROPT_a4     = -D latex_paper_size=a4
 PAPEROPT_letter = -D latex_paper_size=letter
 ALLSPHINXOPTS   = -d _build/doctrees $(PAPEROPT_$(PAPER)) $(SPHINXOPTS) .
 
-PUBLISH_DIR=/ifs/home/andreas/public_html/documentation/gat
+PUBLISH_DIR=/ifs/public/gat/documentation
 
 SAMPLERS=SamplerAnnotator SamplerSegments SamplerUniform \
 	SamplerLocalPermutation SamplerGlobalPermutation \
