@@ -2684,7 +2684,7 @@ cdef class IntervalContainer(object):
         # munmap( self.mmap, 
         #        self.mmap_bytes)
                 
-        fn = self.shared_fn 
+        fn = force_bytes(self.shared_fn)
         fd = shm_unlink(fn)
         error = errno
         if fd == -1:
