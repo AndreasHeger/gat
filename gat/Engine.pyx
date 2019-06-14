@@ -3050,8 +3050,8 @@ cdef class IntervalCollection(IntervalContainer):
         
     def intersect(self, other):
         '''intersect with intervals in other.'''
-        to_delete = []
         for track, vv in self.intervals.items():
+            to_delete = []
             for contig, segmentlist in vv.items():
                 if contig in other:
                     segmentlist.intersect( other[contig] )
@@ -3062,8 +3062,8 @@ cdef class IntervalCollection(IntervalContainer):
 
     def filter(self, other):
         '''remove all intervals not overlapping with intervals in other.'''
-        to_delete = []
         for track, vv in self.intervals.items():
+            to_delete = []
             for contig, segmentlist in vv.items():
                 if contig in other:
                     segmentlist.filter( other[contig] )
