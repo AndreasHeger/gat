@@ -95,7 +95,7 @@ import gat
 import gat.Experiment as E
 import gat.IOTools as IOTools
 import gat.IO as IO
-import GatEngine
+import gat.Engine as Engine
 
 
 def main(argv=None):
@@ -177,7 +177,7 @@ def main(argv=None):
         ##################################################
         if options.pvalue_method != "empirical":
             E.info("updating pvalues to %s" % options.pvalue_method)
-            GatEngine.updatePValues(annotator_results, options.pvalue_method)
+            Engine.updatePValues(annotator_results, options.pvalue_method)
 
         ##################################################
         ##################################################
@@ -185,7 +185,7 @@ def main(argv=None):
         # compute global fdr
         ##################################################
         E.info("computing FDR statistics")
-        GatEngine.updateQValues(annotator_results,
+        Engine.updateQValues(annotator_results,
                                 method=options.qvalue_method,
                                 vlambda=options.qvalue_lambda,
                                 pi0_method=options.qvalue_pi0_method)
@@ -231,7 +231,7 @@ def main(argv=None):
                 fold_changes1 / fold_changes2) + delta_fold
             observed_delta_fold = 0.0 + delta_fold
 
-            result = GatEngine.AnnotatorResult(data1.annotation, data2.annotation,
+            result = Engine.AnnotatorResult(data1.annotation, data2.annotation,
                                                "na",
                                                observed_delta_fold,
                                                sampled_delta_fold,
@@ -304,7 +304,7 @@ def main(argv=None):
                         fold_changes1 / fold_changes2) + delta_fold
                     observed_delta_fold = 0.0 + delta_fold
 
-                    result = GatEngine.AnnotatorResult(track,
+                    result = Engine.AnnotatorResult(track,
                                                        annotation,
                                                        "na",
                                                        observed_delta_fold,
@@ -321,7 +321,7 @@ def main(argv=None):
 
     IO.outputResults(results,
                      options,
-                     GatEngine.AnnotatorResult.headers,
+                     Engine.AnnotatorResult.headers,
                      description_header,
                      description_width,
                      descriptions,
