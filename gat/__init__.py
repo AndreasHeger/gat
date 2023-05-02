@@ -948,7 +948,7 @@ def run(segments,
 
     if cache:
         E.info("samples are cached in %s" % cache)
-        samples = Engine.SamplesCached(filename=cache)
+        samples = Engine.SamplesCached(filename=cache.encode('utf-8'))
     elif sample_files:
         if not output_samples_pattern:
             raise ValueError(
