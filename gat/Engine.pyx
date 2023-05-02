@@ -1,6 +1,7 @@
 # cython: embedsignature=True
 # cython: profile=False
 
+import traceback
 import collections
 import re
 import os
@@ -3181,6 +3182,7 @@ cdef class Samples(object):
 
         If cache is given, samples will be stored persistently on disk.
         '''
+        E.info(">>>Samples class initialized in Engine.pyx")
         self.samples = {}
 
     def add( self, track, sample_id, isochore, segmentlist ):
@@ -3245,25 +3247,31 @@ cdef class SamplesCached( Samples ):
     cdef FILE * findex
     cdef dict index
     cdef char * filename
+    cdef char * indexextension
 
     def __init__(self, filename ):
-        '''create a new SampleCollection.
-
-        If cache is given, samples will be stored persistently on disk.
-        '''
-        Samples.__init__(self)
-        
-        self.filename = filename
-        tmp = self.filename + ".idx"
-
-        if not os.path.exists( filename ):
-            self.fcache = fopen( filename, "wb" )
-            self.findex = fopen( tmp, "wb" )
-            self.index = {}
-        else:
-            self.fcache = fopen( filename, "rb" )
-            self.loadIndex()
-            self.findex = fopen( tmp, "rb" )
+        try:
+            E.info(">>>Trying from Engine.pyx: intializing SamplesCached class")
+            '''create a new SampleCollection.
+            If cache is given, samples will be stored persistently on disk.
+            '''
+            Samples.__init__(self)
+            
+            self.filename = filename
+            self.indexextension = ".idx"
+            tmp = self.filename + self.indexextension 
+    
+            if not os.path.exists( filename ):
+                self.fcache = fopen( filename, "wb" )
+                self.findex = fopen( tmp, "wb" )
+                self.index = {}
+            else:
+                self.fcache = fopen( filename, "rb" )
+                self.loadIndex()
+                self.findex = fopen( tmp, "rb" )
+        except Exception:
+            E.info(">>>Exception from Engine.pyx")
+            E.info(traceback.format_exc())
 
     def loadIndex( self ):
         '''load index from cache.
@@ -3276,7 +3284,7 @@ cdef class SamplesCached( Samples ):
         cdef char keylen
         cdef FILE * findex
         self.index = {}
-        tmp = self.filename + ".idx"
+        tmp = self.filename + self.indexextension 
         findex = fopen( tmp, "rb" )
 
         ckey = <char*>calloc(sizeof(char) * 256, 1)
@@ -3339,6 +3347,7 @@ cdef class SamplesCached( Samples ):
         return self.toKey(track, sample_id, isochore) in self.index
 
     def __dealloc__(self):
+        E.info(">>>Saving cache files!")
         fclose( self.fcache)
         fclose( self.findex)
 

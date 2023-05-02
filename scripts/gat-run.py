@@ -72,9 +72,10 @@ import gat.IO as IO
 import gat.Stats as Stats
 import gat.SegmentList as SegmentList
 import gat.Engine as Engine
+import traceback
 
 
-def fromSegments(options, args):
+def _fromSegments(options, args):
     '''run analysis from segment files.
 
     This is the most common use case.
@@ -219,6 +220,13 @@ def fromSegments(options, args):
 
     return annotator_results
 
+def fromSegments(options, args):
+    try:
+        E.info(">>>Trying from gat-run.py")
+        return _fromSegments(options, args)
+    except Exception:
+        E.info(">>>Exception from gat-run.py")
+        E.info(traceback.format_exc())
 
 def main(argv=None):
     """script main.
